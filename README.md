@@ -31,6 +31,7 @@ This repository currently contains:
 - LitRes auth reuse + repo-owned bootstrap flow
 - session `packContext` + `authContext`
 - action / observe / snapshot flow
+- trace artifacts for `session open` / `observe` / `act` / `snapshot`
 - tests for daemon/session lifecycle and pack loading
 
 ## Prerequisites
@@ -133,7 +134,29 @@ So when OpenClaw calls the CLI, use a stable workspace directory as `cwd`.
 For a normal OpenClaw deployment, the workspace root is the right place.
 Do **not** launch browser-platform from arbitrary repo subdirectories or transient temp folders if you want the daemon, session registry, and artifacts to remain reusable across separate `exec` calls.
 
-### 2. Site packs are repo/package-local
+### 2. Trace artifacts are written per step
+
+For MVP0 acceptance, the runtime now writes JSON trace artifacts under:
+
+```text
+<cwd>/.tmp/browser-platform/artifacts/traces/<sessionId>/
+```
+
+Current trace coverage:
+- `session open` writes the opened page state plus resolved pack/auth/payment context
+- `session observe` writes the observed page summary
+- `session act` writes before/after state, diff, and success/failure observations
+- `session snapshot` writes a trace JSON that points at the saved screenshot + HTML snapshot paths
+
+The heavier screenshot/HTML artifacts still live under:
+
+```text
+<cwd>/.tmp/browser-platform/artifacts/snapshots/
+```
+
+This is enough to diagnose both a successful LitRes pilot flow and a representative failure without adding risky external automation steps.
+
+### 3. Site packs are repo/package-local
 
 The CLI auto-discovers `site-packs/` relative to the installed package layout.
 That means:

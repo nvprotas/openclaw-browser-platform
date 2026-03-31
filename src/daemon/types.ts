@@ -93,6 +93,10 @@ export interface SessionRecord {
   paymentContext: SessionPaymentContext;
 }
 
+export interface SessionTraceArtifact {
+  tracePath: string;
+}
+
 export interface SessionObservation {
   sessionId: string;
   observedAt: string;
@@ -121,6 +125,7 @@ export interface SessionObservation {
   urlHints: string[];
   pageSignatureGuess: string;
   paymentContext: SessionPaymentContext;
+  trace?: SessionTraceArtifact;
 }
 
 export interface SessionSnapshot {
@@ -130,6 +135,7 @@ export interface SessionSnapshot {
   screenshotPath: string;
   htmlPath: string;
   state: SessionObservation;
+  trace?: SessionTraceArtifact;
 }
 
 export interface ActionObservationSummary {
@@ -217,6 +223,7 @@ export interface SessionActionResult {
   after: SessionObservation;
   changes: ActionDiffSummary;
   observations: ActionObservationSummary[];
+  trace?: SessionTraceArtifact;
 }
 
 export interface DaemonInfo {

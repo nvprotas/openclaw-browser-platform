@@ -193,7 +193,17 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
               },
               paymentContext: observed.paymentContext
             }) ?? record;
-          sendJson(response, 200, { ok: true, session });
+          const trace = await controller.writeTrace(record.sessionId, 'session-open', {
+            sessionId: record.sessionId,
+            requestedUrl: body.url,
+            opened,
+            packContext: session.packContext,
+            authContext: session.authContext,
+            paymentContext: session.paymentContext,
+            observedAt: new Date().toISOString(),
+            page: observed
+          });
+          sendJson(response, 200, { ok: true, session: { ...session, trace } });
         } catch (error) {
           registry.close(record.sessionId);
           throw error;
@@ -238,6 +248,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           observedAt: new Date().toISOString(),
           ...observed
         };
+        payload.trace = await controller.writeTrace(session.sessionId, 'observe', payload);
         sendJson(response, 200, { ok: true, session: payload });
         return;
       }
@@ -285,6 +296,9 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           changes: action.changes,
           observations: action.observations
         };
+        payload.trace = await controller.writeTrace(session.sessionId, `act-${action.action}`,
+          payload
+        );
         sendJson(response, 200, { ok: true, action: payload });
         return;
       }
@@ -322,6 +336,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
             ...snapshotResult.state
           }
         };
+        snapshot.trace = await controller.writeTrace(session.sessionId, 'snapshot', snapshot);
         sendJson(response, 200, { ok: true, snapshot });
         return;
       }

@@ -202,11 +202,15 @@ describe('browser-platform CLI + daemon runtime', () => {
 
       const open = await runCli(cwd, ['session', 'open', '--url', serverUrl, '--json']);
       expect(open.json?.ok).toBe(true);
-      const sessionId = String((open.json?.session as { sessionId: string }).sessionId);
+      const openSession = open.json?.session as { sessionId: string; trace?: { tracePath: string } };
+      const sessionId = String(openSession.sessionId);
       expect(open.json?.session).toMatchObject({
         url: serverUrl + '/',
         title: 'Observation Fixture',
         status: 'open',
+        trace: {
+          tracePath: expect.stringContaining(path.join('.tmp', 'browser-platform', 'artifacts', 'traces'))
+        },
         packContext: {
           matchedPack: false,
           siteId: null
@@ -215,6 +219,14 @@ describe('browser-platform CLI + daemon runtime', () => {
           state: 'anonymous',
           bootstrapAttempted: false,
           storageStateExists: false
+        }
+      });
+
+      expect(JSON.parse(await readFile(String(openSession.trace?.tracePath), 'utf8'))).toMatchObject({
+        sessionId,
+        requestedUrl: serverUrl,
+        page: {
+          title: 'Observation Fixture'
         }
       });
 
@@ -239,7 +251,10 @@ describe('browser-platform CLI + daemon runtime', () => {
         session: {
           sessionId,
           title: 'Observation Fixture',
-          pageSignatureGuess: 'product_page'
+          pageSignatureGuess: 'product_page',
+          trace: {
+            tracePath: expect.stringContaining(path.join('.tmp', 'browser-platform', 'artifacts', 'traces'))
+          }
         }
       });
       expect((observe.json?.session as { visibleButtons: Array<{ text: string }> }).visibleButtons).toEqual(
@@ -248,12 +263,23 @@ describe('browser-platform CLI + daemon runtime', () => {
           expect.objectContaining({ text: 'Add to cart' })
         ])
       );
+      expect(JSON.parse(await readFile(String((observe.json?.session as { trace?: { tracePath: string } }).trace?.tracePath), 'utf8'))).toMatchObject({
+        sessionId,
+        title: 'Observation Fixture',
+        pageSignatureGuess: 'product_page'
+      });
 
       const snapshot = await runCli(cwd, ['session', 'snapshot', '--session', sessionId, '--json']);
       expect(snapshot.json?.ok).toBe(true);
-      const snapshotPayload = snapshot.json?.snapshot as { screenshotPath: string; htmlPath: string };
+      const snapshotPayload = snapshot.json?.snapshot as { screenshotPath: string; htmlPath: string; trace?: { tracePath: string } };
       expect(snapshotPayload.screenshotPath).toContain(path.join('.tmp', 'browser-platform', 'artifacts', 'snapshots'));
       expect(snapshotPayload.htmlPath).toContain(path.join('.tmp', 'browser-platform', 'artifacts', 'snapshots'));
+      expect(snapshotPayload.trace?.tracePath).toContain(path.join('.tmp', 'browser-platform', 'artifacts', 'traces'));
+      expect(JSON.parse(await readFile(String(snapshotPayload.trace?.tracePath), 'utf8'))).toMatchObject({
+        sessionId,
+        screenshotPath: snapshotPayload.screenshotPath,
+        htmlPath: snapshotPayload.htmlPath
+      });
 
       const close = await runCli(cwd, ['session', 'close', '--session', sessionId, '--json']);
       expect(close.json).toMatchObject({
@@ -367,10 +393,20 @@ describe('browser-platform CLI + daemon runtime', () => {
           title: 'Observation Fixture',
           pageSignatureGuess: 'product_page'
         },
+        trace: {
+          tracePath: expect.stringContaining(path.join('.tmp', 'browser-platform', 'artifacts', 'traces'))
+        },
         observations: expect.arrayContaining([
           expect.objectContaining({ code: 'NO_OBVIOUS_CHANGE' })
         ])
       }
+    });
+    expect(JSON.parse(await readFile(String((fill.json?.action as { trace?: { tracePath: string } }).trace?.tracePath), 'utf8'))).toMatchObject({
+      sessionId,
+      action: 'fill',
+      observations: expect.arrayContaining([
+        expect.objectContaining({ code: 'NO_OBVIOUS_CHANGE' })
+      ])
     });
 
     const submit = await runCli(cwd, [

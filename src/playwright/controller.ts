@@ -1,13 +1,17 @@
 import path from 'node:path';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionActionPayload } from '../daemon/types.js';
+import { TraceWriter } from '../traces/writer.js';
 import { BrowserSession, type BrowserSessionSnapshotResult, type PageStateSummary } from './browser-session.js';
 import { buildActionResult, runStep } from '../runtime/run-step.js';
 
 export class PlaywrightController {
   private readonly sessions = new Map<string, BrowserSession>();
+  private readonly traceWriter: TraceWriter;
 
-  constructor(private readonly rootDir: string) {}
+  constructor(private readonly rootDir: string) {
+    this.traceWriter = new TraceWriter(path.join(this.rootDir, 'artifacts', 'traces'));
+  }
 
   async openSession(
     sessionId: string,
@@ -29,6 +33,10 @@ export class PlaywrightController {
 
   async observeSession(sessionId: string): Promise<PageStateSummary> {
     return this.requireSession(sessionId).observe();
+  }
+
+  async writeTrace(sessionId: string, stepType: string, payload: unknown) {
+    return this.traceWriter.writeStep(sessionId, stepType, payload);
   }
 
   async actInSession(sessionId: string, payload: SessionActionPayload) {

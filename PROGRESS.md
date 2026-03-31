@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 21:26 UTC**
+Последнее обновление: **2026-03-31 21:39 UTC**
 
 ## Короткий статус
 
@@ -58,6 +58,10 @@
 - Commit 8 закрыт: formalized LitRes helper layer для `product -> add_to_cart -> cart` — добавлен `src/helpers/cart.ts` с candidate-target helpers и validation logic (`findAddToCartTargets`, `findOpenCartTargets`, `isAddToCartConfirmed`, `isCartVisible`)
 - добавлены `examples/demo-litres-cart.ts` и `site-packs/litres/approved/validation-rules.json`; LitRes pack/docs обновлены под helper-driven add-to-cart/cart validation
 - добавлен integration proof flow `search -> product -> add-to-cart -> cart` через новые helpers, плюс unit tests для cart helpers; после этого `npm run build`, targeted `vitest` и `npm run lint` снова зелёные
+- Commit 10 по Traces v1 + MVP0 acceptance закрыт: добавлен lightweight trace writer (`src/traces/writer.ts`), и runtime теперь пишет JSON trace artifacts для `session open`, `session observe`, `session act` и `session snapshot` в `<cwd>/.tmp/browser-platform/artifacts/traces/<sessionId>/`
+- `session act` trace теперь формально сохраняет `before/after`, diff и observations, а `session snapshot` trace связывает диагностику с конкретными `screenshotPath` + `htmlPath`; этого достаточно, чтобы показывать и успешный LitRes pilot, и диагностический/failure coverage без рискованных платёжных шагов
+- integration tests обновлены: `tests/integration/cli-daemon.test.ts` теперь проверяет наличие trace artifacts и их содержимое для `open/observe/act/snapshot`
+- `README.md` и `MVP0_LITRES.md` синхронизированы под финальный статус MVP0: acceptance checklist отмечен как закрытый, явно зафиксированы успешный LitRes pilot coverage и diagnostic/failure coverage, а также расположение trace/snapshot artifacts
 
 ## Правило ведения файла
 
@@ -194,7 +198,12 @@
   - релевантные build/lint/targeted tests подтверждают, что skill-facing integration path не разъехался
 
 ### Commit 10 — Traces v1 + MVP0 acceptance
-- **Статус:** `not started`
+- **Статус:** `done`
+- **Что закрыто:**
+  - добавлены per-step JSON trace artifacts для `session open/observe/act/snapshot`
+  - `snapshot` trace теперь явно линкует screenshot + HTML artifacts, а `act` trace сохраняет diff и observations для диагностики
+  - `README.md`, `PROGRESS.md` и `MVP0_LITRES.md` синхронизированы под формально закрытый статус MVP0
+  - successful LitRes pilot coverage и representative diagnostic/failure coverage зафиксированы без финального платёжного submit
 
 ---
 
