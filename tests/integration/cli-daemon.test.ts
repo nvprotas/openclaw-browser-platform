@@ -166,7 +166,23 @@ describe('browser-platform CLI + daemon runtime', () => {
       expect(open.json?.session).toMatchObject({
         url: serverUrl + '/',
         title: 'Observation Fixture',
-        status: 'open'
+        status: 'open',
+        packContext: {
+          matchedPack: false,
+          siteId: null
+        }
+      });
+
+      const context = await runCli(cwd, ['session', 'context', '--session', sessionId, '--json']);
+      expect(context.json).toMatchObject({
+        ok: true,
+        session: {
+          sessionId,
+          packContext: {
+            matchedPack: false,
+            instructionsSummary: []
+          }
+        }
       });
 
       const observe = await runCli(cwd, ['session', 'observe', '--session', sessionId, '--json']);

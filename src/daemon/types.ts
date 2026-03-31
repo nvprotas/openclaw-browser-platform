@@ -1,3 +1,15 @@
+export interface SessionPackContext {
+  matchedPack: boolean;
+  siteId: string | null;
+  supportLevel: 'generic' | 'profiled' | 'assisted' | 'hardened' | null;
+  matchedDomain: string | null;
+  startUrl: string | null;
+  flows: string[];
+  knownRisks: string[];
+  instructionsSummary: string[];
+  knownSignals: string[];
+}
+
 export interface SessionRecord {
   sessionId: string;
   url: string;
@@ -5,6 +17,7 @@ export interface SessionRecord {
   updatedAt: string;
   status: 'open' | 'closed';
   title: string | null;
+  packContext: SessionPackContext;
 }
 
 export interface SessionObservation {

@@ -12,7 +12,18 @@ export class SessionRegistry {
       title: input.title ?? null,
       createdAt: now,
       updatedAt: now,
-      status: 'open'
+      status: 'open',
+      packContext: {
+        matchedPack: false,
+        siteId: null,
+        supportLevel: null,
+        matchedDomain: null,
+        startUrl: null,
+        flows: [],
+        knownRisks: [],
+        instructionsSummary: [],
+        knownSignals: []
+      }
     };
 
     this.sessions.set(session.sessionId, session);
@@ -23,7 +34,10 @@ export class SessionRegistry {
     return this.sessions.get(sessionId);
   }
 
-  touch(sessionId: string, patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status'>>): SessionRecord | undefined {
+  touch(
+    sessionId: string,
+    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext'>>
+  ): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
     if (!existing) {
       return undefined;

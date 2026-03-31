@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 12:27 UTC**
+Последнее обновление: **2026-03-31 12:39 UTC**
 
 ## Короткий статус
 
@@ -73,7 +73,14 @@
   - правки эвристик классификации
 
 ### Commit 5 — LitRes pack skeleton
-- **Статус:** `not started`
+- **Статус:** `done locally, not committed yet`
+- **Что сделано:**
+  - создан первый реальный pack `site-packs/litres/`
+  - добавлены `manifest.json`, `instructions.md`, `login.md`, `checkout.md`, `hints.json`
+  - добавлены placeholder-директории `learned/` и `approved/`
+  - реализован pack loader/matcher по домену
+  - `session open/context` теперь возвращают `packContext` с operational summary
+  - добавлены тесты на загрузку/match pack и context summary
 
 ### Commit 6 — Session reuse for LitRes
 - **Статус:** `not started`

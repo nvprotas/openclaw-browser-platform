@@ -1,0 +1,13 @@
+{
+  "site_id": "litres",
+  "domains": ["litres.ru", "www.litres.ru"],
+  "start_url": "https://www.litres.ru/",
+  "site_type": "ebook_store",
+  "support_level": "profiled",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "payment_requires_human": true,
+    "login_may_require_external_bootstrap": true,
+    "final_checkout_not_in_scope": true
+  }
+}

@@ -2,6 +2,7 @@ import http from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { BrowserPlatformError } from '../core/errors.js';
 import { PlaywrightController } from '../playwright/controller.js';
+import { matchSitePackByUrl } from '../packs/loader.js';
 import { getDefaultStateStore } from './state-store.js';
 import { SessionRegistry } from './session-registry.js';
 import type {
@@ -102,7 +103,25 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         const record = registry.open({ url: body.url });
         try {
           const opened = await controller.openSession(record.sessionId, body.url);
-          const session = registry.touch(record.sessionId, { url: opened.url, title: opened.title }) ?? record;
+          const matchedPack = await matchSitePackByUrl(opened.url);
+          const session =
+            registry.touch(record.sessionId, {
+              url: opened.url,
+              title: opened.title,
+              packContext: matchedPack
+                ? {
+                    matchedPack: true,
+                    siteId: matchedPack.summary.siteId,
+                    supportLevel: matchedPack.summary.supportLevel,
+                    matchedDomain: matchedPack.summary.matchedDomain,
+                    startUrl: matchedPack.summary.startUrl,
+                    flows: matchedPack.summary.flows,
+                    knownRisks: matchedPack.summary.riskFlags,
+                    instructionsSummary: matchedPack.instructionsSummary,
+                    knownSignals: matchedPack.knownSignals
+                  }
+                : record.packContext
+            }) ?? record;
           sendJson(response, 200, { ok: true, session });
         } catch (error) {
           registry.close(record.sessionId);
