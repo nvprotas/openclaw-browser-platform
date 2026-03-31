@@ -154,18 +154,42 @@ export class BrowserSession {
         };
       });
 
-      const urlHints = Array.from(document.querySelectorAll<HTMLElement>('a[href], iframe[src], frame[src], form[action]'))
-        .map((element) => {
-          const raw =
-            element.getAttribute('href') ?? element.getAttribute('src') ?? element.getAttribute('action') ?? null;
+      const urlHintSources = [
+        ...Array.from(document.querySelectorAll<HTMLElement>(
+          'a[href], iframe[src], frame[src], form[action], [data-href], [data-url], [data-link], [data-target-url]'
+        )).map((element) =>
+          element.getAttribute('href') ??
+          element.getAttribute('src') ??
+          element.getAttribute('action') ??
+          element.getAttribute('data-href') ??
+          element.getAttribute('data-url') ??
+          element.getAttribute('data-link') ??
+          element.getAttribute('data-target-url')
+        ),
+        ...Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/json"], script[type="application/ld+json"], script'))
+          .map((script) => normalizeText(script.textContent))
+          .filter((value) => value.length > 0)
+      ];
+
+      const urlHints = urlHintSources
+        .flatMap((raw) => {
           if (!raw) {
-            return null;
+            return [];
+          }
+
+          const normalized = normalizeText(raw);
+          const matches = normalized.match(
+            /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|id\.sber\.ru\/[^\s"'<>)]*)[^\s"'<>)]*|(?:orderid|bankinvoiceid|mdorder|merchantorderid|merchantordernumber|formurl|purchase\/ppd)[^\s"'<>]*/gi
+          );
+
+          if (matches?.length) {
+            return matches.slice(0, 6);
           }
 
           try {
-            return new URL(raw, window.location.href).toString();
+            return [new URL(normalized, window.location.href).toString()];
           } catch {
-            return null;
+            return [normalized];
           }
         })
         .filter((value): value is string => Boolean(value))
@@ -175,7 +199,7 @@ export class BrowserSession {
           )
         )
         .filter((value, index, all) => all.indexOf(value) === index)
-        .slice(0, 16);
+        .slice(0, 24);
 
       const lowerTexts = visibleTexts.join(' ').toLowerCase();
       const buttonTexts = visibleButtons

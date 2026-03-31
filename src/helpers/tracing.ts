@@ -36,6 +36,22 @@ export function summarizeObservation(state: PageStateSummary): ActionObservation
     observations.push({ level: 'info', code: 'SBER_ID_HANDOFF_VISIBLE', message: 'A Sber ID handoff URL is visible in the current payment flow.' });
   }
 
+  if (state.paymentContext.phase === 'payecom_boundary' && state.visibleTexts.some((text) => /номер карты|cvc|cvv|месяц\/год|оплатить/i.test(text))) {
+    observations.push({
+      level: 'info',
+      code: 'PAYMENT_BOUNDARY_CARD_FORM_VISIBLE',
+      message: 'The payecom boundary is fully visible (card form / final pay controls present). Stop before pressing final `Оплатить` unless explicitly requested.'
+    });
+  }
+
+  if (state.paymentContext.phase === 'payecom_boundary' && state.visibleTexts.some((text) => /привязанн|выберите карту|карта/i.test(text))) {
+    observations.push({
+      level: 'info',
+      code: 'SBERPAY_METHOD_SELECTION_VISIBLE',
+      message: 'A deeper SberPay payment selection/cards state is visible after the Sber ID entry point. Treat this as a safe stop boundary unless the user explicitly requests further payment steps.'
+    });
+  }
+
   if (state.visibleButtons.length === 0) {
     observations.push({ level: 'warning', code: 'NO_VISIBLE_BUTTONS', message: 'No visible buttons were detected after the action.' });
   }

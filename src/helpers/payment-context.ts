@@ -9,6 +9,9 @@ interface PaymentContextInput {
   urlHints: string[];
 }
 
+const PAYMENT_URL_PATTERN = /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink)[^\s"'<>)]*/gi;
+const PAYMENT_PARAM_PATTERN = /(orderid|bankinvoiceid|merchantordernumber|merchantorderid|mdorder|formurl|href|order|trace-id|method|system)=([^\s&"'<>]+)/gi;
+
 interface ExtractAccumulator {
   paymentUrls: string[];
   orderIds: string[];
@@ -87,6 +90,63 @@ function collectKnownParams(url: URL, acc: ExtractAccumulator): void {
   }
 }
 
+
+function collectParamPair(key: string, rawValue: string, acc: ExtractAccumulator): void {
+  const lowered = key.toLowerCase();
+  const value = deepDecode(rawValue).trim();
+
+  if (!value) {
+    return;
+  }
+
+  if (lowered === 'orderid') {
+    acc.orderIds.push(value);
+  } else if (lowered === 'bankinvoiceid') {
+    acc.bankInvoiceIds.push(value);
+  } else if (lowered === 'merchantordernumber') {
+    acc.merchantOrderNumbers.push(value);
+  } else if (lowered === 'merchantorderid') {
+    acc.merchantOrderIds.push(value);
+  } else if (lowered === 'mdorder') {
+    acc.mdOrders.push(value);
+  } else if (lowered === 'formurl') {
+    acc.formUrls.push(value);
+    collectCandidate(value, 'https://payecom.ru/', acc);
+  } else if (lowered === 'href') {
+    acc.hrefs.push(value);
+    collectCandidate(value, 'https://payecom.ru/', acc);
+  } else if (lowered === 'order') {
+    acc.litresOrders.push(value);
+  } else if (lowered === 'trace-id') {
+    acc.traceIds.push(value);
+  } else if (lowered === 'method') {
+    acc.paymentMethods.push(value);
+  } else if (lowered === 'system') {
+    acc.paymentSystems.push(value);
+  }
+}
+
+function collectLooseSignals(raw: string, baseUrl: string, acc: ExtractAccumulator): void {
+  const variants = uniq([raw, deepDecode(raw)]);
+
+  for (const variant of variants) {
+    for (const match of variant.matchAll(PAYMENT_URL_PATTERN)) {
+      collectCandidate(match[0], baseUrl, acc);
+    }
+
+    for (const [, key, value] of variant.matchAll(PAYMENT_PARAM_PATTERN)) {
+      collectParamPair(key, value, acc);
+    }
+
+    if (/id\.sber\.ru\/.+authorize/i.test(variant)) {
+      const hrefMatch = variant.match(/https?:\/\/id\.sber\.ru\/[^\s"'<>)]*/i);
+      if (hrefMatch?.[0]) {
+        acc.hrefs.push(deepDecode(hrefMatch[0]));
+      }
+    }
+  }
+}
+
 function parseEncodedParams(raw: string, acc: ExtractAccumulator): void {
   const variants = uniq([raw, deepDecode(raw)]);
 
@@ -94,22 +154,7 @@ function parseEncodedParams(raw: string, acc: ExtractAccumulator): void {
     try {
       const params = new URLSearchParams(variant.startsWith('?') ? variant.slice(1) : variant);
       for (const [key, value] of params.entries()) {
-        const lowered = key.toLowerCase();
-        if (lowered === 'orderid') {
-          acc.orderIds.push(value);
-        } else if (lowered === 'bankinvoiceid') {
-          acc.bankInvoiceIds.push(value);
-        } else if (lowered === 'merchantordernumber') {
-          acc.merchantOrderNumbers.push(value);
-        } else if (lowered === 'merchantorderid') {
-          acc.merchantOrderIds.push(value);
-        } else if (lowered === 'mdorder') {
-          acc.mdOrders.push(value);
-        } else if (lowered === 'formurl') {
-          acc.formUrls.push(deepDecode(value));
-        } else if (lowered === 'href') {
-          acc.hrefs.push(deepDecode(value));
-        }
+        collectParamPair(key, value, acc);
       }
     } catch {
       // ignore badly-formed params payloads
@@ -259,9 +304,15 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
   const candidates = uniq([input.url, ...urlHints, ...formActionHints]);
   candidates.forEach((candidate) => collectCandidate(candidate, input.url, acc));
 
-  const combinedText = `${input.visibleTexts.join(' ')} ${input.visibleButtons
+  const combinedTextRaw = `${input.visibleTexts.join(' ')} ${input.visibleButtons
     .map((button) => `${button.text} ${button.ariaLabel ?? ''}`.trim())
-    .join(' ')}`.toLowerCase();
+    .join(' ')} ${input.forms
+    .flatMap((form) => [form.id ?? '', form.name ?? '', form.action ?? '', ...form.submitLabels])
+    .join(' ')}`;
+  collectLooseSignals(combinedTextRaw, input.url, acc);
+  urlHints.forEach((hint) => collectLooseSignals(hint, input.url, acc));
+
+  const combinedText = combinedTextRaw.toLowerCase();
 
   const paymentUrl = first(uniq([...acc.paymentUrls, ...acc.formUrls]));
   const paymentOrderId = first(uniq([...acc.orderIds, ...acc.mdOrders]));
@@ -278,12 +329,14 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
   const href = first(uniq(acc.hrefs));
   const paymentIntents = buildPaymentIntents([...acc.orderIds, ...acc.mdOrders]);
 
+  const sberIdHandoffVisible = Boolean(href) || urlHints.some((hint) => /id\.sber\.ru\/.+authorize/i.test(hint));
+
   let phase: SessionPaymentContext['phase'] = null;
-  if (/platiecom\.ru\/deeplink/i.test(input.url)) {
+  if (/platiecom\.ru\/deeplink/i.test(input.url) || rawDeeplink) {
     phase = 'platiecom_deeplink';
   } else if (/payecom\.ru\/pay(?:_ru)?/i.test(input.url)) {
     phase = 'payecom_boundary';
-  } else if (/\/purchase\/ppd\b/i.test(input.url) || paymentUrl || rawDeeplink || href) {
+  } else if (/\/purchase\/ppd\b/i.test(input.url) || paymentUrl || rawDeeplink || sberIdHandoffVisible) {
     phase = 'litres_checkout';
   }
 

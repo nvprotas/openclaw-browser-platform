@@ -118,7 +118,7 @@ async function stabilizeAfterPaymentAction(
     if (
       current.paymentContext.shouldReportImmediately ||
       current.paymentContext.phase === 'payecom_boundary' ||
-      current.visibleTexts.some((text) => /войти по сбер id/i.test(text)) ||
+      current.visibleTexts.some((text) => /войти по сбер id|номер карты|cvc|cvv|месяц\/год|оплатить/i.test(text)) ||
       current.urlHints.some((hint) => /payecom\.ru\/pay(?:_ru)?|id\.sber\.ru/i.test(hint))
     ) {
       best = current;
