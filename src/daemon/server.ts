@@ -1,8 +1,10 @@
 import http from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { BrowserPlatformError } from '../core/errors.js';
+import { PlaywrightController } from '../playwright/controller.js';
 import { getDefaultStateStore } from './state-store.js';
 import { SessionRegistry } from './session-registry.js';
-import type { DaemonInfo, DaemonStatusResponse } from './types.js';
+import type { DaemonInfo, DaemonStatusResponse, SessionObservation, SessionSnapshot } from './types.js';
 
 const VERSION = '0.1.0';
 
@@ -25,9 +27,36 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
 
+function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: false; error: { message: string; code?: string } } } {
+  if (error instanceof BrowserPlatformError) {
+    const statusCode = error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : 400;
+    return {
+      statusCode,
+      payload: {
+        ok: false,
+        error: {
+          message: error.message,
+          code: error.code
+        }
+      }
+    };
+  }
+
+  return {
+    statusCode: 500,
+    payload: {
+      ok: false,
+      error: {
+        message: error instanceof Error ? error.message : 'Unknown server error'
+      }
+    }
+  };
+}
+
 export async function startDaemonServer(): Promise<DaemonInfo> {
   const registry = new SessionRegistry();
   const stateStore = getDefaultStateStore();
+  const controller = new PlaywrightController(stateStore.root);
   const token = randomBytes(24).toString('hex');
   const startedAt = new Date().toISOString();
 
@@ -62,7 +91,15 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           return;
         }
 
-        sendJson(response, 200, { ok: true, session: registry.open(body.url) });
+        const record = registry.open({ url: body.url });
+        try {
+          const opened = await controller.openSession(record.sessionId, body.url);
+          const session = registry.touch(record.sessionId, { url: opened.url, title: opened.title }) ?? record;
+          sendJson(response, 200, { ok: true, session });
+        } catch (error) {
+          registry.close(record.sessionId);
+          throw error;
+        }
         return;
       }
 
@@ -70,30 +107,72 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         const body = (await readJsonBody(request)) as { sessionId?: string };
         const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
         if (!session) {
-          sendJson(response, 404, { ok: false, error: { message: 'Session not found' } });
-          return;
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
         sendJson(response, 200, { ok: true, session });
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/session/observe') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        const observed = await controller.observeSession(session.sessionId);
+        registry.touch(session.sessionId, { url: observed.url, title: observed.title });
+        const payload: SessionObservation = {
+          sessionId: session.sessionId,
+          observedAt: new Date().toISOString(),
+          ...observed
+        };
+        sendJson(response, 200, { ok: true, session: payload });
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/session/snapshot') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        const snapshotResult = await controller.snapshotSession(session.sessionId);
+        registry.touch(session.sessionId, { url: snapshotResult.state.url, title: snapshotResult.state.title });
+        const snapshot: SessionSnapshot = {
+          sessionId: session.sessionId,
+          capturedAt: new Date().toISOString(),
+          rootDir: snapshotResult.rootDir,
+          screenshotPath: snapshotResult.screenshotPath,
+          htmlPath: snapshotResult.htmlPath,
+          state: {
+            sessionId: session.sessionId,
+            observedAt: new Date().toISOString(),
+            ...snapshotResult.state
+          }
+        };
+        sendJson(response, 200, { ok: true, snapshot });
         return;
       }
 
       if (request.method === 'POST' && request.url === '/v1/session/close') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
-        const session = body?.sessionId ? registry.close(body.sessionId) : undefined;
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
         if (!session) {
-          sendJson(response, 404, { ok: false, error: { message: 'Session not found' } });
-          return;
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
-        sendJson(response, 200, { ok: true, session });
+        await controller.closeSession(session.sessionId);
+        sendJson(response, 200, { ok: true, session: registry.close(session.sessionId) });
         return;
       }
 
       sendJson(response, 404, { ok: false, error: { message: 'Not found' } });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown server error';
-      sendJson(response, 500, { ok: false, error: { message } });
+      const { statusCode, payload } = toErrorResponse(error);
+      sendJson(response, statusCode, payload);
     }
   });
 
@@ -113,6 +192,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
   await stateStore.writeDaemonInfo(info);
 
   const shutdown = async (): Promise<void> => {
+    await controller.closeAll();
     server.close();
   };
 

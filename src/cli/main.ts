@@ -1,7 +1,13 @@
 import { BrowserPlatformError } from '../core/errors.js';
 import { startDaemonServer } from '../daemon/server.js';
 import { handleDaemonEnsure, handleDaemonStatus } from './commands/daemon.js';
-import { handleSessionClose, handleSessionContext, handleSessionOpen } from './commands/session.js';
+import {
+  handleSessionClose,
+  handleSessionContext,
+  handleSessionObserve,
+  handleSessionOpen,
+  handleSessionSnapshot
+} from './commands/session.js';
 import { printErrorJson, printJson } from './output.js';
 
 export async function runCli(args: string[]): Promise<number> {
@@ -55,6 +61,14 @@ async function dispatch(args: string[]): Promise<unknown> {
     return handleSessionContext(args);
   }
 
+  if (args[0] === 'session' && args[1] === 'observe') {
+    return handleSessionObserve(args);
+  }
+
+  if (args[0] === 'session' && args[1] === 'snapshot') {
+    return handleSessionSnapshot(args);
+  }
+
   if (args[0] === 'session' && args[1] === 'close') {
     return handleSessionClose(args);
   }
@@ -63,5 +77,5 @@ async function dispatch(args: string[]): Promise<unknown> {
 }
 
 function printHelp(): void {
-  console.log(`browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> --json\n  browser-platform session context --session <id> --json\n  browser-platform session close --session <id> --json`);
+  console.log(`browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> --json\n  browser-platform session context --session <id> --json\n  browser-platform session observe --session <id> --json\n  browser-platform session snapshot --session <id> --json\n  browser-platform session close --session <id> --json`);
 }

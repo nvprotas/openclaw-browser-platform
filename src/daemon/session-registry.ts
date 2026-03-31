@@ -4,11 +4,12 @@ import type { SessionRecord } from './types.js';
 export class SessionRegistry {
   private readonly sessions = new Map<string, SessionRecord>();
 
-  open(url: string): SessionRecord {
+  open(input: { url: string; title?: string | null }): SessionRecord {
     const now = new Date().toISOString();
     const session: SessionRecord = {
       sessionId: randomUUID(),
-      url,
+      url: input.url,
+      title: input.title ?? null,
       createdAt: now,
       updatedAt: now,
       status: 'open'
@@ -22,20 +23,24 @@ export class SessionRegistry {
     return this.sessions.get(sessionId);
   }
 
-  close(sessionId: string): SessionRecord | undefined {
+  touch(sessionId: string, patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status'>>): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
     if (!existing) {
       return undefined;
     }
 
-    const closed: SessionRecord = {
+    const updated: SessionRecord = {
       ...existing,
-      status: 'closed',
+      ...patch,
       updatedAt: new Date().toISOString()
     };
 
-    this.sessions.set(sessionId, closed);
-    return closed;
+    this.sessions.set(sessionId, updated);
+    return updated;
+  }
+
+  close(sessionId: string): SessionRecord | undefined {
+    return this.touch(sessionId, { status: 'closed' });
   }
 
   countOpen(): number {

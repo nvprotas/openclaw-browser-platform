@@ -6,7 +6,9 @@ import type {
   DaemonStatusResponse,
   SessionCloseResponse,
   SessionContextResponse,
-  SessionOpenResponse
+  SessionObserveResponse,
+  SessionOpenResponse,
+  SessionSnapshotResponse
 } from './types.js';
 
 async function request<T>(info: DaemonInfo, route: string, body?: JsonValue): Promise<T> {
@@ -49,6 +51,14 @@ export async function openSession(url: string): Promise<SessionOpenResponse> {
 
 export async function getSessionContext(sessionId: string): Promise<SessionContextResponse> {
   return request<SessionContextResponse>(await readRunningDaemonInfo(), '/v1/session/context', { sessionId });
+}
+
+export async function observeSession(sessionId: string): Promise<SessionObserveResponse> {
+  return request<SessionObserveResponse>(await readRunningDaemonInfo(), '/v1/session/observe', { sessionId });
+}
+
+export async function snapshotSession(sessionId: string): Promise<SessionSnapshotResponse> {
+  return request<SessionSnapshotResponse>(await readRunningDaemonInfo(), '/v1/session/snapshot', { sessionId });
 }
 
 export async function closeSession(sessionId: string): Promise<SessionCloseResponse> {
