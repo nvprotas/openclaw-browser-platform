@@ -1,5 +1,11 @@
 # openclaw-browser-platform
 
+**One-line install/update:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
+```
+
 Stateful browser automation runtime for OpenClaw.
 
 Current pilot site: **LitRes (`litres.ru`)**.
