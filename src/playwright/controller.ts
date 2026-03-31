@@ -34,6 +34,7 @@ export class PlaywrightController {
   async actInSession(sessionId: string, payload: SessionActionPayload) {
     const session = this.requireSession(sessionId);
     const { before, after } = await runStep(session, payload);
+    await session.persistStorageState();
     return buildActionResult(payload, before, after);
   }
 

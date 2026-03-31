@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 13:04 UTC**
+Последнее обновление: **2026-03-31 13:16 UTC**
 
 ## Короткий статус
 
@@ -10,7 +10,9 @@
 - добавлена схема текущей архитектуры в `ARCHITECTURE_CURRENT.md`
 - LitRes уже тестируется на живом сайте
 - поиск `1984` через новый runtime уже работает
-- auth reuse уже встроен в `browser-platform`, но полный login path по Sber ID ещё нужно довести как следующий этап (`Commit 6.1`)
+- `Commit 6.1` реализован локально: LitRes bootstrap/login attempt теперь встроен в normal `session open` flow
+- `authContext` расширен явными bootstrap outcome-флагами (`handoffRequired`, `bootstrapFailed`, `redirectedToSberId`, `bootstrapStatus` и др.)
+- build/test/lint проходят после интеграции bootstrap path
 
 ## Правило ведения файла
 
@@ -102,12 +104,22 @@
   - добавлены тесты на reuse storage state и login gate detection
 
 ### Commit 6.1 — Full Sber ID login inside browser-platform flow
-- **Статус:** `planned`
-- **Что нужно сделать:**
-  - встроить полноценную login/bootstrap attempt-логику в обычный LitRes flow
-  - использовать уже существующий `litres-sberid-login` skill как основу bootstrap path, а не делать второй параллельный login-механизм
-  - сохранять/reuse обновлённый storage state из самого browser-platform flow
-  - честно отражать outcome в `authContext` (`authenticated`, `login_gate_detected`, `handoff_required`, `bootstrap_failed`)
+- **Статус:** `done locally`
+- **Что сделано:**
+  - `session open` для LitRes теперь не только reuse-ит storage state, но и при необходимости запускает встроенный bootstrap attempt через существующий `litres-sberid-login/scripts/litres-login.js`
+  - bootstrap path использует существующие артефакты Sber/LitRes (`sber-cookies.json`, `tmp/sberid-login/litres/storage-state.json`), а не отдельный новый login-механизм
+  - после bootstrap runtime переоткрывает ту же LitRes session уже с обновлённым storage state
+  - `authContext` расширен полями:
+    - `handoffRequired`
+    - `bootstrapFailed`
+    - `redirectedToSberId`
+    - `bootstrapStatus`
+    - `bootstrapScriptPath`
+    - `bootstrapOutDir`
+    - `bootstrapFinalUrl`
+    - `bootstrapError`
+  - storage state теперь также persist-ится из самого browser runtime после open/observe/act/snapshot
+  - добавлены/обновлены unit tests под bootstrap outcome
 
 ### Commit 7 — LitRes search flow
 - **Статус:** `partially proven manually`

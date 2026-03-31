@@ -32,7 +32,15 @@ export class SessionRegistry {
         storageStatePath: null,
         storageStateExists: false,
         authenticatedSignals: [],
-        anonymousSignals: []
+        anonymousSignals: [],
+        handoffRequired: false,
+        bootstrapFailed: false,
+        redirectedToSberId: false,
+        bootstrapStatus: 'not_attempted',
+        bootstrapScriptPath: null,
+        bootstrapOutDir: null,
+        bootstrapFinalUrl: null,
+        bootstrapError: null
       }
     };
 

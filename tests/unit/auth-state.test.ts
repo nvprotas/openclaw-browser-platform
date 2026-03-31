@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { inferAuthState } from '../../src/playwright/auth-state.js';
-import { resolveStorageStateForSession } from '../../src/daemon/litres-auth.js';
+import { resolveStorageStateForSession, runIntegratedLitresBootstrap } from '../../src/daemon/litres-auth.js';
+import { matchSitePackByUrl } from '../../src/packs/loader.js';
 
 describe('auth state inference', () => {
   it('detects authenticated signals', () => {
@@ -57,5 +58,32 @@ describe('LitRes storage-state resolution', () => {
       bootstrapAttempted: true,
       bootstrapSource: 'explicit'
     });
+  });
+});
+
+describe('integrated LitRes bootstrap', () => {
+  it('returns not_applicable for non-LitRes packs', async () => {
+    const result = await runIntegratedLitresBootstrap({
+      matchedPack: null,
+      storageStatePath: null
+    });
+
+    expect(result.status).toBe('not_applicable');
+    expect(result.attempted).toBe(false);
+  });
+
+  it('reports missing cookies without hanging on a real login attempt', async () => {
+    const matchedPack = await matchSitePackByUrl('https://www.litres.ru/');
+    const result = await runIntegratedLitresBootstrap({
+      matchedPack,
+      storageStatePath: path.join(os.tmpdir(), 'browser-platform-missing-state.json'),
+      cookiesPath: path.join(os.tmpdir(), 'definitely-missing-sber-cookies.json')
+    });
+
+    expect(result.attempted).toBe(true);
+    expect(result.scriptPath).toContain('litres-login.js');
+    expect(result.statePath).toContain('browser-platform-missing-state.json');
+    expect(result.status).toBe('skipped_missing_cookies');
+    expect(result.bootstrapFailed).toBe(true);
   });
 });

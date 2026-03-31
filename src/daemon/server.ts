@@ -5,7 +5,11 @@ import { PlaywrightController } from '../playwright/controller.js';
 import { matchSitePackByUrl } from '../packs/loader.js';
 import { detectLoginGate } from '../helpers/login-gates.js';
 import { getDefaultStateStore } from './state-store.js';
-import { resolveStorageStateForSession } from './litres-auth.js';
+import {
+  resolveStorageStateForSession,
+  runIntegratedLitresBootstrap,
+  type LitresBootstrapAttemptResult
+} from './litres-auth.js';
 import { SessionRegistry } from './session-registry.js';
 import type {
   DaemonInfo,
@@ -111,12 +115,47 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
 
         const record = registry.open({ url: body.url });
         try {
-          const opened = await controller.openSession(record.sessionId, body.url, {
-            storageStatePath: bootstrap.storageStateExists ? bootstrap.storageStatePath ?? undefined : undefined
+          const openWithStatePath = bootstrap.storageStateExists ? bootstrap.storageStatePath ?? undefined : undefined;
+          let opened = await controller.openSession(record.sessionId, body.url, {
+            storageStatePath: openWithStatePath
           });
-          const matchedPack = await matchSitePackByUrl(opened.url);
-          const observed = await controller.observeSession(record.sessionId);
-          const auth = detectLoginGate(opened.url, observed);
+          let matchedPack = await matchSitePackByUrl(opened.url);
+          let observed = await controller.observeSession(record.sessionId);
+          let auth = detectLoginGate(opened.url, observed);
+          const bootstrapResult: LitresBootstrapAttemptResult =
+            matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated'
+              ? await runIntegratedLitresBootstrap({
+                  matchedPack,
+                  storageStatePath: bootstrap.storageStatePath
+                })
+              : {
+                  attempted: false,
+                  ok: false,
+                  status: bootstrap.storageStateExists ? 'reused_existing_state' : 'not_attempted',
+                  handoffRequired: false,
+                  redirectedToSberId: false,
+                  bootstrapFailed: false,
+                  scriptPath: null,
+                  statePath: bootstrap.storageStatePath,
+                  outDir: null,
+                  finalUrl: null,
+                  rawStatus: null,
+                  errorMessage: null
+                };
+
+          const refreshedStatePath = bootstrapResult.statePath ?? bootstrap.storageStatePath;
+          const refreshedStateExists = bootstrap.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));
+
+          if (bootstrapResult.attempted && refreshedStatePath && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
+            await controller.closeSession(record.sessionId);
+            opened = await controller.openSession(record.sessionId, body.url, {
+              storageStatePath: refreshedStatePath
+            });
+            matchedPack = await matchSitePackByUrl(opened.url);
+            observed = await controller.observeSession(record.sessionId);
+            auth = detectLoginGate(opened.url, observed);
+          }
+
           const session =
             registry.touch(record.sessionId, {
               url: opened.url,
@@ -137,12 +176,20 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
               authContext: {
                 state: auth.state,
                 loginGateDetected: auth.loginGateDetected,
-                bootstrapAttempted: bootstrap.bootstrapAttempted,
+                bootstrapAttempted: bootstrap.bootstrapAttempted || bootstrapResult.attempted,
                 bootstrapSource: bootstrap.bootstrapSource,
-                storageStatePath: bootstrap.storageStatePath,
-                storageStateExists: bootstrap.storageStateExists,
+                storageStatePath: refreshedStatePath,
+                storageStateExists: refreshedStateExists,
                 authenticatedSignals: auth.authenticatedSignals,
-                anonymousSignals: auth.anonymousSignals
+                anonymousSignals: auth.anonymousSignals,
+                handoffRequired: bootstrapResult.handoffRequired,
+                bootstrapFailed: bootstrapResult.bootstrapFailed,
+                redirectedToSberId: bootstrapResult.redirectedToSberId,
+                bootstrapStatus: bootstrapResult.status,
+                bootstrapScriptPath: bootstrapResult.scriptPath,
+                bootstrapOutDir: bootstrapResult.outDir,
+                bootstrapFinalUrl: bootstrapResult.finalUrl,
+                bootstrapError: bootstrapResult.errorMessage
               }
             }) ?? record;
           sendJson(response, 200, { ok: true, session });

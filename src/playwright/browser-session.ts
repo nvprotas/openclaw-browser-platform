@@ -67,6 +67,7 @@ export class BrowserSession {
     this.browser = browser;
     this.context = context;
     this.pageInstance = page;
+    await this.persistStorageState();
 
     return {
       url: page.url(),
@@ -80,6 +81,14 @@ export class BrowserSession {
 
   async waitForInitialLoad(): Promise<void> {
     await waitForInitialLoad(this.requirePage());
+  }
+
+  async persistStorageState(): Promise<void> {
+    if (!this.context || !this.options.storageStatePath) {
+      return;
+    }
+
+    await this.context.storageState({ path: this.options.storageStatePath });
   }
 
   async observe(): Promise<PageStateSummary> {
@@ -174,6 +183,8 @@ export class BrowserSession {
       };
     })) as ObserveSummary;
 
+    await this.persistStorageState();
+
     return {
       url: page.url(),
       title: await page.title(),
@@ -186,6 +197,7 @@ export class BrowserSession {
   async snapshot(): Promise<BrowserSessionSnapshotResult> {
     const page = this.requirePage();
     const paths = await capturePageSnapshot(page, this.options.snapshotRootDir, this.options.sessionId);
+    await this.persistStorageState();
     return {
       ...paths,
       state: await this.observe()

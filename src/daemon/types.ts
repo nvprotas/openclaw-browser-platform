@@ -19,6 +19,24 @@ export interface SessionAuthContext {
   storageStateExists: boolean;
   authenticatedSignals: string[];
   anonymousSignals: string[];
+  handoffRequired: boolean;
+  bootstrapFailed: boolean;
+  redirectedToSberId: boolean;
+  bootstrapStatus:
+    | 'not_attempted'
+    | 'reused_existing_state'
+    | 'not_applicable'
+    | 'skipped_missing_script'
+    | 'skipped_missing_cookies'
+    | 'redirected_to_sberid'
+    | 'handoff_required'
+    | 'state_refreshed'
+    | 'completed_without_auth'
+    | 'failed';
+  bootstrapScriptPath: string | null;
+  bootstrapOutDir: string | null;
+  bootstrapFinalUrl: string | null;
+  bootstrapError: string | null;
 }
 
 export interface SessionRecord {
