@@ -1,5 +1,5 @@
 import { BrowserPlatformError } from '../core/errors.js';
-import type { SessionActionPayload } from '../daemon/types.js';
+import type { SessionActionPayload, SessionPaymentContext } from '../daemon/types.js';
 import { withRetry } from '../helpers/retries.js';
 import { buildPostActionObservations } from '../helpers/validation.js';
 import { buildActionDiff } from '../helpers/tracing.js';
@@ -30,6 +30,103 @@ async function waitForNavigationSettled(session: BrowserSession): Promise<void> 
     session.page().waitForLoadState('domcontentloaded', { timeout: 3000 }),
     new Promise((resolve) => setTimeout(resolve, 350))
   ]);
+}
+
+function paymentFingerprint(context: SessionPaymentContext): string {
+  return JSON.stringify({
+    detected: context.detected,
+    provider: context.provider,
+    phase: context.phase,
+    paymentMethod: context.paymentMethod,
+    paymentSystem: context.paymentSystem,
+    paymentUrl: context.paymentUrl,
+    paymentOrderId: context.paymentOrderId,
+    litresOrder: context.litresOrder,
+    traceId: context.traceId,
+    bankInvoiceId: context.bankInvoiceId,
+    merchantOrderNumber: context.merchantOrderNumber,
+    merchantOrderId: context.merchantOrderId,
+    mdOrder: context.mdOrder,
+    formUrl: context.formUrl,
+    rawDeeplink: context.rawDeeplink,
+    href: context.href,
+    extractionJson: context.extractionJson
+  });
+}
+
+function isPaymentFlowUrl(url: string): boolean {
+  return /\/purchase\/ppd\b|payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink/i.test(url);
+}
+
+function shouldStabilizeForPaymentFlow(
+  payload: SessionActionPayload,
+  before: PageStateSummary,
+  after: PageStateSummary
+): boolean {
+  if (payload.action !== 'click' && payload.action !== 'navigate') {
+    return false;
+  }
+
+  const selector = 'selector' in payload ? payload.selector ?? '' : '';
+  const targetName = 'name' in payload ? normalize(payload.name) : '';
+  const targetText = 'text' in payload ? normalize(payload.text) : '';
+  const targetBlob = `${selector} ${targetName} ${targetText}`.toLowerCase();
+
+  if (/paymentlayout__payment--button|sbid-button|перейти к покупке|продолжить|сбер id|sber id/.test(targetBlob)) {
+    return true;
+  }
+
+  return (
+    isPaymentFlowUrl(before.url) ||
+    isPaymentFlowUrl(after.url) ||
+    before.paymentContext.detected ||
+    after.paymentContext.detected ||
+    before.paymentContext.phase === 'litres_checkout' ||
+    after.paymentContext.phase === 'litres_checkout' ||
+    before.paymentContext.phase === 'payecom_boundary' ||
+    after.paymentContext.phase === 'payecom_boundary'
+  );
+}
+
+async function stabilizeAfterPaymentAction(
+  session: BrowserSession,
+  payload: SessionActionPayload,
+  before: PageStateSummary,
+  initialAfter: PageStateSummary
+): Promise<PageStateSummary> {
+  if (!shouldStabilizeForPaymentFlow(payload, before, initialAfter)) {
+    return initialAfter;
+  }
+
+  let best = initialAfter;
+  const initialFingerprint = paymentFingerprint(initialAfter.paymentContext);
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const current = await session.observe();
+
+    const paymentChanged = paymentFingerprint(current.paymentContext) !== initialFingerprint;
+    const urlHintsChanged = current.urlHints.join('\n') !== best.urlHints.join('\n');
+    const textsChanged = current.visibleTexts.join('\n') !== best.visibleTexts.join('\n');
+    const buttonsChanged = current.visibleButtons.map((button) => `${button.text}|${button.ariaLabel ?? ''}`).join('\n') !==
+      best.visibleButtons.map((button) => `${button.text}|${button.ariaLabel ?? ''}`).join('\n');
+
+    if (paymentChanged || urlHintsChanged || textsChanged || buttonsChanged || current.url !== best.url || current.title !== best.title) {
+      best = current;
+    }
+
+    if (
+      current.paymentContext.shouldReportImmediately ||
+      current.paymentContext.phase === 'payecom_boundary' ||
+      current.visibleTexts.some((text) => /войти по сбер id/i.test(text)) ||
+      current.urlHints.some((hint) => /payecom\.ru\/pay(?:_ru)?|id\.sber\.ru/i.test(hint))
+    ) {
+      best = current;
+      break;
+    }
+  }
+
+  return best;
 }
 
 export async function runStep(session: BrowserSession, payload: SessionActionPayload): Promise<{ before: PageStateSummary; after: PageStateSummary }> {
@@ -77,7 +174,8 @@ export async function runStep(session: BrowserSession, payload: SessionActionPay
     }
   }
 
-  const after = await session.observe();
+  const observedAfter = await session.observe();
+  const after = await stabilizeAfterPaymentAction(session, payload, before, observedAfter);
   return { before, after };
 }
 

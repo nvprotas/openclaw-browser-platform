@@ -61,7 +61,18 @@ export function buildPostActionObservations(before: PageStateSummary, after: Pag
   }
 
   if (!diff.urlChanged && !diff.titleChanged && !diff.pageSignatureChanged && diff.addedButtons.length === 0 && diff.addedTexts.length === 0) {
-    observations.push({ level: 'warning', code: 'NO_OBVIOUS_CHANGE', message: 'No obvious page change was detected after the action.' });
+    const paymentFlowStillActive =
+      after.paymentContext.phase === 'litres_checkout' ||
+      after.paymentContext.phase === 'payecom_boundary' ||
+      after.visibleTexts.some((text) => /войти по сбер id/i.test(text));
+
+    observations.push({
+      level: paymentFlowStillActive ? 'info' : 'warning',
+      code: paymentFlowStillActive ? 'PAYMENT_FLOW_STILL_ACTIVE' : 'NO_OBVIOUS_CHANGE',
+      message: paymentFlowStillActive
+        ? 'The payment flow is still active, but the page did not produce a clear navigation-level change yet.'
+        : 'No obvious page change was detected after the action.'
+    });
   }
 
   return observations;

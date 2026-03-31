@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractPaymentContext } from '../../src/helpers/payment-context.js';
+import { summarizeObservation } from '../../src/helpers/tracing.js';
 import { buildPostActionObservations } from '../../src/helpers/validation.js';
 import type { PageStateSummary } from '../../src/playwright/browser-session.js';
 
@@ -80,6 +81,11 @@ describe('payment context extraction', () => {
       }
     });
     expect(state.paymentContext.href).toContain('id.sber.ru/CSAFront/oidc/authorize.do');
+
+    const summaryCodes = summarizeObservation(state).map((item) => item.code);
+    expect(summaryCodes).toContain('PAYMENT_BOUNDARY_VISIBLE');
+    expect(summaryCodes).toContain('SBERPAY_ENTRY_VISIBLE');
+    expect(summaryCodes).toContain('SBER_ID_HANDOFF_VISIBLE');
   });
 });
 

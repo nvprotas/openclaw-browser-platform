@@ -28,6 +28,14 @@ export function summarizeObservation(state: PageStateSummary): ActionObservation
     observations.push({ level: 'info', code: 'CHECKOUT_VISIBLE', message: 'Checkout/payment-choice signals are visible.' });
   }
 
+  if (state.visibleTexts.some((text) => /войти по сбер id/i.test(text))) {
+    observations.push({ level: 'info', code: 'SBERPAY_ENTRY_VISIBLE', message: 'SberPay entry is visible (`Войти по Сбер ID`).' });
+  }
+
+  if (state.paymentContext.href && /id\.sber\.ru\/.+authorize/i.test(state.paymentContext.href)) {
+    observations.push({ level: 'info', code: 'SBER_ID_HANDOFF_VISIBLE', message: 'A Sber ID handoff URL is visible in the current payment flow.' });
+  }
+
   if (state.visibleButtons.length === 0) {
     observations.push({ level: 'warning', code: 'NO_VISIBLE_BUTTONS', message: 'No visible buttons were detected after the action.' });
   }

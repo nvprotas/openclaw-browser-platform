@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 20:01 UTC**
+Последнее обновление: **2026-03-31 20:28 UTC**
 
 ## Короткий статус
 
@@ -41,6 +41,10 @@
 - после замечания пользователя семантика tightened: на payment boundary агент должен не просто писать prose-сообщение, а возвращать structured JSON в формате `sberpay-payment-extract`; это зафиксировано в `openclaw/skill-template/SKILL.md`, `site-packs/litres/instructions.md`, `site-packs/litres/checkout.md` и workspace skill `skills/sberpay-payment-extract/SKILL.md`
 - `browser-platform` расширен полем `paymentContext.extractionJson`, которое повторяет extractor schema (`paymentMethod`, `paymentUrl`, `paymentOrderId`, `paymentIntents`, `bankInvoiceId`, `merchantOrderNumber`, `merchantOrderId`, `rawDeeplink`, `source`, `mdOrder`, `formUrl`, `href`); `shouldReportImmediately` теперь означает, что этот JSON уже готов и его нужно отдать до следующего шага
 - наблюдения `PAYMENT_IDS_DETECTED` теперь прямо подсказывают вернуть `paymentContext.extractionJson as JSON before continuing`; сборка и targeted tests (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) после правки снова зелёные
+- после живого прогона с книгой `Задача трех тел` усилен payment runtime: `run-step` теперь делает короткий post-click stabilization/polling на checkout/payment шагах, чтобы поздно появляющиеся сигналы вроде `payecom` iframe, `Войти по Сбер ID` и handoff URLs успевали попасть в обычный action result без ручного HTML-снапшота
+- в tracing/validation добавлены более точные payment observations: `SBERPAY_ENTRY_VISIBLE`, `SBER_ID_HANDOFF_VISIBLE`, а вместо грубого `NO_OBVIOUS_CHANGE` на живом payment flow теперь может возвращаться `PAYMENT_FLOW_STILL_ACTIVE`
+- в `openclaw/skill-template/SKILL.md` и `site-packs/litres/checkout.md` зафиксирован stop-condition: если пользователь просил именно дойти до SberPay, задача считается выполненной при достижении ветки `payecom` / `Войти по Сбер ID` и возврате structured JSON; финальный `Оплатить` без отдельного явного запроса не нажимать
+- build/test после этих правок снова зелёные: `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) прошли успешно
 - добавлены unit tests для payment extraction/observation logic; после этого `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) снова зелёные; заодно увеличены лимиты `instructions summary` и `knownSignals`, чтобы новые checkout notes не вытесняли старые critical signals из runtime context
 
 ## Правило ведения файла

@@ -115,6 +115,7 @@ Stop and ask for review if you hit:
 - anything that looks like irreversible purchase confirmation
 
 For checkout/payment boundaries, it is acceptable to stop after extracting structured payment identifiers and before final confirmation.
+If the user asked to reach SberPay specifically, the task is satisfied once you reach the SberPay branch (`payecom` boundary and/or visible `Войти по Сбер ID`) and extract the structured JSON; do not press final `Оплатить` unless the user explicitly asks for that irreversible step.
 
 As soon as any of these appear, return `paymentContext.extractionJson` immediately before taking another step:
 - `paymentOrderId`
