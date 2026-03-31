@@ -18,5 +18,6 @@ export interface ObserveSummary {
   visibleTexts: string[];
   visibleButtons: VisibleButtonSummary[];
   forms: FormSummary[];
+  urlHints: string[];
   pageSignatureGuess: string;
 }

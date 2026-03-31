@@ -2,9 +2,10 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { inferAuthState } from '../../src/playwright/auth-state.js';
 import { resolveStorageStateForSession, runIntegratedLitresBootstrap } from '../../src/daemon/litres-auth.js';
+import { createEmptyPaymentContext } from '../../src/helpers/payment-context.js';
 import { matchSitePackByUrl } from '../../src/packs/loader.js';
+import { inferAuthState } from '../../src/playwright/auth-state.js';
 
 describe('auth state inference', () => {
   it('detects authenticated signals', () => {
@@ -16,7 +17,9 @@ describe('auth state inference', () => {
       visibleTexts: ['Профиль', 'Мои книги'],
       visibleButtons: [{ text: 'Выйти', role: 'button', type: 'button', ariaLabel: null }],
       forms: [],
-      pageSignatureGuess: 'content_page'
+      urlHints: [],
+      pageSignatureGuess: 'content_page',
+      paymentContext: createEmptyPaymentContext()
     });
 
     expect(state.state).toBe('authenticated');
@@ -32,7 +35,9 @@ describe('auth state inference', () => {
       visibleTexts: ['Войти', 'Пароль'],
       visibleButtons: [{ text: 'Войти', role: 'button', type: 'submit', ariaLabel: null }],
       forms: [{ id: null, name: null, method: 'post', action: '/auth/login', inputCount: 2, submitLabels: ['Войти'] }],
-      pageSignatureGuess: 'auth_form'
+      urlHints: [],
+      pageSignatureGuess: 'auth_form',
+      paymentContext: createEmptyPaymentContext()
     });
 
     expect(state.state).toBe('login_gate_detected');

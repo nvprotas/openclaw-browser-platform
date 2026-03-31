@@ -38,6 +38,49 @@ export interface SessionAuthContext {
   bootstrapError: string | null;
 }
 
+export interface PaymentIntentSummary {
+  provider: 'sberpay';
+  orderId: string;
+}
+
+export interface SberPayExtractionJson {
+  paymentMethod: 'SberPay';
+  paymentUrl: string | null;
+  paymentOrderId: string | null;
+  paymentIntents: PaymentIntentSummary[];
+  bankInvoiceId: string | null;
+  merchantOrderNumber: string | null;
+  merchantOrderId: string | null;
+  rawDeeplink: string | null;
+  source: 'url' | 'deeplink' | 'network_response';
+  mdOrder: string | null;
+  formUrl: string | null;
+  href: string | null;
+}
+
+export interface SessionPaymentContext {
+  detected: boolean;
+  shouldReportImmediately: boolean;
+  provider: 'sberpay' | 'sbp' | null;
+  phase: 'litres_checkout' | 'payecom_boundary' | 'platiecom_deeplink' | null;
+  paymentMethod: string | null;
+  paymentSystem: string | null;
+  paymentUrl: string | null;
+  paymentOrderId: string | null;
+  litresOrder: string | null;
+  traceId: string | null;
+  bankInvoiceId: string | null;
+  merchantOrderNumber: string | null;
+  merchantOrderId: string | null;
+  mdOrder: string | null;
+  formUrl: string | null;
+  rawDeeplink: string | null;
+  href: string | null;
+  urlHints: string[];
+  paymentIntents: PaymentIntentSummary[];
+  extractionJson: SberPayExtractionJson | null;
+}
+
 export interface SessionRecord {
   sessionId: string;
   url: string;
@@ -47,6 +90,7 @@ export interface SessionRecord {
   title: string | null;
   packContext: SessionPackContext;
   authContext: SessionAuthContext;
+  paymentContext: SessionPaymentContext;
 }
 
 export interface SessionObservation {
@@ -74,7 +118,9 @@ export interface SessionObservation {
     inputCount: number;
     submitLabels: string[];
   }>;
+  urlHints: string[];
   pageSignatureGuess: string;
+  paymentContext: SessionPaymentContext;
 }
 
 export interface SessionSnapshot {

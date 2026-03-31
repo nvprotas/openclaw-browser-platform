@@ -11,6 +11,7 @@ Current operational model:
 - bootstrap entry URL: `https://www.litres.ru/auth/login/`
 - if a reusable storage state already exists, runtime reuses it and recalculates `authContext`
 - if LitRes still appears anonymous or login-gated, the repo-owned bootstrap can run and persist refreshed state
+- if the visible LitRes UI still shows `Войти`, treat the session as not authenticated on the site even if other account-like elements such as `Мои книги` are also visible
 - bootstrap outcome is surfaced through `authContext`, including:
   - `bootstrapAttempted`
   - `bootstrapStatus`

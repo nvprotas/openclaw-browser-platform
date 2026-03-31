@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createEmptyPaymentContext } from '../helpers/payment-context.js';
 import type { SessionRecord } from './types.js';
 
 export class SessionRegistry {
@@ -41,7 +42,8 @@ export class SessionRegistry {
         bootstrapOutDir: null,
         bootstrapFinalUrl: null,
         bootstrapError: null
-      }
+      },
+      paymentContext: createEmptyPaymentContext()
     };
 
     this.sessions.set(session.sessionId, session);
@@ -54,7 +56,7 @@ export class SessionRegistry {
 
   touch(
     sessionId: string,
-    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext' | 'authContext'>>
+    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext' | 'authContext' | 'paymentContext'>>
   ): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
     if (!existing) {

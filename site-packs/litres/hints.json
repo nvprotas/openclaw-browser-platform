@@ -2,7 +2,8 @@
   "button_texts": {
     "search_submit": ["Найти", "Поиск", "Search"],
     "add_to_cart": ["В корзину", "Купить и скачать", "Купить", "Добавить в корзину"],
-    "open_cart": ["Корзина", "Перейти в корзину", "Открыть корзину"]
+    "open_cart": ["Корзина", "Перейти в корзину", "Открыть корзину"],
+    "checkout_payment_method": ["СБП", "Российская карта", "SberPay", "Войти по Сбер ID", "Продолжить"]
   },
   "selectors": {
     "search_input": [
@@ -28,12 +29,26 @@
       "a[href*='cart']",
       "a[href*='basket']",
       "[aria-label*='Корзин']"
+    ],
+    "checkout_sbp": [
+      "label[for='payment-method-input-sbp']"
+    ],
+    "checkout_russian_card": [
+      "label[for='payment-method-input-russian_card']"
+    ],
+    "checkout_continue": [
+      "button[data-testid='paymentLayout__payment--button']"
+    ],
+    "payecom_sberid": [
+      "a.sbid-button"
     ]
   },
   "page_signatures": {
     "home": ["Каталог", "Найти", "Корзина", "Мои книги"],
     "search_results": ["Результаты поиска", "/search/?q=", "Найдено"],
     "product_page": ["В корзину", "Купить и скачать", "Автор", "Читать фрагмент"],
-    "cart": ["Корзина", "Оформить заказ", "Состав заказа", "Ваша корзина"]
+    "cart": ["Корзина", "Оформить заказ", "Состав заказа", "Ваша корзина"],
+    "checkout_payment_choice": ["Оформление покупки", "Способ оплаты", "СБП", "Российская карта", "Продолжить"],
+    "payecom_boundary": ["payecom.ru/pay", "Войти по Сбер ID", "Оплатить", "Номер карты"]
   }
 }

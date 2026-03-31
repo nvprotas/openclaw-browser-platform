@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 15:55 UTC**
+Последнее обновление: **2026-03-31 20:01 UTC**
 
 ## Короткий статус
 
@@ -29,6 +29,19 @@
 - репозиторий подготовлен к дистрибуции в текущем виде: `playwright` перенесён в runtime dependencies, добавлены `files` + `prepack` в `package.json`, расширен `README.md`, добавлены `docs/OPENCLAW_SETUP.md` и `docs/DISTRIBUTION.md`, а также готовый `openclaw/skill-template/SKILL.md` для подключения к чистому OpenClaw; `npm run build`, `npm test` и `npm pack --dry-run` прошли зелёно
 - `install.sh` усилен до dual-mode installer: тот же файл теперь работает и как repo-local `./install.sh`, и как будущий bootstrap one-liner `curl ... | bash` (в non-local режиме он сам клонирует/обновляет repo в `TARGET_DIR`, затем запускает локальный install)
 - обновлены `README.md`, `docs/OPENCLAW_SETUP.md`, `docs/DISTRIBUTION.md` под one-liner UX; safe-проверки зелёные: `bash -n install.sh`, локальный `RUN_TESTS=0 RESTART_GATEWAY=0 RUN_SMOKE_TEST=0 SKILL_MODE=skip ./install.sh`, и bootstrap-smoke `cat install.sh | ... bash` на временном локальном git-репо прошли успешно
+- выполнен свежий live-run после очистки runtime-context в `~/.openclaw/workspace`: удалось снова пройти реальный LitRes flow `home -> search 1984 -> product -> add to cart -> cart`; добавление в корзину подтверждено изменением хедера на `1 Корзина`
+- на кнопке `Перейти к покупке` достигнут checkout entry, но вместо продолжения к оформлению появляется login gate `Авторизуйтесь для покупки`; после `Другие способы -> Sber` живой flow уходит на внешний `id.sber.ru`, то есть текущая checkout boundary / handoff для реального сайта подтверждена и зафиксирована скриншотами в Telegram
+- в знания LitRes skill/runtime добавлено явное правило: если в видимом UI всё ещё есть кнопка `Войти`, агент должен считать, что на сайте он ещё не авторизован, даже если одновременно видны account-like сигналы вроде `Мои книги`; правило синхронизировано в `site-packs/litres/instructions.md`, `site-packs/litres/login.md`, `openclaw/skill-template/SKILL.md` и workspace skill `skills/litres-sberid-login/SKILL.md`
+- live checkout-run расширен дальше payment chooser: подтверждён same-session путь `cart -> Перейти к покупке -> Другие способы -> Sber -> Оформление покупки`; на payment choice странице подтверждено, что `СБП` и `SberPay` — разные ветки
+- подтверждён реальный flow `Российская карта -> Продолжить -> payecom.ru/pay`; внутри payecom найден отдельный SberPay entry как `Войти по Сбер ID`, и его выбор доводит страницу до списка привязанных карт/вариантов оплаты без нажатия финальной `Оплатить`
+- новые checkout/payment знания синхронизированы в `site-packs/litres/instructions.md`, `site-packs/litres/checkout.md` и `site-packs/litres/hints.json`
+- исправлен workflow на будущее: если на checkout boundary появляются payment identifiers, агент должен сообщать их немедленно; это зашито и в skill layer (`openclaw/skill-template/SKILL.md`, `skills/sberpay-payment-extract/SKILL.md`), и в LitRes pack notes (`site-packs/litres/instructions.md`, `site-packs/litres/checkout.md`)
+- в `browser-platform` добавлен новый `paymentContext`: runtime теперь извлекает payment hints/IDs прямо из `session open/observe/act/snapshot/context`, включая `paymentOrderId`, LitRes `order`, `traceId`, `paymentUrl`, payment branch/provider, а также URL hints вроде `payecom` iframe/src и `id.sber.ru` handoff links
+- post-action observations теперь поднимают явный сигнал `PAYMENT_IDS_DETECTED` с инструкцией «report them before continuing», чтобы агент не протягивал найденный `orderId` до конца сценария
+- после замечания пользователя семантика tightened: на payment boundary агент должен не просто писать prose-сообщение, а возвращать structured JSON в формате `sberpay-payment-extract`; это зафиксировано в `openclaw/skill-template/SKILL.md`, `site-packs/litres/instructions.md`, `site-packs/litres/checkout.md` и workspace skill `skills/sberpay-payment-extract/SKILL.md`
+- `browser-platform` расширен полем `paymentContext.extractionJson`, которое повторяет extractor schema (`paymentMethod`, `paymentUrl`, `paymentOrderId`, `paymentIntents`, `bankInvoiceId`, `merchantOrderNumber`, `merchantOrderId`, `rawDeeplink`, `source`, `mdOrder`, `formUrl`, `href`); `shouldReportImmediately` теперь означает, что этот JSON уже готов и его нужно отдать до следующего шага
+- наблюдения `PAYMENT_IDS_DETECTED` теперь прямо подсказывают вернуть `paymentContext.extractionJson as JSON before continuing`; сборка и targeted tests (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) после правки снова зелёные
+- добавлены unit tests для payment extraction/observation logic; после этого `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) снова зелёные; заодно увеличены лимиты `instructions summary` и `knownSignals`, чтобы новые checkout notes не вытесняли старые critical signals из runtime context
 
 ## Правило ведения файла
 

@@ -61,8 +61,10 @@ browser-platform session context --session <SESSION_ID> --json
 Check:
 - `packContext`
 - `authContext`
+- `paymentContext`
 - whether the matched pack is LitRes
 - whether auth is `authenticated`, `anonymous`, or `login_gate_detected`
+- whether payment identifiers or a payment boundary were already detected
 
 ### 4. Observe before acting
 
@@ -71,6 +73,8 @@ browser-platform session observe --session <SESSION_ID> --json
 ```
 
 Use observation to decide the next step.
+
+If `paymentContext.shouldReportImmediately` is true, immediately return `paymentContext.extractionJson` as JSON before continuing any further checkout steps.
 
 ### 5. Act in small steps
 
@@ -112,12 +116,25 @@ Stop and ask for review if you hit:
 
 For checkout/payment boundaries, it is acceptable to stop after extracting structured payment identifiers and before final confirmation.
 
+As soon as any of these appear, return `paymentContext.extractionJson` immediately before taking another step:
+- `paymentOrderId`
+- `litresOrder`
+- `traceId`
+- `bankInvoiceId`
+- `mdOrder`
+- `formUrl`
+- `merchantOrderId`
+- `merchantOrderNumber`
+
+Return JSON only. Do not add prose around it when the task is specifically to extract payment identifiers.
+
 ## LitRes notes
 
 Current known LitRes behavior:
 
 - search input may match better as `combobox` or `searchbox` than `textbox`
 - in authenticated sessions, clicking the visible `Найти` button is more reliable than pressing `Enter`
+- if the visible LitRes UI still shows `Войти`, treat the session as not authenticated on the site even if other account-like elements such as `Мои книги` are also visible
 - after login, a merge-profiles modal can block clicks
 - a reliable close target from live testing is:
   - `div[data-testid="modal--overlay"] header > div:nth-child(2)`

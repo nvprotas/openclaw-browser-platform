@@ -190,7 +190,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                 bootstrapOutDir: bootstrapResult.outDir,
                 bootstrapFinalUrl: bootstrapResult.finalUrl,
                 bootstrapError: bootstrapResult.errorMessage
-              }
+              },
+              paymentContext: observed.paymentContext
             }) ?? record;
           sendJson(response, 200, { ok: true, session });
         } catch (error) {
@@ -229,7 +230,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
             loginGateDetected: auth.loginGateDetected,
             authenticatedSignals: auth.authenticatedSignals,
             anonymousSignals: auth.anonymousSignals
-          }
+          },
+          paymentContext: observed.paymentContext
         });
         const payload: SessionObservation = {
           sessionId: session.sessionId,
@@ -261,7 +263,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
             loginGateDetected: auth.loginGateDetected,
             authenticatedSignals: auth.authenticatedSignals,
             anonymousSignals: auth.anonymousSignals
-          }
+          },
+          paymentContext: action.after.paymentContext
         });
         const payload: SessionActionResult = {
           sessionId: session.sessionId,
@@ -304,7 +307,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
             loginGateDetected: auth.loginGateDetected,
             authenticatedSignals: auth.authenticatedSignals,
             anonymousSignals: auth.anonymousSignals
-          }
+          },
+          paymentContext: snapshotResult.state.paymentContext
         });
         const snapshot: SessionSnapshot = {
           sessionId: session.sessionId,

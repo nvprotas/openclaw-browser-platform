@@ -20,6 +20,14 @@ export function summarizeObservation(state: PageStateSummary): ActionObservation
     observations.push({ level: 'info', code: 'SEARCH_RESULTS_VISIBLE', message: 'Search/results-like signals are visible.' });
   }
 
+  if (state.paymentContext.phase === 'payecom_boundary') {
+    observations.push({ level: 'info', code: 'PAYMENT_BOUNDARY_VISIBLE', message: 'Payecom payment boundary is visible.' });
+  }
+
+  if (state.paymentContext.phase === 'litres_checkout') {
+    observations.push({ level: 'info', code: 'CHECKOUT_VISIBLE', message: 'Checkout/payment-choice signals are visible.' });
+  }
+
   if (state.visibleButtons.length === 0) {
     observations.push({ level: 'warning', code: 'NO_VISIBLE_BUTTONS', message: 'No visible buttons were detected after the action.' });
   }

@@ -1,5 +1,7 @@
 import { chromium, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { BrowserPlatformError } from '../core/errors.js';
+import type { SessionPaymentContext } from '../daemon/types.js';
+import { extractPaymentContext } from '../helpers/payment-context.js';
 import type { ObserveSummary } from './dom-utils.js';
 import { capturePageSnapshot, type SnapshotPaths } from './snapshots.js';
 import { waitForInitialLoad } from './waits.js';
@@ -19,6 +21,7 @@ export interface PageStateSummary extends ObserveSummary {
     width: number;
     height: number;
   };
+  paymentContext: SessionPaymentContext;
 }
 
 export interface BrowserSessionOpenResult {
@@ -151,6 +154,29 @@ export class BrowserSession {
         };
       });
 
+      const urlHints = Array.from(document.querySelectorAll<HTMLElement>('a[href], iframe[src], frame[src], form[action]'))
+        .map((element) => {
+          const raw =
+            element.getAttribute('href') ?? element.getAttribute('src') ?? element.getAttribute('action') ?? null;
+          if (!raw) {
+            return null;
+          }
+
+          try {
+            return new URL(raw, window.location.href).toString();
+          } catch {
+            return null;
+          }
+        })
+        .filter((value): value is string => Boolean(value))
+        .filter((value) =>
+          /payecom\.ru|platiecom\.ru|id\.sber\.ru|sberid|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd/i.test(
+            value
+          )
+        )
+        .filter((value, index, all) => all.indexOf(value) === index)
+        .slice(0, 16);
+
       const lowerTexts = visibleTexts.join(' ').toLowerCase();
       const buttonTexts = visibleButtons
         .map((button) => `${button.text} ${button.ariaLabel ?? ''}`.trim().toLowerCase())
@@ -179,18 +205,24 @@ export class BrowserSession {
         visibleTexts,
         visibleButtons,
         forms,
+        urlHints,
         pageSignatureGuess
       };
     })) as ObserveSummary;
 
     await this.persistStorageState();
 
-    return {
+    const state = {
       url: page.url(),
       title: await page.title(),
       readyState: await page.evaluate(() => document.readyState),
       viewport: page.viewportSize() ?? { width: 0, height: 0 },
       ...summary
+    };
+
+    return {
+      ...state,
+      paymentContext: extractPaymentContext(state)
     };
   }
 
