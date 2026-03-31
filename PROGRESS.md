@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 14:33 UTC**
+Последнее обновление: **2026-03-31 14:46 UTC**
 
 ## Короткий статус
 
@@ -15,7 +15,7 @@
 - LitRes bootstrap ownership перенесён внутрь repo; зависимость от workspace script path убрана
 - `authContext` расширен явными bootstrap outcome-флагами (`handoffRequired`, `bootstrapFailed`, `redirectedToSberId`, `bootstrapStatus` и др.)
 - build/test/lint проходят после интеграции bootstrap path
-- живой smoke-тест на LitRes после push показал, что login bootstrap пока до usable authenticated state не доводит flow до конца
+- ранний live smoke-тест repo-owned bootstrap показывал только redirect до Sber ID, но после ручной нормализации `sameSite` и повторного чистого прогона был подтверждён usable authenticated state
 - при свежем прогоне `session context` уже корректно возвращает `authContext` (BUG-003 больше не воспроизводится)
 - сделан визуальный live-тест новой repo-owned LitRes bootstrap реализации с debug screenshots: цепочка `login page -> Другие способы -> Sber redirect` подтверждена
 - на полностью чистом прогоне repo-owned bootstrap сначала упирался в raw `sameSite` values из `sber-cookies.json`, после ручной нормализации cookies чистый прогон снова стал проходить через bootstrap path
@@ -23,6 +23,7 @@
 - после этого на live LitRes подтверждён уже и authenticated search flow: главная открывается в авторизованном состоянии, модалка объединения профилей закрывается, поиск `1984` доводится до страницы результатов
 - практические знания из живого прогона записаны в LitRes pack: search submit через кнопку `Найти` и селектор закрытия post-login модалки
 - увеличен лимит `instructions summary` в pack parser, чтобы новые LitRes operational notes не выпадали из runtime context; build/test/lint снова зелёные
+- `site-packs/litres/login.md` синхронизирован с текущим repo-owned LitRes auth flow и больше не содержит устаревший placeholder про purely external login step
 
 ## Правило ведения файла
 
