@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 20:28 UTC**
+Последнее обновление: **2026-03-31 20:39 UTC**
 
 ## Короткий статус
 
@@ -46,6 +46,7 @@
 - в `openclaw/skill-template/SKILL.md` и `site-packs/litres/checkout.md` зафиксирован stop-condition: если пользователь просил именно дойти до SberPay, задача считается выполненной при достижении ветки `payecom` / `Войти по Сбер ID` и возврате structured JSON; финальный `Оплатить` без отдельного явного запроса не нажимать
 - build/test после этих правок снова зелёные: `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) прошли успешно
 - добавлены unit tests для payment extraction/observation logic; после этого `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) снова зелёные; заодно увеличены лимиты `instructions summary` и `knownSignals`, чтобы новые checkout notes не вытесняли старые critical signals из runtime context
+- проведена проверка installer rerun/update semantics на уже установленной копии: локальный `./install.sh` и bootstrap-режим поверх существующего `TARGET_DIR` повторно отрабатывают и накатывают изменения (в том числе обновление `openclaw/skill-template/SKILL.md` в workspace skill); найден и исправлен edge case, где rerun падал на `Existing repo remote mismatch`, если один и тот же remote был задан эквивалентными, но не идентичными строками (`file://...` vs локальный путь, GitHub HTTPS vs SSH); после правки `install.sh` нормализует URL remote перед сравнением, а repro-проверки `bash -n install.sh`, локальный rerun и bootstrap rerun на existing target снова зелёные
 
 ## Правило ведения файла
 

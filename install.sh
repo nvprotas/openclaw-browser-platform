@@ -27,6 +27,49 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+canonicalize_repo_url() {
+  local url="$1"
+
+  url="${url%/}"
+
+  case "$url" in
+    git@github.com:*)
+      url="ssh://git@github.com/${url#git@github.com:}"
+      ;;
+  esac
+
+  case "$url" in
+    ssh://git@github.com/*|https://github.com/*|http://github.com/*)
+      url="${url%.git}"
+      url="${url%/}"
+      printf '%s\n' "$url" | tr '[:upper:]' '[:lower:]'
+      return 0
+      ;;
+    file://*)
+      local path="${url#file://}"
+      if [ -e "$path" ]; then
+        cd "$path" && pwd -P
+        return 0
+      fi
+      ;;
+    /*|./*|../*)
+      if [ -e "$url" ]; then
+        cd "$url" && pwd -P
+        return 0
+      fi
+      ;;
+  esac
+
+  printf '%s\n' "$url"
+}
+
+repo_urls_match() {
+  local left right
+  left="$(canonicalize_repo_url "$1")"
+  right="$(canonicalize_repo_url "$2")"
+  [ "$left" = "$right" ]
+}
+
 resolve_local_repo_dir() {
   local source="${BASH_SOURCE[0]:-}"
   [ -n "$source" ] || return 1
@@ -56,7 +99,7 @@ ensure_repo_clone() {
 
     [ -n "$current_remote" ] || fail "Existing repo at $TARGET_DIR has no origin remote"
 
-    if [ "$current_remote" != "$REPO_URL" ]; then
+    if ! repo_urls_match "$current_remote" "$REPO_URL"; then
       fail "Existing repo remote mismatch at $TARGET_DIR: expected $REPO_URL, got $current_remote"
     fi
 
