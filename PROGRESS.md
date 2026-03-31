@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 13:45 UTC**
+Последнее обновление: **2026-03-31 14:33 UTC**
 
 ## Короткий статус
 
@@ -17,6 +17,12 @@
 - build/test/lint проходят после интеграции bootstrap path
 - живой smoke-тест на LitRes после push показал, что login bootstrap пока до usable authenticated state не доводит flow до конца
 - при свежем прогоне `session context` уже корректно возвращает `authContext` (BUG-003 больше не воспроизводится)
+- сделан визуальный live-тест новой repo-owned LitRes bootstrap реализации с debug screenshots: цепочка `login page -> Другие способы -> Sber redirect` подтверждена
+- на полностью чистом прогоне repo-owned bootstrap сначала упирался в raw `sameSite` values из `sber-cookies.json`, после ручной нормализации cookies чистый прогон снова стал проходить через bootstrap path
+- на свежем `storage-state` repo-owned bootstrap дошёл до redirect на Sber ID, а последующий `session open` уже дал `authState = authenticated`
+- после этого на live LitRes подтверждён уже и authenticated search flow: главная открывается в авторизованном состоянии, модалка объединения профилей закрывается, поиск `1984` доводится до страницы результатов
+- практические знания из живого прогона записаны в LitRes pack: search submit через кнопку `Найти` и селектор закрытия post-login модалки
+- увеличен лимит `instructions summary` в pack parser, чтобы новые LitRes operational notes не выпадали из runtime context; build/test/lint снова зелёные
 
 ## Правило ведения файла
 
@@ -181,16 +187,18 @@
 - получена страница результатов:
   - URL: `https://www.litres.ru/search/?q=1984`
   - title: `Результаты поиска по книгам: «1984»`
+- после repo-owned auth flow и нормализации `sameSite` подтверждён повторный поиск `1984` уже в **authenticated session**
+- подтверждено, что после логина может всплывать модалка объединения профилей; после её закрытия поиск продолжает работать
 
-### Проверено, но пока не работает как нужно
-- `litres-sberid-login` запускается и уводит в Sber ID
-- встроенный bootstrap path в `browser-platform` теперь тоже запускается как часть normal flow
-- `session context` теперь уже показывает `authContext` корректно
-- но после живого smoke-теста LitRes auth state всё ещё такой:
-  - `state = login_gate_detected`
-  - `handoffRequired = true`
-  - `redirectedToSberId = true`
-- на самой странице LitRes по-прежнему виден `Войти`, то есть usable authenticated state пока не достигнут
+### Проверено по auth flow
+- repo-owned LitRes bootstrap path открывает `https://www.litres.ru/auth/login/`
+- успешно раскрывает `Другие способы`
+- после клика по Sber уходит на `id.sber.ru`
+- `session context` корректно показывает `authContext`
+- после ручной нормализации `sameSite` в `sber-cookies.json` чистый прогон с новым пустым `storage-state` path дал такой результат:
+  - bootstrap: `redirected_to_sberid`
+  - затем обычный `session open`: `authState = authenticated`
+- то есть repo-owned flow уже может довести новый state до usable authenticated session, если входные cookies читаются Playwright без ошибки формата
 
 ---
 
@@ -202,20 +210,23 @@
 - `BUG-003` — `session context` не показывал `authContext` в CLI output после Commit 6/6.1 (`fixed`)
 
 ### Дополнительные blockers
-- integrated LitRes bootstrap path пока не доводит flow до реально usable authenticated state
-- нужно починить serialization/output path для `session context`, чтобы planner реально видел `authContext`
+- нужно перенести нормализацию cookies в код repo-owned bootstrap, чтобы он не зависел от ручной правки `sber-cookies.json`
+- нужно формализовать обработку модалки объединения профилей как части authenticated LitRes flow
+- нужно подтвердить стабильность уже authenticated flow на следующих шагах:
+  - open product
+  - add to cart
+  - open cart
 
 ---
 
 ## Что нужно сделать следующим
 
 ### Самый ближайший шаг
-1. проверить и починить output/serialization path для `session context` (`BUG-003`)
-2. разобраться, почему integrated bootstrap path всё ещё оставляет LitRes в анонимном состоянии
+1. встроить нормализацию cookies в repo-owned bootstrap path, чтобы убрать зависимость от ручного исправления `sber-cookies.json`
+2. формализовать обработку модалки объединения профилей как части authenticated LitRes flow
 
 ### После этого
 3. довести сценарий:
-   - search
    - open product
    - add to cart
    - open cart
@@ -237,6 +248,6 @@
 
 Главный технический разрыв на текущий момент:
 
-**auth context из login skill ещё не переиспользуется внутри browser-platform runtime.**
+**repo-owned LitRes bootstrap уже может доводить flow до usable authenticated state, а authenticated search flow уже подтверждён; теперь нужно убрать зависимость от ручной правки cookies и формализовать обработку модалки после логина.**
 
 Именно это сейчас главный шаг к полноценному LitRes pilot.

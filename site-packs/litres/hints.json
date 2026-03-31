@@ -12,6 +12,13 @@
       "[role='combobox']",
       "[role='searchbox']"
     ],
+    "search_submit": [
+      "button[aria-label^='Найти']",
+      "button[data-testid='search__button']"
+    ],
+    "post_login_modal_close": [
+      "div[data-testid='modal--overlay'] header > div:nth-child(2)"
+    ],
     "add_to_cart": [
       "button:has-text('В корзину')",
       "button:has-text('Купить и скачать')",

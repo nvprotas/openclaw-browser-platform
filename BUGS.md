@@ -157,6 +157,70 @@
 
 ---
 
+## BUG-003 — `session context` не показывает `authContext` в CLI output после Commit 6/6.1
+
+- **Статус:** `fixed`
+- **Найден:** 2026-03-31
+- **Область:** CLI serialization / session context response
+- **Связанный этап:** Commit 6.1 / integrated auth bootstrap
+
+### Как воспроизвести
+
+1. Выполнить LitRes session open:
+   ```bash
+   node dist/bin/browser-platform.js session open --url https://www.litres.ru --json
+   ```
+2. Вызвать:
+   ```bash
+   node dist/bin/browser-platform.js session context --session <SESSION_ID> --json
+   ```
+
+### Фактический результат
+
+CLI output для `session context` возвращает только базовые поля сессии:
+- `sessionId`
+- `url`
+- `title`
+- `createdAt`
+- `updatedAt`
+- `status`
+
+Но не показывает ожидаемый `authContext` и pack-related enriched fields.
+
+### Ожидаемый результат
+
+`session context` должен возвращать расширенный контекст сессии, включая:
+- `authContext`
+- `packContext`
+- и другие enrichment-поля, если они уже были рассчитаны runtime.
+
+### Почему это важно
+
+Без этого сложно:
+- проверять результат integrated login/bootstrap flow
+- понимать, `authenticated` мы или `anonymous`
+- использовать `session context` как источник правды для planner-слоя
+
+### Предполагаемая причина
+
+Проблема может быть в одном из мест:
+- session object режется при сериализации
+- CLI output path использует не полный session payload
+- daemon response возвращает урезанную форму объекта
+
+### Идея исправления
+
+- проверить end-to-end serialization path для `session context`
+- привести `session open` и `session context` к одному формату enriched session payload
+- добавить integration test именно на наличие `authContext` в CLI output
+
+### Примечание
+
+После свежего rebuild и живого smoke-теста на LitRes (`2026-03-31`) `session context` уже возвращал `authContext` корректно.  
+Вероятно, проблема была связана с промежуточным состоянием сборки/CLI output path и в текущем состоянии больше не воспроизводится.
+
+---
+
 ## Шаблон новой записи
 
 ```markdown
