@@ -112,7 +112,9 @@ All implemented commands return JSON when called with `--json`.
 ## Examples
 
 - LitRes search MVP0 demo script: `node --import tsx examples/demo-litres-search.ts 1984`
-- The script uses repo-local helpers from `src/helpers/search.ts` to drive `home -> search -> search_results -> product`.
+- LitRes cart MVP0 demo script: `node --import tsx examples/demo-litres-cart.ts 1984`
+- The search demo uses repo-local helpers from `src/helpers/search.ts` to drive `home -> search -> search_results -> product`.
+- The cart demo extends that flow with `src/helpers/cart.ts` to drive `product -> add_to_cart -> cart` validation.
 
 ## Important runtime notes
 

@@ -1,0 +1,20 @@
+{
+  "add_to_cart_success": {
+    "description": "Treat add-to-cart as successful when the cart-related UI clearly changes after the CTA click.",
+    "signals_any": [
+      "cart badge/count changes",
+      "confirmation text like Added to cart / Добавлено в корзину appears",
+      "CTA state changes from add-to-cart to added/in-cart",
+      "cart drawer/preview/cart page becomes visible",
+      "action observations include CART_VISIBLE"
+    ]
+  },
+  "open_cart_success": {
+    "description": "Treat cart opening as successful when the destination page or visible UI validates as cart.",
+    "signals_any": [
+      "pageSignatureGuess == cart",
+      "URL contains /cart or /basket",
+      "visible text includes cart markers like Корзина, Ваша корзина, Состав заказа, Оформить заказ"
+    ]
+  }
+}

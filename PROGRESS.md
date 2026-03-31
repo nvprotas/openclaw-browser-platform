@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 20:56 UTC**
+Последнее обновление: **2026-03-31 21:14 UTC**
 
 ## Короткий статус
 
@@ -49,6 +49,9 @@
 - добавлены unit tests для payment extraction/observation logic; после этого `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) снова зелёные; заодно увеличены лимиты `instructions summary` и `knownSignals`, чтобы новые checkout notes не вытесняли старые critical signals из runtime context
 - проведена проверка installer rerun/update semantics на уже установленной копии: локальный `./install.sh` и bootstrap-режим поверх существующего `TARGET_DIR` повторно отрабатывают и накатывают изменения (в том числе обновление `openclaw/skill-template/SKILL.md` в workspace skill); найден и исправлен edge case, где rerun падал на `Existing repo remote mismatch`, если один и тот же remote был задан эквивалентными, но не идентичными строками (`file://...` vs локальный путь, GitHub HTTPS vs SSH); после правки `install.sh` нормализует URL remote перед сравнением, а repro-проверки `bash -n install.sh`, локальный rerun и bootstrap rerun на existing target снова зелёные
 - в начало `README.md` добавлена явная one-liner команда обновления/установки через GitHub raw install script: `curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash`
+- Commit 8 закрыт: formalized LitRes helper layer для `product -> add_to_cart -> cart` — добавлен `src/helpers/cart.ts` с candidate-target helpers и validation logic (`findAddToCartTargets`, `findOpenCartTargets`, `isAddToCartConfirmed`, `isCartVisible`)
+- добавлены `examples/demo-litres-cart.ts` и `site-packs/litres/approved/validation-rules.json`; LitRes pack/docs обновлены под helper-driven add-to-cart/cart validation
+- добавлен integration proof flow `search -> product -> add-to-cart -> cart` через новые helpers, плюс unit tests для cart helpers; после этого `npm run build`, targeted `vitest` и `npm run lint` снова зелёные
 
 ## Правило ведения файла
 
@@ -168,7 +171,13 @@
   - добавлены unit/integration tests, формально доказывающие flow `home -> search -> search_results -> product`
 
 ### Commit 8 — LitRes add-to-cart + cart validation
-- **Статус:** `not started`
+- **Статус:** `done`
+- **Что закрыто:**
+  - оформлен helper-модуль `src/helpers/cart.ts` для candidate CTA selection и post-action validation (`add_to_cart` / `open_cart`)
+  - LitRes pack расширен формализованными validation rules в `site-packs/litres/approved/validation-rules.json`
+  - обновлены operational notes в `site-packs/litres/instructions.md` и examples в `README.md`
+  - добавлен demo entrypoint `examples/demo-litres-cart.ts`
+  - unit/integration tests теперь формально доказывают flow `search -> product -> add_to_cart -> cart`
 
 ### Commit 9 — OpenClaw skill integration v1
 - **Статус:** `not started`
@@ -240,10 +249,7 @@
 ### Дополнительные blockers
 - нужно перенести нормализацию cookies в код repo-owned bootstrap, чтобы он не зависел от ручной правки `sber-cookies.json`
 - нужно формализовать обработку модалки объединения профилей как части authenticated LitRes flow
-- нужно подтвердить стабильность уже authenticated flow на следующих шагах:
-  - open product
-  - add to cart
-  - open cart
+- после закрытия Commit 8 следующий основной шаг — удержать уже рабочий cart flow при переходе в checkout boundary, не заходя в финальное подтверждение оплаты
 
 ---
 
@@ -251,13 +257,10 @@
 
 ### Самый ближайший шаг
 1. встроить нормализацию cookies в repo-owned bootstrap path, чтобы убрать зависимость от ручного исправления `sber-cookies.json`
-2. формализовать обработку модалки объединения профилей как части authenticated LitRes flow
+2. удержать checkout-entry/payment-boundary flow поверх уже формализованного `search -> product -> add_to_cart -> cart`
 
 ### После этого
-3. довести сценарий:
-   - open product
-   - add to cart
-   - open cart
+3. усиливать tracing/diagnostics вокруг checkout handoff и payment-boundary сигналов без захода в финальный платёжный submit
 
 ---
 

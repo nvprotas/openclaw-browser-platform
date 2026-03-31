@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionObservation } from '../../src/daemon/types.js';
+import { findAddToCartTargets, findOpenCartTargets, isAddToCartConfirmed, isCartVisible } from '../../src/helpers/cart.js';
 import { chooseSearchResultTarget, fillSearchAndSubmit } from '../../src/helpers/search.js';
 import { matchSitePackByUrl } from '../../src/packs/loader.js';
 
@@ -470,6 +471,107 @@ describe('browser-platform CLI + daemon runtime', () => {
         observations: expect.arrayContaining([
           expect.objectContaining({ code: 'CART_VISIBLE' })
         ])
+      }
+    });
+  }, 30_000);
+
+  it.skipIf(!browserRuntimeAvailable)('proves a LitRes-like search -> product -> add-to-cart -> cart flow with helpers', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    await runCli(cwd, ['daemon', 'ensure', '--json']);
+    const open = await runCli(cwd, ['session', 'open', '--url', serverUrl, '--json']);
+    const sessionId = String((open.json?.session as { sessionId: string }).sessionId);
+    const pack = await matchSitePackByUrl('https://www.litres.ru/');
+    const searchPlan = fillSearchAndSubmit(pack, 'Sample Book');
+
+    const fill = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ ...searchPlan.fillTargets[0], selector: '#query' })
+    ]);
+    expect(fill.json?.ok).toBe(true);
+
+    const submitTarget = searchPlan.submitTargets.find((target) => target.role === 'button') ?? searchPlan.submitTargets[0];
+    const submit = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ ...submitTarget, text: 'Submit search', name: 'Submit search' })
+    ]);
+    expect(submit.json).toMatchObject({
+      ok: true,
+      action: {
+        after: {
+          title: 'Search Results',
+          pageSignatureGuess: 'search_results'
+        }
+      }
+    });
+
+    const observed = await runCli(cwd, ['session', 'observe', '--session', sessionId, '--json']);
+    const resultTarget = chooseSearchResultTarget(observed.json?.session as SessionObservation, 'Sample Book');
+    expect(resultTarget).toEqual({ action: 'click', text: 'Sample Book Result' });
+
+    const openProduct = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify(resultTarget)
+    ]);
+    expect(openProduct.json).toMatchObject({
+      ok: true,
+      action: {
+        after: {
+          title: 'Sample Book',
+          pageSignatureGuess: 'product_page'
+        }
+      }
+    });
+
+    const addToCartTarget = findAddToCartTargets(pack).find((target) => target.role === 'button') ?? findAddToCartTargets(pack)[0];
+    const addToCart = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ ...addToCartTarget, selector: '#add-to-cart', name: 'Add to cart', text: 'Add to cart' })
+    ]);
+    expect(addToCart.json?.ok).toBe(true);
+    const addAction = addToCart.json?.action as {
+      before: SessionObservation;
+      after: SessionObservation;
+      changes: { urlChanged: boolean; titleChanged: boolean; pageSignatureChanged: boolean; addedButtons: string[]; removedButtons: string[]; addedTexts: string[]; removedTexts: string[] };
+      observations: Array<{ level: 'info' | 'warning'; code: string; message: string }>;
+    };
+    expect(isAddToCartConfirmed(addAction)).toBe(true);
+
+    const openCartTarget = findOpenCartTargets(pack).find((target) => target.role === 'link') ?? findOpenCartTargets(pack)[0];
+    const openCart = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ ...openCartTarget, selector: '#go-cart', name: 'Go to cart', text: 'Go to cart' })
+    ]);
+    expect(openCart.json?.ok).toBe(true);
+    expect(isCartVisible((openCart.json?.action as { after: SessionObservation }).after)).toBe(true);
+    expect(openCart.json).toMatchObject({
+      ok: true,
+      action: {
+        after: {
+          title: 'Your Cart',
+          pageSignatureGuess: 'cart'
+        }
       }
     });
   }, 30_000);
