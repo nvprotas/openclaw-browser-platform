@@ -32,7 +32,7 @@ export interface BrowserSessionSnapshotResult extends SnapshotPaths {
 export class BrowserSession {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
-  private page: Page | null = null;
+  private pageInstance: Page | null = null;
 
   constructor(private readonly options: BrowserSessionOptions) {}
 
@@ -64,12 +64,20 @@ export class BrowserSession {
 
     this.browser = browser;
     this.context = context;
-    this.page = page;
+    this.pageInstance = page;
 
     return {
       url: page.url(),
       title: await page.title()
     };
+  }
+
+  page(): Page {
+    return this.requirePage();
+  }
+
+  async waitForInitialLoad(): Promise<void> {
+    await waitForInitialLoad(this.requirePage());
   }
 
   async observe(): Promise<PageStateSummary> {
@@ -136,9 +144,13 @@ export class BrowserSession {
       const buttonTexts = visibleButtons
         .map((button) => `${button.text} ${button.ariaLabel ?? ''}`.trim().toLowerCase())
         .join(' ');
+      const hasSearchSignals = /search|найти|поиск|каталог|catalog|корзин|my books|мои книги/.test(lowerTexts);
+      const hasAuthWords = /sign in|log in|войти|password|пароль/.test(lowerTexts);
+      const hasSearchForm = forms.some((form) => (form.action ?? '').toLowerCase().includes('/search'));
+      const hasLikelyAuthForm = forms.some((form) => form.inputCount >= 2 && !((form.action ?? '').toLowerCase().includes('/search')));
 
       let pageSignatureGuess = 'unknown';
-      if (forms.some((form) => form.inputCount >= 2) || /sign in|log in|войти|password|пароль/.test(lowerTexts)) {
+      if (hasLikelyAuthForm || (hasAuthWords && !hasSearchSignals)) {
         pageSignatureGuess = 'auth_form';
       } else if (/buy|add to cart|purchase|купить|в корзину/.test(buttonTexts)) {
         pageSignatureGuess = 'product_page';
@@ -146,6 +158,8 @@ export class BrowserSession {
         pageSignatureGuess = 'cart';
       } else if (/search|results|найден|результат/.test(lowerTexts)) {
         pageSignatureGuess = 'search_results';
+      } else if (hasSearchSignals || hasSearchForm) {
+        pageSignatureGuess = 'home';
       } else if (visibleTexts.length > 0) {
         pageSignatureGuess = 'content_page';
       }
@@ -179,16 +193,16 @@ export class BrowserSession {
   async close(): Promise<void> {
     await this.context?.close();
     await this.browser?.close();
-    this.page = null;
+    this.pageInstance = null;
     this.context = null;
     this.browser = null;
   }
 
   private requirePage(): Page {
-    if (!this.page) {
+    if (!this.pageInstance) {
       throw new BrowserPlatformError('Session page is not initialized', { code: 'SESSION_NOT_READY' });
     }
 
-    return this.page;
+    return this.pageInstance;
   }
 }

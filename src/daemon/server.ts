@@ -4,7 +4,14 @@ import { BrowserPlatformError } from '../core/errors.js';
 import { PlaywrightController } from '../playwright/controller.js';
 import { getDefaultStateStore } from './state-store.js';
 import { SessionRegistry } from './session-registry.js';
-import type { DaemonInfo, DaemonStatusResponse, SessionObservation, SessionSnapshot } from './types.js';
+import type {
+  DaemonInfo,
+  DaemonStatusResponse,
+  SessionActionPayload,
+  SessionActionResult,
+  SessionObservation,
+  SessionSnapshot
+} from './types.js';
 
 const VERSION = '0.1.0';
 
@@ -29,7 +36,8 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
 
 function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: false; error: { message: string; code?: string } } } {
   if (error instanceof BrowserPlatformError) {
-    const statusCode = error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : 400;
+    const statusCode =
+      error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : 400;
     return {
       statusCode,
       payload: {
@@ -129,6 +137,41 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           ...observed
         };
         sendJson(response, 200, { ok: true, session: payload });
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/session/act') {
+        const body = (await readJsonBody(request)) as { sessionId?: string; payload?: SessionActionPayload };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+        if (!body?.payload) {
+          throw new BrowserPlatformError('Missing action payload', { code: 'INVALID_ACTION_PAYLOAD' });
+        }
+
+        const action = await controller.actInSession(session.sessionId, body.payload);
+        registry.touch(session.sessionId, { url: action.after.url, title: action.after.title });
+        const payload: SessionActionResult = {
+          sessionId: session.sessionId,
+          actedAt: new Date().toISOString(),
+          action: action.action,
+          target: action.target,
+          input: action.input,
+          before: {
+            sessionId: session.sessionId,
+            observedAt: new Date().toISOString(),
+            ...action.before
+          },
+          after: {
+            sessionId: session.sessionId,
+            observedAt: new Date().toISOString(),
+            ...action.after
+          },
+          changes: action.changes,
+          observations: action.observations
+        };
+        sendJson(response, 200, { ok: true, action: payload });
         return;
       }
 

@@ -22,8 +22,58 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   server = http.createServer((request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
     response.statusCode = 200;
     response.setHeader('content-type', 'text/html; charset=utf-8');
+
+    if (url.pathname === '/search') {
+      const query = url.searchParams.get('query') ?? '';
+      response.end(`<!doctype html>
+<html>
+  <head><title>Search Results</title></head>
+  <body>
+    <main>
+      <h1>Results for ${query}</h1>
+      <a href="/book/1">Sample Book Result</a>
+      <button>Open filters</button>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (url.pathname === '/book/1') {
+      response.end(`<!doctype html>
+<html>
+  <head><title>Sample Book</title></head>
+  <body>
+    <main>
+      <h1>Sample Book</h1>
+      <p>Book details page</p>
+      <button id="add-to-cart" onclick="document.querySelector('#cart-status').textContent='Added to cart'; document.querySelector('#go-cart').hidden = false; this.textContent='Added';">Add to cart</button>
+      <p id="cart-status">Not added</p>
+      <a id="go-cart" href="/cart" hidden>Go to cart</a>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (url.pathname === '/cart') {
+      response.end(`<!doctype html>
+<html>
+  <head><title>Your Cart</title></head>
+  <body>
+    <main>
+      <h1>Your cart</h1>
+      <p>Sample Book</p>
+      <button>Proceed to checkout</button>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
     response.end(`<!doctype html>
 <html>
   <head>
@@ -152,4 +202,136 @@ describe('browser-platform CLI + daemon runtime', () => {
     },
     30_000
   );
+
+  it.skipIf(!browserRuntimeAvailable)('runs a realistic action flow through session act', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    await runCli(cwd, ['daemon', 'ensure', '--json']);
+    const open = await runCli(cwd, ['session', 'open', '--url', serverUrl, '--json']);
+    const sessionId = String((open.json?.session as { sessionId: string }).sessionId);
+
+    const fill = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'fill', selector: '#query', value: 'Sample Book' })
+    ]);
+    expect(fill.json).toMatchObject({
+      ok: true,
+      action: {
+        action: 'fill',
+        after: {
+          title: 'Observation Fixture',
+          pageSignatureGuess: 'product_page'
+        },
+        observations: expect.arrayContaining([
+          expect.objectContaining({ code: 'NO_OBVIOUS_CHANGE' })
+        ])
+      }
+    });
+
+    const submit = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'press', selector: '#query', key: 'Enter' })
+    ]);
+    expect(submit.json).toMatchObject({
+      ok: true,
+      action: {
+        action: 'press',
+        after: {
+          title: 'Search Results',
+          pageSignatureGuess: 'search_results'
+        },
+        changes: {
+          urlChanged: true
+        }
+      }
+    });
+
+    const waitForResult = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'wait_for', text: 'Sample Book Result' })
+    ]);
+    expect(waitForResult.json?.ok).toBe(true);
+
+    const openProduct = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'click', text: 'Sample Book Result' })
+    ]);
+    expect(openProduct.json).toMatchObject({
+      ok: true,
+      action: {
+        action: 'click',
+        after: {
+          title: 'Sample Book',
+          pageSignatureGuess: 'product_page'
+        }
+      }
+    });
+
+    const addToCart = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'click', selector: '#add-to-cart' })
+    ]);
+    expect(addToCart.json).toMatchObject({
+      ok: true,
+      action: {
+        action: 'click',
+        after: {
+          title: 'Sample Book',
+          pageSignatureGuess: 'cart'
+        },
+        changes: {
+          addedTexts: expect.arrayContaining(['Added to cart'])
+        },
+        observations: expect.arrayContaining([
+          expect.objectContaining({ code: 'CART_VISIBLE' })
+        ])
+      }
+    });
+
+    const openCart = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'click', selector: '#go-cart' })
+    ]);
+    expect(openCart.json).toMatchObject({
+      ok: true,
+      action: {
+        action: 'click',
+        after: {
+          title: 'Your Cart',
+          pageSignatureGuess: 'cart'
+        },
+        changes: {
+          urlChanged: true
+        },
+        observations: expect.arrayContaining([
+          expect.objectContaining({ code: 'CART_VISIBLE' })
+        ])
+      }
+    });
+  }, 30_000);
 });

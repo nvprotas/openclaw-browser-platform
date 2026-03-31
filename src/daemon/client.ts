@@ -4,6 +4,8 @@ import { getDefaultStateStore } from './state-store.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
+  SessionActResponse,
+  SessionActionPayload,
   SessionCloseResponse,
   SessionContextResponse,
   SessionObserveResponse,
@@ -55,6 +57,13 @@ export async function getSessionContext(sessionId: string): Promise<SessionConte
 
 export async function observeSession(sessionId: string): Promise<SessionObserveResponse> {
   return request<SessionObserveResponse>(await readRunningDaemonInfo(), '/v1/session/observe', { sessionId });
+}
+
+export async function actInSession(sessionId: string, payload: SessionActionPayload): Promise<SessionActResponse> {
+  return request<SessionActResponse>(await readRunningDaemonInfo(), '/v1/session/act', {
+    sessionId,
+    payload: payload as unknown as JsonValue
+  });
 }
 
 export async function snapshotSession(sessionId: string): Promise<SessionSnapshotResponse> {
