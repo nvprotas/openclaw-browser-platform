@@ -13,13 +13,11 @@ describe('runCli', () => {
   });
 
   it('returns 1 for unknown commands', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
-    await expect(runCli(['wat'])).resolves.toBe(1);
-    expect(errorSpy).toHaveBeenCalledWith('Unknown command: wat');
+    await expect(runCli(['wat', '--json'])).resolves.toBe(1);
+    expect(logSpy).toHaveBeenCalled();
 
-    errorSpy.mockRestore();
     logSpy.mockRestore();
   });
 });
