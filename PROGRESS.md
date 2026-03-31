@@ -6,8 +6,8 @@
 
 ## Короткий статус
 
-- локальный `master` содержит Commit 4 на коммите `3c6d307`
-- push в `origin/master` ещё не выполнен после этого коммита
+- Commit 4 завершён и зафиксирован в git как `3c6d307`
+- текущий `master` содержит и код, и актуальный progress/status для этапа MVP0
 - LitRes уже тестируется на живом сайте
 - поиск `1984` через новый runtime уже работает
 - логин через `litres-sberid-login` и `browser-platform` пока **не склеены**
@@ -57,7 +57,7 @@
   - `BUGS.md`
 
 ### Commit 4 — Action layer v1
-- **Статус:** `done locally, pending push`
+- **Статус:** `done`
 - **Git:** `3c6d307`
 - **Что уже сделано:**
   - `session act`
@@ -157,12 +157,11 @@
 ## Что нужно сделать следующим
 
 ### Самый ближайший шаг
-1. запушить **Commit 4**
+1. сделать `site-packs/litres/` skeleton
 
 ### После этого
-2. сделать `site-packs/litres/` skeleton
-3. реализовать reuse авторизованного state для LitRes
-4. довести сценарий:
+2. реализовать reuse авторизованного state для LitRes
+3. довести сценарий:
    - search
    - open product
    - add to cart
