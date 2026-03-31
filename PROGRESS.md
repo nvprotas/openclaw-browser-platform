@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 12:56 UTC**
+Последнее обновление: **2026-03-31 13:04 UTC**
 
 ## Короткий статус
 
@@ -10,7 +10,7 @@
 - добавлена схема текущей архитектуры в `ARCHITECTURE_CURRENT.md`
 - LitRes уже тестируется на живом сайте
 - поиск `1984` через новый runtime уже работает
-- логин через `litres-sberid-login` и `browser-platform` пока **не склеены**
+- auth reuse уже встроен в `browser-platform`, но полный login path по Sber ID ещё нужно довести как следующий этап (`Commit 6.1`)
 
 ## Правило ведения файла
 
@@ -85,6 +85,7 @@
 
 ### Commit 6 — Session reuse for LitRes
 - **Статус:** `done`
+- **Git:** `ac5de58`
 - **Что сделано:**
   - `session open` теперь умеет принимать `--storage-state <path>`
   - для LitRes добавлен auto-pick bootstrap path: `/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json`
@@ -99,6 +100,14 @@
     - `storageStateExists`
   - auth state пересчитывается также после `observe` / `act` / `snapshot`
   - добавлены тесты на reuse storage state и login gate detection
+
+### Commit 6.1 — Full Sber ID login inside browser-platform flow
+- **Статус:** `planned`
+- **Что нужно сделать:**
+  - встроить полноценную login/bootstrap attempt-логику в обычный LitRes flow
+  - использовать уже существующий `litres-sberid-login` skill как основу bootstrap path, а не делать второй параллельный login-механизм
+  - сохранять/reuse обновлённый storage state из самого browser-platform flow
+  - честно отражать outcome в `authContext` (`authenticated`, `login_gate_detected`, `handoff_required`, `bootstrap_failed`)
 
 ### Commit 7 — LitRes search flow
 - **Статус:** `partially proven manually`
@@ -179,8 +188,8 @@
 ## Что нужно сделать следующим
 
 ### Самый ближайший шаг
-1. реализовать reuse авторизованного state для LitRes
-2. встроить login в обычный LitRes flow
+1. реализовать `Commit 6.1` — full Sber ID login inside browser-platform flow
+2. при этом переиспользовать уже существующий `litres-sberid-login` skill как основу bootstrap path
 
 ### После этого
 3. довести сценарий:

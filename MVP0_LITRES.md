@@ -327,20 +327,34 @@ site-packs/litres/
 ## Commit 6 — Session reuse for LitRes
 
 ### Что сделать
-Научиться использовать уже существующее авторизованное состояние.
+Научиться использовать уже существующее авторизованное состояние **как часть обычного browser-platform flow**.
 
 ### Важно
-Не реализовывать login с нуля.  
-Нужно только поддержать **reuse внешне подготовленного storage state / auth bootstrap**.
+Login не должен оставаться отдельным внешним ритуалом перед запуском browser-platform.  
+`browser-platform` сам должен уметь:
+- подхватить существующий LitRes auth state
+- показать текущее auth-состояние в `session open/context`
+- встроить bootstrap/reuse в обычный flow открытия LitRes session
 
 ### Что нужно технически
 - configurable storage-state input
+- auto-pick LitRes storage state
 - загрузка storage state при открытии session
 - проверка: мы авторизованы или попали на login gate
-- возврат `authState` в session context:
+- возврат `authState` / `authContext` в session context:
   - `authenticated`
   - `anonymous`
   - `login_gate_detected`
+  - `bootstrapAttempted`
+  - `bootstrapSource`
+
+### Важная реализационная оговорка
+На этом этапе не изобретать второй отдельный login-механизм.  
+Нужно опираться на уже существующий `litres-sberid-login` skill и его артефакты:
+- `/root/.openclaw/workspace/skills/litres-sberid-login/`
+- `/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json`
+
+То есть существующий skill — это источник bootstrap-логики и storage-state, а `browser-platform` — основной runtime, который должен уметь это использовать внутри normal flow.
 
 ### Артефакты
 - `src/playwright/auth-state.ts`
@@ -350,6 +364,38 @@ site-packs/litres/
 ### Done when
 - можно открыть LitRes session в уже авторизованном состоянии
 - runtime умеет явно сказать, авторизованы мы или нет
+- auth reuse больше не выглядит как внешний ручной pre-step
+
+---
+
+## Commit 6.1 — Full Sber ID login inside browser-platform flow
+
+### Что сделать
+Добавить полноценную попытку login/bootstrap внутри обычного LitRes flow на случай, когда reusable state нет или он невалиден.
+
+### Важно
+Это не значит «переписать весь Sber ID с нуля».  
+Нужно встроить в browser-platform практичный login path, который **использует существующий skill как основу**, но воспринимается архитектурно как часть обычного LitRes runtime flow.
+
+### Что нужно технически
+- встроенный bootstrap attempt из `session open` / auth-resolution logic
+- переход на `https://www.litres.ru/auth/login/`
+- запуск login/bootstrap path для Sber ID
+- сохранение обновлённого storage state после успешного шага
+- расширение `authContext`, например:
+  - `bootstrap_attempted`
+  - `handoff_required`
+  - `bootstrap_failed`
+- возможность позже продолжить тот же LitRes flow после auth
+
+### Что считать MVP-результатом
+- если валидный state уже есть — он используется автоматически
+- если state нет — browser-platform сам делает встроенный bootstrap attempt
+- если нужен человек (OTP/подтверждение/неожиданный шаг), это рассматривается как часть flow, а не как внешний отдельный ритуал
+
+### Ожидаемое ограничение
+На MVP допустимо, что полностью автономный Sber ID login не всегда проходит до конца.  
+Главное — чтобы архитектурно login был встроен в flow, а не жил отдельно от browser-platform.
 
 ---
 

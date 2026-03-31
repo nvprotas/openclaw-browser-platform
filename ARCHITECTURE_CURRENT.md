@@ -192,7 +192,7 @@ litres-sberid-login script
 
 ---
 
-## 7. Цель следующего шага (Commit 6)
+## 7. Цель следующего шага (Commit 6 / 6.1)
 
 Следующий архитектурный переход:
 
@@ -202,12 +202,14 @@ login becomes part of the normal LitRes flow
 
 То есть login должен быть не внешним ручным pre-step, а встроенной возможностью browser-platform для LitRes.
 
-### Желаемая схема после Commit 6
+### Желаемая схема после Commit 6 / 6.1
 
 ```text
 session open(litres)
   -> detect auth state
-  -> if auth missing and login needed:
+  -> if valid storage state exists:
+       reuse it immediately
+  -> else if auth missing and login needed:
        run integrated LitRes login/bootstrap path
        reuse resulting state in same runtime
   -> continue with search/product/cart flow
@@ -216,10 +218,20 @@ session open(litres)
 ### Важно
 Это **не обязательно** означает полную реализацию Sber ID внутри browser-platform с нуля.
 
-Достаточно, если browser-platform:
-- умеет сам инициировать нужный login/bootstrap step
-- умеет подхватить storage state
-- воспринимает login как часть flow, а не как внешний ручной ритуал
+Практичный план такой:
+- использовать уже существующий `litres-sberid-login` skill как источник bootstrap-логики
+- использовать уже существующий LitRes storage-state path
+- постепенно переносить login из «внешнего подготовительного шага» в нормальный browser-platform flow
+
+То есть существующий skill нужно учитывать как:
+- источник знаний о стабильном login entrypoint
+- источник уже проверенного bootstrap path
+- источник storage-state, который browser-platform должен уметь переиспользовать
+
+Но при этом целевая архитектура остаётся такой:
+- основной LitRes flow живёт внутри browser-platform
+- login воспринимается как часть этого flow
+- внешний skill не должен оставаться обязательным ручным ритуалом навсегда
 
 ---
 
