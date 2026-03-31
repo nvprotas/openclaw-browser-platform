@@ -6,8 +6,8 @@
 
 ## Короткий статус
 
-- `master` синхронизирован с `origin/master` на коммите `f2a6f08`
-- в рабочем дереве есть **незакоммиченные изменения Commit 4 и этот progress update**
+- локальный `master` содержит Commit 4 на коммите `3c6d307`
+- push в `origin/master` ещё не выполнен после этого коммита
 - LitRes уже тестируется на живом сайте
 - поиск `1984` через новый runtime уже работает
 - логин через `litres-sberid-login` и `browser-platform` пока **не склеены**
@@ -57,9 +57,9 @@
   - `BUGS.md`
 
 ### Commit 4 — Action layer v1
-- **Статус:** `implemented locally, ready to commit`
-- **Git:** _ещё нет_
-- **Что уже сделано локально:**
+- **Статус:** `done locally, pending push`
+- **Git:** `3c6d307`
+- **Что уже сделано:**
   - `session act`
   - действия:
     - `navigate`
@@ -108,7 +108,7 @@
 - сделать screenshot
 - сохранить HTML snapshot
 
-### Action layer (локально, ещё не закоммичено)
+### Action layer
 - fill
 - press
 - click
@@ -157,7 +157,7 @@
 ## Что нужно сделать следующим
 
 ### Самый ближайший шаг
-1. закоммитить и запушить **Commit 4**
+1. запушить **Commit 4**
 
 ### После этого
 2. сделать `site-packs/litres/` skeleton
@@ -179,7 +179,7 @@
 - живой Playwright runtime
 - рабочий `observe`
 - рабочий `snapshot`
-- локально рабочий `session act`
+- рабочий `session act`
 - первый реальный подтверждённый LitRes flow: **поиск `1984`**
 - обновляемый `PROGRESS.md` как источник текущего статуса
 
