@@ -1,106 +1,329 @@
 # openclaw-browser-platform — roadmap
 
-## 0. Базовая парадигма
+## 0. Итоговая стартовая парадигма
 
-Этот проект строится вокруг следующей модели:
+На первом этапе проект **не** интегрируется в OpenClaw как native plugin.
+
+Стартовая схема такая:
 
 ```text
 OpenClaw agent
-  + Playwright
-  + shared browser helpers
-  + site packs / site instructions
-  + traces from previous runs
-  + human handoff via VNC when needed
-  + knowledge authoring / learning loop
+  -> workspace skill
+  -> exec
+  -> browser-platform CLI
+  -> browser-platform daemon
+  -> Playwright
+```
+
+А рядом с этим живут:
+
+```text
+workspace/browser/
+  site-packs/
+  traces/
+  demos/
+  knowledge/
 ```
 
 То есть:
-- агенту **можно и нужно** давать Playwright
-- мы **не** хотим писать полный API/SDK для каждого сайта
-- устойчивость достигается не абстракцией «спрятать браузер», а комбинацией:
-  - общих helper'ов
-  - site packs
-  - инструкций по сайту
-  - traces и replay
-  - демонстраций человека через VNC
-  - постепенного накопления знаний
+- агенту по-прежнему даётся управление браузером
+- но не через plugin SDK
+- и не через хаотичные shell-скрипты
+- а через **стабильный CLI bridge** к нашему собственному stateful runtime
 
 Главная идея:
 
-**Не ограничивать агента узким API, а дать ему Playwright + дисциплину + память + наращиваемые знания по сайтам.**
+**не писать site-specific API на каждый сайт и не лезть сразу в plugin SDK; сначала сделать работающий daemon + CLI + skill + site packs + learning loop.**
 
 ---
 
-## 1. Что мы строим
+## 1. Почему именно так
+
+### Почему не plugin сразу
+Потому что это замедляет старт:
+- нужно лезть в OpenClaw plugin/runtime wiring
+- сложнее быстро дебажить отдельно от агента
+- сложнее менять внутренний контракт на раннем этапе
+
+### Почему не просто raw scripts
+Потому что это быстро превращается в хаос:
+- много разных entrypoint'ов
+- нестабильные аргументы
+- разный формат ответа
+- агенту трудно это надёжно использовать
+
+### Почему нужен CLI
+CLI решает одну простую, но важную проблему:
+
+**он даёт OpenClaw стабильный способ общаться с browser-platform.**
+
+CLI — это контракт:
+- какие команды вызывать
+- какие аргументы передавать
+- какой JSON ждать в ответ
+
+### Почему нужен daemon
+Потому что браузер и сессия — stateful.
+
+Если не будет daemon, то при каждом вызове придётся:
+- заново поднимать браузер
+- терять page/session state
+- терять handoff state
+- усложнять traces и resume
+
+Daemon держит живое состояние:
+- browser process
+- contexts/pages
+- session ids
+- current page state
+- handoff state
+- pending candidate knowledge
+
+### Почему skill всё равно нужен
+Потому что OpenClaw должен понимать:
+- **когда** использовать browser-platform
+- **как** вызывать CLI
+- **в каком порядке** действовать
+- **когда** звать человека
+- **как** сохранять новые знания
+
+Skill — это инструкция для модели.  
+CLI/daemon — это runtime.
+
+---
+
+## 2. Что именно мы строим
 
 Платформу браузерной автоматизации под OpenClaw, где:
-- агент выполняет действия через Playwright
-- site-specific знания хранятся в `site-packs/`
-- типовые browser-паттерны живут в shared helper library
-- застревание можно передать человеку через VNC
-- действия человека во время handoff используются как материал для обучения
-- OpenClaw умеет записывать новые знания:
-  - какие кнопки нажимать
-  - в каком порядке идти
-  - какие сигналы считать успешными
-  - какие recoveries работают
+- агент выполняет браузерные действия через Playwright
+- OpenClaw общается с платформой через CLI
+- daemon держит живую browser session
+- site-specific знания хранятся в site packs
+- traces и demos становятся источником обучения
+- человек может помочь через VNC
+- OpenClaw умеет записывать новые знания в candidate layer
 
-Это не «полная универсальная магия» и не «обвязка под каждый магазин вручную».  
-Это **эволюционирующая knowledge-driven система поверх Playwright**.
+Это не:
+- universal magical browser AI
+- SDK на каждый сайт
+- набор одноразовых playwright-скриптов
 
----
+Это:
 
-## 2. Что не взлетает и чего мы избегаем
-
-### Не хотим
-- full site-specific API для каждого сайта
-- толстые hardcoded adapters с первого дня
-- знания, спрятанные только в промптах
-- знания, спрятанные только в логах
-- обучение на основании однократного случайного удачного клика
-- запоминание только координат клика без понимания контекста
-
-### Хотим
-- generic mode для новых сайтов
-- progressive hardening для важных сайтов
-- site packs как lightweight-слой знаний
-- human-assisted learning loop
-- candidate → validated → approved knowledge pipeline
+**knowledge-driven browser runtime для OpenClaw с постепенным усилением по сайтам.**
 
 ---
 
-## 3. Основные принципы
+## 3. Как это подключается к OpenClaw
 
-1. **Playwright — основной исполнительный слой**  
-   Мы не боремся с ним, а используем его как реальный browser runtime.
+## 3.1 Что будет внутри OpenClaw
 
-2. **Не писать «обвязку на всё»**  
-   Site pack должен быть маленьким и усиливаться постепенно.
+В OpenClaw на старте нужны только две вещи:
 
-3. **Progressive hardening**  
-   Сайт сначала живёт в generic mode, потом получает hints, затем detectors/recoveries, и только при необходимости — site-specific hardened flows.
+1. **workspace skill** — учит модель пользоваться browser-platform
+2. **разрешение на `exec`** — чтобы skill мог вызывать CLI
 
-4. **Instructions are first-class**  
-   Знания по сайту должны храниться не только в коде, но и в понятных инструкциях для агента.
+### Примерная схема
 
-5. **Shared helpers важнее ранней гиперабстракции**  
-   Сначала делаем хороший operational toolkit поверх Playwright.
+```text
+~/.openclaw/workspace/
+  skills/
+    browser-platform/
+      SKILL.md
+  browser/
+    site-packs/
+    traces/
+    demos/
+    knowledge/
+```
 
-6. **Человек через VNC — не только аварийный режим, но и источник обучения**  
-   Handoff должен превращаться в usable knowledge.
+## 3.2 Что будет вне OpenClaw
 
-7. **OpenClaw должен уметь записывать новые знания**  
-   Но новые знания не должны сразу автоматически становиться каноном.
+В отдельном repo/process живёт browser-platform:
+- daemon
+- CLI client
+- Playwright runtime
+- traces/demos pipeline
+- VNC handoff machinery
 
-8. **Запоминаем не “куда кликнули”, а “что сделали и почему это сработало”**  
-   Координаты — только вспомогательный сигнал, а не основное знание.
+## 3.3 Как агент будет работать пошагово
 
-9. **Рискованные шаги требуют отдельного контроля**  
-   Логин, OTP, CAPTCHA, финальный submit платежа и заказа — особая зона.
+1. Пользователь просит сделать что-то на сайте.
+2. Skill говорит агенту использовать browser-platform.
+3. Агент вызывает CLI через `exec`.
+4. CLI общается с daemon.
+5. Daemon управляет Playwright.
+6. CLI возвращает JSON.
+7. Агент по JSON выбирает следующий шаг.
+8. Если агент застрял — просит handoff.
+9. После handoff пишет candidate knowledge.
 
 ---
 
-## 4. Модель поддержки сайтов
+## 4. Почему управление браузером через CLI всё ещё считается “прямым”
+
+Важно: мы не убираем у агента пошаговый контроль.
+
+Он по-прежнему может делать цикл:
+
+```text
+observe -> decide -> act -> verify -> repeat
+```
+
+Просто вместо нативного browser tool он будет пользоваться нашим bridge.
+
+Например:
+
+### Было бы в идеальном raw Playwright-мире
+- открыть страницу
+- кликнуть кнопку
+- напечатать текст
+- прочитать DOM
+
+### У нас будет через CLI
+- `session open`
+- `session observe`
+- `session act`
+- `session snapshot`
+- `handoff start`
+- `resume`
+
+То есть поведение для агента остаётся почти тем же, меняется только transport layer.
+
+---
+
+## 5. Минимальный CLI contract
+
+На старте не нужен гигантский API. Нужен компактный набор команд.
+
+## 5.1 Daemon lifecycle
+- `browser-platform daemon ensure`
+- `browser-platform daemon status`
+- `browser-platform daemon stop`
+
+## 5.2 Session lifecycle
+- `browser-platform session open --url ... --json`
+- `browser-platform session close --session ... --json`
+- `browser-platform session context --session ... --json`
+
+## 5.3 Observation
+- `browser-platform session observe --session ... --json`
+- `browser-platform session snapshot --session ... --json`
+
+## 5.4 Actions
+- `browser-platform session act --session ... --json '<payload>'`
+
+Где `payload` может быть:
+- `click`
+- `fill`
+- `type`
+- `press`
+- `select`
+- `wait_for`
+- `navigate`
+
+## 5.5 Handoff
+- `browser-platform handoff start --session ... --json`
+- `browser-platform handoff status --session ... --json`
+- `browser-platform handoff resume --session ... --json`
+
+## 5.6 Knowledge writes
+- `browser-platform knowledge write --session ... --json '<payload>'`
+- `browser-platform knowledge list --site ... --json`
+
+### Важный принцип
+Все команды должны уметь возвращать **стабильный JSON**, а не свободный текст.
+
+---
+
+## 6. Что должен возвращать runtime агенту
+
+Особенно важна команда открытия/инициализации сессии.
+
+### `session open` должен возвращать не только `sessionId`
+А сразу operational context:
+- `sessionId`
+- `traceId`
+- `siteId`
+- `supportLevel`
+- `url`
+- `matchedPack`
+- `instructionsSummary`
+- `knownRisks`
+- `knownSignals`
+- `candidateKnowledgeSummary`
+
+Это нужно, чтобы агент не искал всё руками по файлам.  
+CLI/daemon должен сразу собирать context packet.
+
+---
+
+## 7. Основные слои системы
+
+## 7.1 Daemon
+Это сердце системы.
+
+Он отвечает за:
+- Playwright browser lifecycle
+- session registry
+- stateful page/context storage
+- VNC handoff lifecycle
+- trace capture
+- knowledge writes
+
+## 7.2 CLI client
+CLI — тонкий транспортный слой.
+
+Он отвечает за:
+- нормализованный command surface
+- JSON input/output
+- запуск/подключение к daemon
+- удобный интерфейс для `exec`
+
+## 7.3 Shared helpers
+Это общий operational toolkit поверх Playwright:
+- navigation helpers
+- popup handling
+- search helpers
+- cart helpers
+- validation helpers
+- retry helpers
+- trace hooks
+- semantic action helpers
+
+## 7.4 Site packs
+Site packs — это site-specific knowledge.
+
+Там лежит:
+- manifest
+- instructions
+- hints
+- detectors
+- recoveries
+- learned knowledge
+- approved knowledge
+
+## 7.5 Traces
+Traces — основа дебага и источника будущего обучения.
+
+## 7.6 Demos
+Demos — это handoff sessions, где человек показывает системе, как пройти шаги.
+
+## 7.7 Knowledge pipeline
+Knowledge pipeline превращает:
+- traces
+- demos
+- human actions
+- repeated successes
+
+в:
+- candidate knowledge
+- validated knowledge
+- approved knowledge
+
+---
+
+## 8. Модель поддержки сайтов
 
 Не все сайты должны поддерживаться одинаково.
 
@@ -110,192 +333,169 @@ OpenClaw agent
 - стартовый URL
 - краткая инструкция
 
-Агент в основном опирается на Playwright + shared helpers.
+Агент работает через:
+- CLI
+- Playwright runtime
+- generic helpers
 
 ### Level 1 — Profiled
 Есть:
 - `instructions.md`
 - `hints.json`
-- known page types
-- common popups
-- cart signals
+- common signals
+- known popups
 - risk notes
 
 ### Level 2 — Assisted
-Добавляются:
+Есть:
+- candidate/approved hints
+- validators
 - detectors
 - recoveries
-- validation rules
-- learned candidate flows
+- step notes
 
 ### Level 3 — Hardened
-Добавляется точечная специальная логика для хрупких мест:
+Есть точечное усиление сложных мест:
 - login flow
 - add-to-cart
 - checkout transitions
-- особо нестабильные UI места
+- нестабильные UI места
 
-Это и есть масштабируемая модель. Не «пишем SDK на каждый сайт», а **усиливаем только то, что реально нужно**.
+Именно это и должно масштабироваться.  
+Не «писать полный адаптер для каждого сайта», а **усиливать только проблемные участки**.
 
 ---
 
-## 5. Основные слои системы
+## 9. Site packs
 
-## 5.1 Playwright runtime
+Site pack — это не обязательно толстый адаптер.  
+Это лёгкий пакет знаний по сайту.
 
-Что должен уметь runtime:
-- открывать browser/session/context
-- navigate/click/fill/type/press
-- читать DOM/HTML
-- делать screenshots
-- писать structured trace events
-- поддерживать pause/handoff/resume
-
-## 5.2 Shared browser helpers
-
-Это общий operational toolkit:
-- `navigateAndWait()`
-- `waitForStableDom()`
-- `closeCommonPopups()`
-- `findSearchInput()`
-- `fillSearchAndSubmit()`
-- `findAddToCartCandidates()`
-- `clickAndValidate()`
-- `detectCartChange()`
-- `openCartByCommonPatterns()`
-- `detectLoginGate()`
-- `captureState()`
-- `retryStep()`
-- `recordTraceStep()`
-
-Именно helpers должны покрывать типовые browser-проблемы, а не тащить в себя всю site-specific логику.
-
-## 5.3 Site packs
-
-Site pack — это пакет знаний и усилителей по сайту.
-
-Он может включать:
+### Минимальный состав
 - `manifest.json`
 - `instructions.md`
+- `hints.json`
+
+### Расширенный состав
 - `login.md`
 - `checkout.md`
-- `hints.json`
 - `detectors.ts`
 - `recoveries.ts`
 - `learned/`
 - `approved/`
 
-## 5.4 Traces
+### Что в них хранится
 
-Traces — это основа дебага и обучения.
+#### `manifest.json`
+- `site_id`
+- `domains`
+- `start_url`
+- `site_type`
+- `support_level`
+- `risk_flags`
+
+#### `instructions.md`
+- как устроен сайт
+- как искать товар
+- как понять, что товар добавился
+- какие модалки типичны
+- где чаще всего ломается flow
+
+#### `hints.json`
+- selector candidates
+- button text candidates
+- cart signals
+- page signatures
+
+#### `learned/`
+Черновое знание, которое OpenClaw или demo extractor уже нашли, но ещё не утвердили.
+
+#### `approved/`
+Подтверждённое знание, на которое уже можно опираться.
+
+---
+
+## 10. Traces
+
+Traces обязательны с самого начала.
 
 Нужно хранить:
 - session id
 - site id
 - timestamps
-- шаги
+- action sequence
 - screenshots
 - DOM/HTML snapshots
-- заметки агента
-- успех/ошибка
-- сработавшие recoveries
-- точки handoff/resume
+- результаты validate/check
+- ошибки
+- recoveries
+- handoff markers
+- notes
 
-## 5.5 Human handoff via VNC
-
-Когда агент застрял:
-- он запрашивает помощь человека
-- система открывает/использует VNC handoff mode
-- система пишет demonstration trace
-- после возврата агент и/или post-processing слой пытаются превратить демонстрацию в знание
-
-## 5.6 Knowledge authoring
-
-OpenClaw должен уметь:
-- создавать новые инструкции
-- добавлять hints
-- сохранять candidate selectors
-- сохранять candidate flow order
-- сохранять success signals
-- сохранять recovery notes
-- помечать источник знаний и confidence
+### Зачем
+- дебаг
+- анализ поломок
+- улучшение site packs
+- материал для candidate knowledge
 
 ---
 
-## 6. Как именно должен работать VNC handoff learning
-
-Это отдельный обязательный контур архитектуры.
+## 11. Human handoff via VNC
 
 ### Когда нужен handoff
-- агент не понимает, что делать дальше
-- generic flow сломался
-- на сайте появилась новая модалка/новый UI
-- нужен человек для логина, OTP, CAPTCHA, payment confirmation
-- агент хочет показать человеку текущее состояние и попросить провести несколько шагов вручную
+- агент застрял
+- появился новый UI
+- generic flow перестал работать
+- нужен человек для логина/OTP/CAPTCHA
+- нужно помочь пройти сложный checkout step
 
-### Что система должна записывать во время VNC handoff
+### Что должен делать daemon в handoff
+- удерживать текущую browser session
+- открыть/дать VNC-доступ
+- писать demonstration artifacts
+- дать resume path после завершения
 
-На каждом важном шаге:
+### Что писать во время handoff
 - URL
-- screenshot до действия
-- screenshot после действия
-- DOM snapshot до/после
-- координаты клика/drag/type как сырой сигнал
-- элемент под кликом, если его удалось сопоставить
-- текст кнопки
-- role / aria-label / title / visible text
-- nearby labels и контекст
-- тип действия: click / type / select / press / wait
-- порядок шагов
-- какое изменение произошло после действия
+- screenshot before/after
+- DOM snapshot before/after
+- raw input events
+- попытку сопоставить event с DOM element
+- text / role / aria-label элемента
+- step order
+- post-action state change
 
-### Что мы НЕ должны считать знанием по умолчанию
-- голые координаты клика
-- точный nth-child путь
-- случайный dynamic id
-- одноразовый локальный state
+### Что важно
+Не учить систему по принципу:
+- “клик в координаты x/y”
 
-### Что мы ХОТИМ извлекать из handoff
-- какой semantic action сделал человек
-- по какому элементу он кликнул
-- как этот элемент можно найти в будущем
-- в каком порядке человек прошёл шаги
-- какой сигнал говорит, что шаг успешен
-- какой recovery использовал человек
-
-### Результат VNC handoff
-Не «человек кликнул в x=842, y=611», а:
-- `action_intent: add_to_cart`
-- `page_signature: product_page`
-- `target_text: "В корзину"`
-- `selector_candidates: [...]`
-- `success_signal: cart_badge_increment`
-- `source: human_demo`
-- `confidence: low|medium|high`
+А учить по принципу:
+- “человек сделал semantic action над таким-то элементом на такой-то странице, и успех определился таким-то сигналом”
 
 ---
 
-## 7. Как OpenClaw должен добавлять новые знания
+## 12. OpenClaw knowledge authoring
 
-OpenClaw должен уметь не только пользоваться знаниями, но и пополнять их.
+OpenClaw должен уметь добавлять новые знания, но аккуратно.
 
-### Какие знания он должен уметь добавлять
-- новые site instructions
-- новые hints/selectors
-- распознанные кнопки и тексты
-- candidate step order
-- page signatures
+### Что он должен уметь записывать
+- новые hints
+- candidate selectors
+- candidate flow order
 - success signals
-- failure patterns
-- recovery steps
+- recovery notes
+- page signatures
+- human-demo observations
 
-### Но есть важное ограничение
-OpenClaw **не должен** в ранних MVP бездумно переписывать approved code/knowledge.
+### Но не должен делать на раннем этапе
+- автоматически править approved knowledge без валидации
+- автоматически генерировать production-ready detectors/recoveries
+- автоматически переписывать весь site pack после одного прогона
 
-Нужен pipeline:
+### Значит нужен pipeline
 
 ```text
-raw trace / human demo
+raw trace / demo
     ↓
 candidate knowledge
     ↓
@@ -304,63 +504,18 @@ validation / replay / repeated success
 approved knowledge
 ```
 
-### Типы источников знания
-Каждый knowledge object должен хранить:
-- `source: human_demo | agent_success | manual_authoring | imported`
+### Метаданные для каждого knowledge object
+- `source`
 - `confidence`
 - `created_at`
-- `last_verified_at`
 - `verification_count`
 - `site_id`
 - `page_signature`
-
-### Где OpenClaw может писать безопасно
-В ранних инкрементах — в:
-- `learned/candidate-flows.json`
-- `learned/candidate-selectors.json`
-- `learned/candidate-signals.json`
-- `learned/notes.md`
-
-А не сразу в:
-- `approved/hints.json`
-- `detectors.ts`
-- `recoveries.ts`
+- `trace_refs`
 
 ---
 
-## 8. Модель знаний
-
-Явно разделяем четыре слоя знаний.
-
-## 8.1 Raw runtime artifacts
-Сырые данные:
-- traces
-- screenshots
-- DOM snapshots
-- raw VNC events
-- chat notes
-
-## 8.2 Candidate knowledge
-Черновики, извлечённые из trace или human demo:
-- candidate selectors
-- candidate button text
-- candidate flows
-- candidate success signals
-- candidate recoveries
-
-## 8.3 Validated knowledge
-Кандидаты, которые уже были подтверждены повторным успешным прохождением.
-
-## 8.4 Approved pack knowledge
-То, что уже считается рабочей частью site pack:
-- approved instructions
-- approved hints
-- approved detectors/recoveries
-- approved flow notes
-
----
-
-## 9. Предлагаемая структура репозитория
+## 13. Структура репозитория
 
 ```text
 openclaw-browser-platform/
@@ -369,19 +524,31 @@ openclaw-browser-platform/
 
   docs/
     architecture.md
+    cli-contract.md
+    daemon-lifecycle.md
     site-pack-spec.md
     trace-model.md
     demo-learning.md
     safety.md
     mvp-plan.md
 
+  bin/
+    browser-platform.ts
+
   src/
-    core/
-      types/
-      errors/
-      logging/
-      risk/
-      knowledge/
+    cli/
+      main.ts
+      commands/
+        daemon.ts
+        session.ts
+        handoff.ts
+        knowledge.ts
+
+    daemon/
+      server.ts
+      session-registry.ts
+      state-store.ts
+      lifecycle.ts
 
     playwright/
       browser-session.ts
@@ -432,37 +599,16 @@ openclaw-browser-platform/
       resume.ts
       flow-result.ts
 
-    integrations/
-      openclaw/
-        session-bridge.ts
-        prompt-context.ts
-        knowledge-writes.ts
-        handoff-events.ts
-
-  site-packs/
-    example-shop/
-      manifest.json
-      instructions.md
-      login.md
-      checkout.md
-      hints.json
-      learned/
-        candidate-flows.json
-        candidate-selectors.json
-        candidate-signals.json
-        notes.md
-      approved/
-        flow-notes.json
-        validation-rules.json
-      detectors.ts
-      recoveries.ts
-
-  traces/
-    raw/
-    demos/
-    replay/
+    openclaw/
+      skill-template/
+        SKILL.md
+      workspace-layout.ts
+      install-skill.ts
+      prompt-context.ts
+      knowledge-writes.ts
 
   examples/
+    demo-cli-session.ts
     demo-generic-run.ts
     demo-pack-run.ts
     demo-vnc-handoff.ts
@@ -475,192 +621,220 @@ openclaw-browser-platform/
 
 ---
 
-## 10. Product increments — что будет в MVP0, MVP1, MVP2 и дальше
+## 14. Структура workspace данных
 
-Это главный раздел.  
-Ниже описано, что именно считается полезным продуктовым инкрементом.
+Это важно отделить от структуры repo.
+
+```text
+~/.openclaw/workspace/
+  skills/
+    browser-platform/
+      SKILL.md
+
+  browser/
+    site-packs/
+      example-shop/
+        manifest.json
+        instructions.md
+        hints.json
+        learned/
+          candidate-flows.json
+          candidate-selectors.json
+          candidate-signals.json
+          notes.md
+        approved/
+          flow-notes.json
+          validation-rules.json
+    traces/
+      raw/
+      demos/
+      replay/
+    knowledge/
+      inbox/
+      validated/
+```
 
 ---
 
-## MVP0 — usable manual foundation
+## 15. Product increments — MVP0, MVP1, MVP2 и дальше
+
+Это главный раздел: что реально должно существовать на каждом этапе.
+
+---
+
+## MVP0 — no-plugin usable foundation
 
 ### Цель
-Сделать минимально полезную систему, где агент уже может работать через Playwright, используя helpers и site instructions, но без сложного обучения.
+Сделать первую реально рабочую версию **без plugin**, где OpenClaw уже может пользоваться browser-platform через skill + exec + CLI.
 
 ### Что войдёт
-- TypeScript + Playwright foundation
-- browser runtime:
-  - session/context/page lifecycle
-  - click/fill/type/navigate/extract/screenshot
+- TypeScript foundation
+- daemon + CLI skeleton
+- Playwright runtime:
+  - browser/session/page lifecycle
+  - navigate/click/fill/type/extract/screenshot
 - shared helpers v1:
   - navigation
   - popups
-  - search helpers
-  - cart helpers
-  - validation helpers
-  - retry helpers
-- базовый формат site pack:
+  - search
+  - cart
+  - validation
+  - retries
+- базовый site pack format:
   - `manifest.json`
   - `instructions.md`
   - `hints.json`
-- загрузка pack по домену
-- instructions injection в запуск
+- pack loading по домену
+- workspace skill `browser-platform`
+- OpenClaw integration через `exec`
+- stable JSON contract у CLI
 - traces v1:
-  - step logs
+  - action logs
   - screenshots
   - DOM/HTML snapshots
 - один example site pack
-- базовые handoff markers:
-  - агент может сказать «нужна помощь человека»
-  - trace фиксирует точку остановки
+- simple handoff marker:
+  - агент может сказать, что нужна помощь человека
+  - trace фиксирует остановку
 
 ### Что НЕ войдёт
-- автоматическое извлечение знаний из VNC
-- автоматическое обновление approved pack knowledge
-- полноценный validation pipeline
-- автопромоут candidate knowledge
+- реальный VNC handoff lifecycle
+- автоматическое обучение из demo
+- validation pipeline
+- auto-promotion knowledge
+- plugin integration
 
 ### Критерий готовности
-- агент может пройти базовый flow на простом сайте с pack-assisted mode
-- можно отследить, где именно flow сломался
-- можно вручную дописать/исправить pack
+- агент может через skill вызвать CLI
+- daemon держит живую browser session
+- можно пройти базовый flow на простом сайте
+- traces позволяют понять, где сломалось
 
 ---
 
 ## MVP1 — handoff-aware system
 
 ### Цель
-Добавить полноценный человеческий handoff и сбор демонстраций как артефактов для последующего обучения.
+Добавить полноценный handoff человеку через VNC и сбор demonstration artifacts.
 
 ### Что войдёт
-- VNC handoff lifecycle:
+- handoff lifecycle:
   - pause
-  - human takes over
+  - start handoff
   - resume
-- demonstration capture:
-  - screenshots до/после
-  - DOM snapshots до/после
-  - raw user actions
+- VNC handoff support
+- demo artifact capture:
+  - screenshots before/after
+  - DOM before/after
+  - raw events
   - timestamps
-- сохранение demo artifacts в `traces/demos/`
-- начальный extractor, который пытается определить:
-  - по какому элементу человек кликнул
-  - какой был текст/роль элемента
-  - какой step order прошёл человек
-- candidate knowledge format:
-  - candidate selectors
-  - candidate flow steps
-  - candidate success signals
-- OpenClaw knowledge writes v1:
-  - запись новых черновых знаний в `learned/`
-  - запись `source`, `confidence`, `verification_count`
-- базовый replay одного candidate step для проверки гипотезы
+- сохранение demo artifacts в workspace
+- начальный extractor:
+  - попытка понять, по какому элементу кликнули
+  - какой шаг человек прошёл
+  - какой сигнал success observed
+- candidate knowledge format
+- OpenClaw knowledge writes v1 в `learned/`
 
 ### Что НЕ войдёт
-- полностью автоматическая промоция в approved
-- автоматическая генерация detectors.ts
-- сложное обучение на многошаговых демо без валидации
+- автоматическая промоция в approved
+- сложное многошаговое обучение без валидации
+- генерация production detectors/recoveries на лету
 
 ### Критерий готовности
-- человек может помочь через VNC
-- после handoff система сохраняет пригодные для анализа demonstration artifacts
-- OpenClaw умеет создать candidate knowledge из демонстрации
+- человек может помочь агенту через VNC
+- результат этой помощи не теряется, а складывается в demos + candidate knowledge
 
 ---
 
 ## MVP2 — learning from demonstrations
 
 ### Цель
-Сделать так, чтобы помощь человека реально улучшала последующие прохождения.
+Сделать так, чтобы помощь человека реально улучшала будущие прохождения.
 
 ### Что войдёт
-- action extraction v2:
-  - сопоставление raw click с DOM element candidate
-  - semantic action inference
-  - page signature extraction
-- flow candidate generator:
-  - sequence of steps
-  - page transitions
-  - success signals
-  - fallback hints
-- verification pipeline:
-  - повторный replay candidate knowledge
-  - verification count
-  - confidence updates
+- action extraction v2
+- candidate flow generation
+- candidate selector extraction
+- page signature extraction
+- success signal extraction
+- replay одного или нескольких candidate steps
 - validated knowledge layer
-- простая промоция:
-  - confirmed selectors → approved hints
-  - confirmed flow notes → approved flow notes
-- support for mixed sources:
+- verification count/confidence updates
+- поддержка mixed sources:
   - `human_demo`
   - `agent_success`
   - `manual_authoring`
 
 ### Что НЕ войдёт
-- полностью автономное обучение без ограничений
-- массовая автоматическая генерация hardcoded flows
-- переписывание detectors/recoveries без review rules
+- бесконтрольное автообучение
+- массовая генерация hardcoded flows
+- автоматический rewrite approved pack knowledge без правил
 
 ### Критерий готовности
-- после 1–2 демонстраций агент реально лучше проходит похожий flow
-- новые знания можно отследить и объяснить
+- после 1–2 демонстраций агент проходит похожий flow стабильнее
+- новые знания можно объяснить и проверить
 
 ---
 
 ## MVP3 — self-improving site packs
 
 ### Цель
-Сделать так, чтобы OpenClaw мог системно наращивать знания по сайтам, а не просто копить traces.
+Сделать так, чтобы OpenClaw мог системно наращивать site knowledge.
 
 ### Что войдёт
-- OpenClaw knowledge authoring v2:
-  - обновление instructions draft
-  - обновление candidate hints
-  - добавление новых flow notes
-  - добавление recovery notes
+- candidate vs approved split как нормальный workflow
 - approval rules
-- candidate vs approved diffing
-- trace-driven suggestions:
-  - «этот selector устарел»
-  - «эта кнопка стабильно работает лучше»
-  - «этот recovery часто спасает flow»
-- progressive hardening controls:
-  - support level upgrades
-  - feature flags per site
-- resume after human handoff с учётом новых знаний
+- trace-driven suggestions
+- support level upgrades
+- stronger recoveries
+- resume after handoff с учётом новых знаний
+- draft updates to instructions/hints/flow notes
 
 ### Что НЕ войдёт
-- полное отсутствие human review для sensitive knowledge
-- автоматическая бесконтрольная модификация production packs
+- полное отсутствие human review на sensitive changes
+- автоматическая бесконтрольная модификация approved knowledge
 
 ### Критерий готовности
-- система может наращивать site pack без тотального ручного переписывания
-- знания живут в понятной структуре, а не в истории чатов
+- знания живут в site packs и knowledge pipeline, а не в истории чатов
+- система умеет постепенно усиливать поддержку сайта
 
 ---
 
 ## MVP4 — production hardening
 
 ### Цель
-Довести систему до состояния, где она может устойчиво обслуживать несколько важных сайтов и долго жить.
+Довести систему до устойчивого состояния на нескольких реальных сайтах.
 
 ### Что войдёт
 - несколько реальных site packs
 - стабильный handoff/resume lifecycle
-- проверка backwards compatibility pack changes
-- artifact browser / trace inspection UX
-- улучшенные recoveries
-- более строгий risk layer
-- policy around payment/OTP/CAPTCHA
+- trace inspection UX
+- stronger validations/recoveries
+- risk layer for login/OTP/CAPTCHA/payment submit
+- compatibility checks for pack changes
 
 ### Критерий готовности
-- можно поддерживать несколько сайтов без ощущения, что всё держится на случайности
+- можно поддерживать несколько сайтов без ощущения, что всё держится на случайных удачах
 
 ---
 
-## 11. Engineering milestones
+## 16. Возможный следующий этап после MVP
 
-Ниже — инженерные шаги, как дойти до MVP'шек.
+Когда exec-based bridge станет узким местом, можно рассмотреть:
+- native OpenClaw plugin
+- более нативный tool surface
+- tighter runtime integration
+
+Но это **не стартовая задача**.
+
+Стартовая задача — сначала доказать модель:
+
+**skill + exec + CLI + daemon + site packs + traces + demos**
+
+---
+
+## 17. Engineering milestones
 
 ### M0 — Bootstrap
 - package manager
@@ -669,13 +843,19 @@ openclaw-browser-platform/
 - Playwright setup
 - базовый CI
 
-### M1 — Playwright runtime
-- session/context/page lifecycle
+### M1 — CLI + daemon skeleton
+- CLI entrypoint
+- daemon process
+- daemon ensure/status/stop
+- JSON contract baseline
+
+### M2 — Playwright runtime
+- browser/page/session lifecycle
 - navigation/click/fill/extract
 - screenshots/snapshots
 - structured logging
 
-### M2 — Shared helpers
+### M3 — Shared helpers
 - popups
 - search
 - cart
@@ -683,79 +863,81 @@ openclaw-browser-platform/
 - retries
 - trace hooks
 
-### M3 — Site pack spec
+### M4 — OpenClaw skill integration
+- workspace skill template
+- skill install path
+- exec usage conventions
+- context packet design
+
+### M5 — Site pack spec
 - manifest
 - instructions
 - hints
 - support levels
 - pack loader
 
-### M4 — Traces v1
+### M6 — Traces v1
 - trace schema
 - artifact layout
 - replay basics
 
-### M5 — Handoff v1
+### M7 — Handoff v1
 - pause/resume
-- VNC event capture
-- demo artifacts
+- VNC handoff
+- demo artifact capture
 
-### M6 — Candidate knowledge pipeline
+### M8 — Candidate knowledge pipeline
 - candidate formats
 - action extraction
-- knowledge writes to `learned/`
+- writes to `learned/`
 
-### M7 — Validation pipeline
+### M9 — Validation pipeline
 - replay candidates
 - confidence updates
-- approved vs candidate split
+- validated vs approved split
 
-### M8 — Progressive hardening
-- support level upgrade path
+### M10 — Progressive hardening + release hardening
+- support level upgrades
 - detector/recovery injection
-- site-specific strengthenings
-
-### M9 — Release hardening
-- docs
-- examples
-- testing matrix
+- docs/examples/testing matrix
 - release baseline
 
 ---
 
-## 12. MVP mapping to milestones
+## 18. MVP mapping to milestones
 
-Чтобы не потеряться в терминах:
-
-- **MVP0** ≈ M0 + M1 + M2 + M3 + M4
-- **MVP1** ≈ MVP0 + M5 + часть M6
-- **MVP2** ≈ MVP1 + M6 + M7
-- **MVP3** ≈ MVP2 + M8
-- **MVP4** ≈ MVP3 + M9
+- **MVP0** ≈ M0 + M1 + M2 + M3 + M4 + M5 + M6
+- **MVP1** ≈ MVP0 + M7 + часть M8
+- **MVP2** ≈ MVP1 + M8 + M9
+- **MVP3** ≈ MVP2 + часть M10
+- **MVP4** ≈ MVP3 + полный M10
 
 ---
 
-## 13. Что делать прямо сейчас
+## 19. Что делать прямо сейчас
 
-Если двигаться прагматично, следующий реальный порядок такой:
+Если двигаться прагматично, порядок такой:
 
 1. поднять TypeScript + Playwright
-2. сделать runtime
-3. сделать helper library v1
-4. зафиксировать site pack spec
-5. сделать traces v1
-6. сделать один example site pack
-7. после этого добавлять handoff/demos/learning
+2. сделать CLI + daemon skeleton
+3. сделать runtime
+4. сделать helper library v1
+5. сделать workspace skill
+6. зафиксировать site pack spec
+7. сделать traces v1
+8. сделать один example site pack
+9. потом добавлять handoff и learning
 
-Почему именно так:
-- без живого runtime нечего учить
-- без helpers агент будет тонуть в raw DOM-хаосе
-- без traces нечем будет питать learning loop
+### Почему именно так
+- без daemon невозможно нормально держать stateful browser session
+- без CLI нет стабильного моста к OpenClaw
+- без skill агент не поймёт, как этим пользоваться
+- без traces нечем кормить learning loop
 - без pack format знаниям некуда складываться
 
 ---
 
-## 14. Первый backlog на ближайшие коммиты
+## 20. Первый backlog на ближайшие коммиты
 
 ### Commit 1
 Bootstrap:
@@ -766,13 +948,20 @@ Bootstrap:
 - Playwright
 
 ### Commit 2
+CLI + daemon:
+- `bin/browser-platform.ts`
+- `src/cli/*`
+- `src/daemon/*`
+- `daemon ensure/status`
+
+### Commit 3
 Runtime:
 - browser-session
 - controller
 - waits
 - snapshots
 
-### Commit 3
+### Commit 4
 Helpers:
 - navigation
 - popups
@@ -781,54 +970,49 @@ Helpers:
 - validation
 - tracing helpers
 
-### Commit 4
-Pack spec:
+### Commit 5
+OpenClaw integration:
+- workspace skill template
+- exec contract examples
+- `session open/observe/act`
+
+### Commit 6
+Site packs:
 - manifest
 - instructions
 - hints
 - loader
 - example pack skeleton
 
-### Commit 5
+### Commit 7
 Traces:
 - trace schema
 - artifact layout
 - replay basics
 
-### Commit 6
-Example pack:
-- instructions.md
-- hints.json
-- demo flow
-
-### Commit 7
-Handoff foundation:
-- pause/resume
-- handoff events
-- demo artifact capture skeleton
-
 ### Commit 8
-Candidate knowledge:
-- learned/ format
-- knowledge write pipeline
-- source/confidence metadata
+Handoff foundation:
+- pause/resume markers
+- demo artifact skeleton
+- knowledge write skeleton
 
 ---
 
-## 15. Самый важный итог
+## 21. Самый важный итог
 
-Архитектура проекта должна опираться на формулу:
+Стартовая архитектура проекта должна опираться на формулу:
 
-**Playwright + helpers + site packs + traces + human demos + knowledge authoring**
+**OpenClaw skill + exec + browser-platform CLI + daemon + Playwright + site packs + traces + demos**
 
 А не на:
-- «сырой браузер и хаос»
+- «сразу plugin»
 - «узкий API на каждый сайт»
-- «память только в логах»
+- «сырые разрозненные shell-скрипты»
+- «знания только в логах и голове модели»
 
 Если это выдержать, то система сможет:
-- быстро стартовать на новых сайтах
-- усиливаться на важных сайтах
+- быстро стартовать без тяжёлой интеграции
+- сохранять stateful browser sessions
+- накапливать site knowledge
 - учиться у человека через VNC
-- пополнять знания силами самого OpenClaw
-- не превращаться в кладбище одноразовых скриптов
+- позже, при необходимости, перейти к plugin-интеграции без смены общей модели
