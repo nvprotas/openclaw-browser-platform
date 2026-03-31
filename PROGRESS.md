@@ -2,12 +2,12 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 12:39 UTC**
+Последнее обновление: **2026-03-31 12:48 UTC**
 
 ## Короткий статус
 
-- Commit 4 завершён и зафиксирован в git как `3c6d307`
-- текущий `master` содержит и код, и актуальный progress/status для этапа MVP0
+- Commit 5 завершён и зафиксирован в git как `5b79465`
+- добавлена схема текущей архитектуры в `ARCHITECTURE_CURRENT.md`
 - LitRes уже тестируется на живом сайте
 - поиск `1984` через новый runtime уже работает
 - логин через `litres-sberid-login` и `browser-platform` пока **не склеены**
@@ -73,7 +73,8 @@
   - правки эвристик классификации
 
 ### Commit 5 — LitRes pack skeleton
-- **Статус:** `done locally, not committed yet`
+- **Статус:** `done`
+- **Git:** `5b79465`
 - **Что сделано:**
   - создан первый реальный pack `site-packs/litres/`
   - добавлены `manifest.json`, `instructions.md`, `login.md`, `checkout.md`, `hints.json`
@@ -83,7 +84,10 @@
   - добавлены тесты на загрузку/match pack и context summary
 
 ### Commit 6 — Session reuse for LitRes
-- **Статус:** `not started`
+- **Статус:** `next`
+- **Уточнение:**
+  - login должен стать частью обычного LitRes flow
+  - не отдельным внешним предварительным шагом
 
 ### Commit 7 — LitRes search flow
 - **Статус:** `partially proven manually`
@@ -164,10 +168,10 @@
 ## Что нужно сделать следующим
 
 ### Самый ближайший шаг
-1. сделать `site-packs/litres/` skeleton
+1. реализовать reuse авторизованного state для LitRes
+2. встроить login в обычный LitRes flow
 
 ### После этого
-2. реализовать reuse авторизованного state для LitRes
 3. довести сценарий:
    - search
    - open product
