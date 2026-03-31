@@ -1,0 +1,39 @@
+{
+  "name": "openclaw-browser-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser automation platform for OpenClaw.",
+  "type": "module",
+  "packageManager": "npm@10.9.0",
+  "bin": {
+    "browser-platform": "./dist/bin/browser-platform.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist .tmp coverage test-results playwright-report",
+    "dev": "tsx bin/browser-platform.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "playwright:test": "playwright test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.24.0",
+    "@playwright/test": "^1.53.0",
+    "@types/node": "^22.15.30",
+    "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.2",
+    "globals": "^16.0.0",
+    "playwright": "^1.53.0",
+    "prettier": "^3.5.3",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.29.1",
+    "vitest": "^3.1.1"
+  }
+}
