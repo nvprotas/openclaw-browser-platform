@@ -1,235 +1,165 @@
 # openclaw-browser-platform — roadmap
 
-## 0. Новая базовая парадигма
+## 0. Базовая парадигма
 
-Этот репозиторий строится не вокруг идеи:
-- «спрячем браузер за узким API»
-- «для каждого сайта напишем полную обвязку»
-
-А вокруг другой модели:
+Этот проект строится вокруг следующей модели:
 
 ```text
 OpenClaw agent
   + Playwright
-  + site instructions / site packs
   + shared browser helpers
-  + trace memory from previous runs
+  + site packs / site instructions
+  + traces from previous runs
+  + human handoff via VNC when needed
+  + knowledge authoring / learning loop
 ```
 
 То есть:
-- агенту **можно давать Playwright**
-- но агент не должен работать в вакууме
-- устойчивость достигается не site-specific API на каждый сайт, а комбинацией:
-  - **общих helper'ов**
-  - **site packs**
-  - **инструкций по сайту**
-  - **trace/replay/debugging**
-  - **human-in-the-loop на рискованных шагах**
+- агенту **можно и нужно** давать Playwright
+- мы **не** хотим писать полный API/SDK для каждого сайта
+- устойчивость достигается не абстракцией «спрятать браузер», а комбинацией:
+  - общих helper'ов
+  - site packs
+  - инструкций по сайту
+  - traces и replay
+  - демонстраций человека через VNC
+  - постепенного накопления знаний
 
-Главная идея:  
-**не прятать браузер от агента, а дать ему хороший operational framework поверх Playwright.**
+Главная идея:
 
----
-
-## 1. Что именно мы строим
-
-Платформу для браузерной автоматизации под OpenClaw, где:
-- агент умеет работать с реальным браузером через Playwright
-- знания по сайтам хранятся как **site packs**
-- общая логика вынесена в **shared helper library**
-- предыдущие прохождения сохраняются в **traces**
-- критические шаги проходят через **risk rules / human handoff**
-
-Это не «SDK для каждого сайта» и не «магический универсальный агент».  
-Это **слой дисциплины и накопления опыта поверх Playwright**.
+**Не ограничивать агента узким API, а дать ему Playwright + дисциплину + память + наращиваемые знания по сайтам.**
 
 ---
 
-## 2. Почему именно так
+## 1. Что мы строим
 
-### Что не взлетает
-Если делать жёсткий API на каждый сайт, получится:
-- много ручной обвязки
-- высокий порог добавления новых сайтов
-- постоянный долг поддержки
-- слишком медленное масштабирование
+Платформу браузерной автоматизации под OpenClaw, где:
+- агент выполняет действия через Playwright
+- site-specific знания хранятся в `site-packs/`
+- типовые browser-паттерны живут в shared helper library
+- застревание можно передать человеку через VNC
+- действия человека во время handoff используются как материал для обучения
+- OpenClaw умеет записывать новые знания:
+  - какие кнопки нажимать
+  - в каком порядке идти
+  - какие сигналы считать успешными
+  - какие recoveries работают
 
-### Что тоже не взлетает
-Если дать агенту только raw Playwright без структуры, получится:
-- хаос в промптах
-- повторяющиеся костыли
-- слабая переиспользуемость
-- трудно дебажить
-- знания не копятся системно
+Это не «полная универсальная магия» и не «обвязка под каждый магазин вручную».  
+Это **эволюционирующая knowledge-driven система поверх Playwright**.
 
-### Что выглядит реалистично
-Средний путь:
-- Playwright остаётся реальным исполнительным слоем
-- общие приёмы жизни в браузере живут в helper library
-- per-site знания живут в instructions/packs
-- traces помогают улучшать packs и инструкции
-- сложные сайты постепенно harden'ятся точечными detectors/recoveries
+---
+
+## 2. Что не взлетает и чего мы избегаем
+
+### Не хотим
+- full site-specific API для каждого сайта
+- толстые hardcoded adapters с первого дня
+- знания, спрятанные только в промптах
+- знания, спрятанные только в логах
+- обучение на основании однократного случайного удачного клика
+- запоминание только координат клика без понимания контекста
+
+### Хотим
+- generic mode для новых сайтов
+- progressive hardening для важных сайтов
+- site packs как lightweight-слой знаний
+- human-assisted learning loop
+- candidate → validated → approved knowledge pipeline
 
 ---
 
 ## 3. Основные принципы
 
-1. **Playwright остаётся доступен агенту**  
-   Мы не строим анти-Playwright архитектуру.
+1. **Playwright — основной исполнительный слой**  
+   Мы не боремся с ним, а используем его как реальный browser runtime.
 
-2. **Не писать полную обвязку на каждый сайт**  
-   Site pack должен быть лёгким и эволюционировать постепенно.
+2. **Не писать «обвязку на всё»**  
+   Site pack должен быть маленьким и усиливаться постепенно.
 
 3. **Progressive hardening**  
-   Новый сайт сначала работает в generic mode, потом получает hints, потом detectors/recoveries, и только в крайнем случае — site-specific код для критичных шагов.
+   Сайт сначала живёт в generic mode, потом получает hints, затем detectors/recoveries, и только при необходимости — site-specific hardened flows.
 
 4. **Instructions are first-class**  
-   Знания по сайту должны храниться не только в коде, но и в читабельных инструкциях для агента.
+   Знания по сайту должны храниться не только в коде, но и в понятных инструкциях для агента.
 
-5. **Shared helpers важнее раннего over-engineering**  
-   Сначала нужен хороший набор общих browser helpers, а не сложная платформенная абстракция.
+5. **Shared helpers важнее ранней гиперабстракции**  
+   Сначала делаем хороший operational toolkit поверх Playwright.
 
-6. **Trace everything important**  
-   Прохождения должны оставлять артефакты: шаги, snapshots, ошибки, recoveries.
+6. **Человек через VNC — не только аварийный режим, но и источник обучения**  
+   Handoff должен превращаться в usable knowledge.
 
-7. **Human-in-the-loop на рискованных шагах**  
-   Логин, 2FA, CAPTCHA, чувствительные платёжные действия, финальный submit — отдельная зона контроля.
+7. **OpenClaw должен уметь записывать новые знания**  
+   Но новые знания не должны сразу автоматически становиться каноном.
 
----
+8. **Запоминаем не “куда кликнули”, а “что сделали и почему это сработало”**  
+   Координаты — только вспомогательный сигнал, а не основное знание.
 
-## 4. Цели первого этапа
-
-### Основные
-- Запустить базовую платформу: Playwright + instructions + site packs + traces.
-- Сделать систему, куда легко добавлять новые сайты без написания «SDK сайта».
-- Создать shared helpers для типовых действий:
-  - поиск
-  - добавление в корзину
-  - открытие корзины
-  - переходы по checkout
-  - работа с попапами
-  - валидация результата
-- Накопить формат знаний по сайтам, который можно постепенно усиливать.
-
-### Не-цели на старте
-- Полная автоматизация оплаты без участия человека.
-- Самообучение без верификации.
-- Идеальная универсальность для любых сайтов с первого дня.
-- Сложный orchestration layer ради abstraction purity.
+9. **Рискованные шаги требуют отдельного контроля**  
+   Логин, OTP, CAPTCHA, финальный submit платежа и заказа — особая зона.
 
 ---
 
-## 5. Ментальная модель поддержки сайтов
+## 4. Модель поддержки сайтов
 
-Не у всех сайтов должен быть одинаковый уровень поддержки.
+Не все сайты должны поддерживаться одинаково.
 
-### Level 0 — generic mode
+### Level 0 — Generic
 Есть только:
 - домен
 - стартовый URL
-- минимальная инструкция
+- краткая инструкция
 
-Агент работает почти целиком сам через Playwright и общие helpers.
+Агент в основном опирается на Playwright + shared helpers.
 
-### Level 1 — site profile
-Добавляется структурированное описание:
-- login hints
-- search hints
-- add-to-cart patterns
-- cart signals
-- checkout notes
+### Level 1 — Profiled
+Есть:
+- `instructions.md`
+- `hints.json`
+- known page types
 - common popups
-- known risks
+- cart signals
+- risk notes
 
-### Level 2 — site helpers
-Добавляются точечные штуки:
-- selectors/hints
+### Level 2 — Assisted
+Добавляются:
 - detectors
 - recoveries
 - validation rules
+- learned candidate flows
 
-### Level 3 — hardened critical flows
-Для самых важных сайтов и самых хрупких шагов добавляется специальная логика:
-- логин
+### Level 3 — Hardened
+Добавляется точечная специальная логика для хрупких мест:
+- login flow
 - add-to-cart
-- ключевые переходы checkout
+- checkout transitions
+- особо нестабильные UI места
 
-Именно так это должно масштабироваться. Не «API на каждый сайт», а **постепенное усиление нужных мест**.
-
----
-
-## 6. Что такое site pack в этой модели
-
-Site pack — это не обязательно толстый адаптер.  
-Это пакет знаний и усилителей для конкретного сайта.
-
-Он может включать:
-- `manifest.json`
-- `instructions.md`
-- `login.md`
-- `checkout.md`
-- `selectors.json` или `hints.json`
-- `detectors.ts`
-- `recoveries.ts`
-- `notes.md`
-
-### Что там хранится
-
-#### Manifest
-- `site_id`
-- `domains`
-- `start_url`
-- `site_type`
-- `risk_flags`
-- `supported_flows`
-- `support_level`
-
-#### Instructions
-Человеческое описание для агента:
-- как обычно устроен сайт
-- где искать поиск
-- как выглядит add-to-cart
-- как подтверждается успех
-- где часто ломается flow
-- когда нужно звать человека
-
-#### Hints/selectors
-Не обязательно жёсткий код, а подсказки:
-- candidate selectors
-- button texts
-- landmarks
-- cart signals
-- modal patterns
-
-#### Detectors
-Точечная логика:
-- определить checkout stage
-- определить login gate
-- определить, что товар реально добавился
-- определить, что открылась корзина
-
-#### Recoveries
-- закрыть common modal
-- повторно синхронизировать страницу
-- открыть cart drawer заново
-- переждать rerender
-- перейти в fallback path
+Это и есть масштабируемая модель. Не «пишем SDK на каждый сайт», а **усиливаем только то, что реально нужно**.
 
 ---
 
-## 7. Shared helper library
+## 5. Основные слои системы
 
-Это главный технический слой, который нужен почти сразу.
+## 5.1 Playwright runtime
 
-Он должен содержать не «бизнес-операции сайта X», а общие примитивы и паттерны исполнения.
+Что должен уметь runtime:
+- открывать browser/session/context
+- navigate/click/fill/type/press
+- читать DOM/HTML
+- делать screenshots
+- писать structured trace events
+- поддерживать pause/handoff/resume
 
-### Примеры helper'ов
+## 5.2 Shared browser helpers
+
+Это общий operational toolkit:
 - `navigateAndWait()`
 - `waitForStableDom()`
 - `closeCommonPopups()`
 - `findSearchInput()`
 - `fillSearchAndSubmit()`
-- `findAddToCartTargets()`
+- `findAddToCartCandidates()`
 - `clickAndValidate()`
 - `detectCartChange()`
 - `openCartByCommonPatterns()`
@@ -238,75 +168,212 @@ Site pack — это не обязательно толстый адаптер.
 - `retryStep()`
 - `recordTraceStep()`
 
-### Важный принцип
-Helper library не должна пытаться знать каждый сайт.  
-Она должна решать типовые browser-проблемы, которые встречаются везде.
+Именно helpers должны покрывать типовые browser-проблемы, а не тащить в себя всю site-specific логику.
 
----
+## 5.3 Site packs
 
-## 8. Traces и память прохождений
+Site pack — это пакет знаний и усилителей по сайту.
 
-Traces — обязательный слой, потому что именно он превращает разовые прогоны в накопление опыта.
+Он может включать:
+- `manifest.json`
+- `instructions.md`
+- `login.md`
+- `checkout.md`
+- `hints.json`
+- `detectors.ts`
+- `recoveries.ts`
+- `learned/`
+- `approved/`
 
-### Что хранить
+## 5.4 Traces
+
+Traces — это основа дебага и обучения.
+
+Нужно хранить:
 - session id
 - site id
-- timestamp
-- текущий flow
+- timestamps
 - шаги
-- screenshot refs
-- DOM/HTML snapshot refs
-- текстовые заметки
-- outcome
-- какие recovery сработали
-- где потребовался handoff
+- screenshots
+- DOM/HTML snapshots
+- заметки агента
+- успех/ошибка
+- сработавшие recoveries
+- точки handoff/resume
 
-### Зачем это нужно
-- дебажить падения
-- улучшать instructions
-- улучшать selectors/hints
-- улучшать detectors/recoveries
-- видеть реальные failure patterns
+## 5.5 Human handoff via VNC
 
-### Что не делать сразу
-- не строить сложный ML/RAG-контур как ядро архитектуры
-- не делать traces единственным источником знаний
+Когда агент застрял:
+- он запрашивает помощь человека
+- система открывает/использует VNC handoff mode
+- система пишет demonstration trace
+- после возврата агент и/или post-processing слой пытаются превратить демонстрацию в знание
 
-Traces — это материал для улучшения packs и helpers, а не замена им.
+## 5.6 Knowledge authoring
 
----
-
-## 9. Risk model
-
-В новой парадигме мы не скрываем Playwright, но это не значит, что риски игнорируются.
-
-### Шаги, которые требуют особого контроля
-- логин с чувствительными данными
-- 2FA / OTP
-- CAPTCHA
-- изменение платёжных реквизитов
-- финальный payment submit
-- подтверждение заказа с финансовыми последствиями
-
-### Что нужно сделать
-- описать risk notes в site packs
-- явно помечать handoff points
-- сохранять trace перед рискованным шагом
-- не пытаться «автоматизировать всё любой ценой»
+OpenClaw должен уметь:
+- создавать новые инструкции
+- добавлять hints
+- сохранять candidate selectors
+- сохранять candidate flow order
+- сохранять success signals
+- сохранять recovery notes
+- помечать источник знаний и confidence
 
 ---
 
-## 10. Предлагаемая структура репозитория
+## 6. Как именно должен работать VNC handoff learning
+
+Это отдельный обязательный контур архитектуры.
+
+### Когда нужен handoff
+- агент не понимает, что делать дальше
+- generic flow сломался
+- на сайте появилась новая модалка/новый UI
+- нужен человек для логина, OTP, CAPTCHA, payment confirmation
+- агент хочет показать человеку текущее состояние и попросить провести несколько шагов вручную
+
+### Что система должна записывать во время VNC handoff
+
+На каждом важном шаге:
+- URL
+- screenshot до действия
+- screenshot после действия
+- DOM snapshot до/после
+- координаты клика/drag/type как сырой сигнал
+- элемент под кликом, если его удалось сопоставить
+- текст кнопки
+- role / aria-label / title / visible text
+- nearby labels и контекст
+- тип действия: click / type / select / press / wait
+- порядок шагов
+- какое изменение произошло после действия
+
+### Что мы НЕ должны считать знанием по умолчанию
+- голые координаты клика
+- точный nth-child путь
+- случайный dynamic id
+- одноразовый локальный state
+
+### Что мы ХОТИМ извлекать из handoff
+- какой semantic action сделал человек
+- по какому элементу он кликнул
+- как этот элемент можно найти в будущем
+- в каком порядке человек прошёл шаги
+- какой сигнал говорит, что шаг успешен
+- какой recovery использовал человек
+
+### Результат VNC handoff
+Не «человек кликнул в x=842, y=611», а:
+- `action_intent: add_to_cart`
+- `page_signature: product_page`
+- `target_text: "В корзину"`
+- `selector_candidates: [...]`
+- `success_signal: cart_badge_increment`
+- `source: human_demo`
+- `confidence: low|medium|high`
+
+---
+
+## 7. Как OpenClaw должен добавлять новые знания
+
+OpenClaw должен уметь не только пользоваться знаниями, но и пополнять их.
+
+### Какие знания он должен уметь добавлять
+- новые site instructions
+- новые hints/selectors
+- распознанные кнопки и тексты
+- candidate step order
+- page signatures
+- success signals
+- failure patterns
+- recovery steps
+
+### Но есть важное ограничение
+OpenClaw **не должен** в ранних MVP бездумно переписывать approved code/knowledge.
+
+Нужен pipeline:
+
+```text
+raw trace / human demo
+    ↓
+candidate knowledge
+    ↓
+validation / replay / repeated success
+    ↓
+approved knowledge
+```
+
+### Типы источников знания
+Каждый knowledge object должен хранить:
+- `source: human_demo | agent_success | manual_authoring | imported`
+- `confidence`
+- `created_at`
+- `last_verified_at`
+- `verification_count`
+- `site_id`
+- `page_signature`
+
+### Где OpenClaw может писать безопасно
+В ранних инкрементах — в:
+- `learned/candidate-flows.json`
+- `learned/candidate-selectors.json`
+- `learned/candidate-signals.json`
+- `learned/notes.md`
+
+А не сразу в:
+- `approved/hints.json`
+- `detectors.ts`
+- `recoveries.ts`
+
+---
+
+## 8. Модель знаний
+
+Явно разделяем четыре слоя знаний.
+
+## 8.1 Raw runtime artifacts
+Сырые данные:
+- traces
+- screenshots
+- DOM snapshots
+- raw VNC events
+- chat notes
+
+## 8.2 Candidate knowledge
+Черновики, извлечённые из trace или human demo:
+- candidate selectors
+- candidate button text
+- candidate flows
+- candidate success signals
+- candidate recoveries
+
+## 8.3 Validated knowledge
+Кандидаты, которые уже были подтверждены повторным успешным прохождением.
+
+## 8.4 Approved pack knowledge
+То, что уже считается рабочей частью site pack:
+- approved instructions
+- approved hints
+- approved detectors/recoveries
+- approved flow notes
+
+---
+
+## 9. Предлагаемая структура репозитория
 
 ```text
 openclaw-browser-platform/
   README.md
   ROADMAP.md
+
   docs/
     architecture.md
     site-pack-spec.md
     trace-model.md
+    demo-learning.md
     safety.md
+    mvp-plan.md
 
   src/
     core/
@@ -314,13 +381,15 @@ openclaw-browser-platform/
       errors/
       logging/
       risk/
+      knowledge/
 
     playwright/
       browser-session.ts
       controller.ts
-      snapshots.ts
       waits.ts
+      snapshots.ts
       dom-utils.ts
+      event-capture.ts
 
     helpers/
       navigation.ts
@@ -332,30 +401,43 @@ openclaw-browser-platform/
       validation.ts
       tracing.ts
       retries.ts
+      semantic-actions.ts
 
     packs/
       loader.ts
       manifest.ts
       instructions.ts
       hints.ts
-      detectors.ts
-      recoveries.ts
+      support-levels.ts
+      candidate-knowledge.ts
+      approved-knowledge.ts
 
     traces/
       trace-store.ts
       trace-schema.ts
       replay.ts
+      artifact-index.ts
+
+    demos/
+      vnc-capture.ts
+      action-extractor.ts
+      dom-alignment.ts
+      candidate-generator.ts
+      replay-candidate.ts
 
     runtime/
       run-site-flow.ts
       run-step.ts
-      step-context.ts
+      handoff.ts
+      resume.ts
       flow-result.ts
 
     integrations/
       openclaw/
         session-bridge.ts
         prompt-context.ts
+        knowledge-writes.ts
+        handoff-events.ts
 
   site-packs/
     example-shop/
@@ -364,12 +446,26 @@ openclaw-browser-platform/
       login.md
       checkout.md
       hints.json
+      learned/
+        candidate-flows.json
+        candidate-selectors.json
+        candidate-signals.json
+        notes.md
+      approved/
+        flow-notes.json
+        validation-rules.json
       detectors.ts
       recoveries.ts
+
+  traces/
+    raw/
+    demos/
+    replay/
 
   examples/
     demo-generic-run.ts
     demo-pack-run.ts
+    demo-vnc-handoff.ts
 
   tests/
     unit/
@@ -379,388 +475,360 @@ openclaw-browser-platform/
 
 ---
 
-## 11. Рабочие сценарии, которые надо поддержать
+## 10. Product increments — что будет в MVP0, MVP1, MVP2 и дальше
 
-На первом этапе нужны не «абстрактные capabilities», а реальные пользовательские сценарии.
-
-### Базовые сценарии
-1. открыть сайт
-2. залогиниться или дойти до login gate
-3. найти товар
-4. открыть карточку
-5. добавить товар в корзину
-6. открыть корзину
-7. перейти к checkout
-8. остановиться перед рискованным шагом или запросить handoff
-
-### Generic-стратегия
-Сначала пытаемся пройти flow:
-- через общие helpers
-- с учётом instructions/hints
-- с записью traces
-
-Если сайт оказывается проблемным, усиливаем его pack точечно.
+Это главный раздел.  
+Ниже описано, что именно считается полезным продуктовым инкрементом.
 
 ---
 
-## 12. Этапы работ
+## MVP0 — usable manual foundation
 
-## M0 — bootstrap
+### Цель
+Сделать минимально полезную систему, где агент уже может работать через Playwright, используя helpers и site instructions, но без сложного обучения.
 
-### Что сделать
-- Поднять TypeScript-проект.
-- Настроить package manager, tsconfig, eslint, prettier, test runner.
-- Подключить Playwright.
-- Подготовить базовый CI.
+### Что войдёт
+- TypeScript + Playwright foundation
+- browser runtime:
+  - session/context/page lifecycle
+  - click/fill/type/navigate/extract/screenshot
+- shared helpers v1:
+  - navigation
+  - popups
+  - search helpers
+  - cart helpers
+  - validation helpers
+  - retry helpers
+- базовый формат site pack:
+  - `manifest.json`
+  - `instructions.md`
+  - `hints.json`
+- загрузка pack по домену
+- instructions injection в запуск
+- traces v1:
+  - step logs
+  - screenshots
+  - DOM/HTML snapshots
+- один example site pack
+- базовые handoff markers:
+  - агент может сказать «нужна помощь человека»
+  - trace фиксирует точку остановки
 
-### Deliverables
-- `package.json`
-- `tsconfig.json`
-- lint/test config
-- Playwright dependency
-- CI
+### Что НЕ войдёт
+- автоматическое извлечение знаний из VNC
+- автоматическое обновление approved pack knowledge
+- полноценный validation pipeline
+- автопромоут candidate knowledge
 
 ### Критерий готовности
-- проект ставится и запускается
-- можно выполнить минимальный Playwright script
-
-### Оценка
-- 0.5–1 день
+- агент может пройти базовый flow на простом сайте с pack-assisted mode
+- можно отследить, где именно flow сломался
+- можно вручную дописать/исправить pack
 
 ---
 
-## M1 — raw Playwright runtime, но дисциплинированный
+## MVP1 — handoff-aware system
 
-### Что сделать
-Сделать минимальный runtime для реальной работы браузера:
-- browser session
-- page/session lifecycle
-- navigate/click/fill/extract/screenshot
-- HTML/DOM snapshot
-- waits/timeouts
+### Цель
+Добавить полноценный человеческий handoff и сбор демонстраций как артефактов для последующего обучения.
+
+### Что войдёт
+- VNC handoff lifecycle:
+  - pause
+  - human takes over
+  - resume
+- demonstration capture:
+  - screenshots до/после
+  - DOM snapshots до/после
+  - raw user actions
+  - timestamps
+- сохранение demo artifacts в `traces/demos/`
+- начальный extractor, который пытается определить:
+  - по какому элементу человек кликнул
+  - какой был текст/роль элемента
+  - какой step order прошёл человек
+- candidate knowledge format:
+  - candidate selectors
+  - candidate flow steps
+  - candidate success signals
+- OpenClaw knowledge writes v1:
+  - запись новых черновых знаний в `learned/`
+  - запись `source`, `confidence`, `verification_count`
+- базовый replay одного candidate step для проверки гипотезы
+
+### Что НЕ войдёт
+- полностью автоматическая промоция в approved
+- автоматическая генерация detectors.ts
+- сложное обучение на многошаговых демо без валидации
+
+### Критерий готовности
+- человек может помочь через VNC
+- после handoff система сохраняет пригодные для анализа demonstration artifacts
+- OpenClaw умеет создать candidate knowledge из демонстрации
+
+---
+
+## MVP2 — learning from demonstrations
+
+### Цель
+Сделать так, чтобы помощь человека реально улучшала последующие прохождения.
+
+### Что войдёт
+- action extraction v2:
+  - сопоставление raw click с DOM element candidate
+  - semantic action inference
+  - page signature extraction
+- flow candidate generator:
+  - sequence of steps
+  - page transitions
+  - success signals
+  - fallback hints
+- verification pipeline:
+  - повторный replay candidate knowledge
+  - verification count
+  - confidence updates
+- validated knowledge layer
+- простая промоция:
+  - confirmed selectors → approved hints
+  - confirmed flow notes → approved flow notes
+- support for mixed sources:
+  - `human_demo`
+  - `agent_success`
+  - `manual_authoring`
+
+### Что НЕ войдёт
+- полностью автономное обучение без ограничений
+- массовая автоматическая генерация hardcoded flows
+- переписывание detectors/recoveries без review rules
+
+### Критерий готовности
+- после 1–2 демонстраций агент реально лучше проходит похожий flow
+- новые знания можно отследить и объяснить
+
+---
+
+## MVP3 — self-improving site packs
+
+### Цель
+Сделать так, чтобы OpenClaw мог системно наращивать знания по сайтам, а не просто копить traces.
+
+### Что войдёт
+- OpenClaw knowledge authoring v2:
+  - обновление instructions draft
+  - обновление candidate hints
+  - добавление новых flow notes
+  - добавление recovery notes
+- approval rules
+- candidate vs approved diffing
+- trace-driven suggestions:
+  - «этот selector устарел»
+  - «эта кнопка стабильно работает лучше»
+  - «этот recovery часто спасает flow»
+- progressive hardening controls:
+  - support level upgrades
+  - feature flags per site
+- resume after human handoff с учётом новых знаний
+
+### Что НЕ войдёт
+- полное отсутствие human review для sensitive knowledge
+- автоматическая бесконтрольная модификация production packs
+
+### Критерий готовности
+- система может наращивать site pack без тотального ручного переписывания
+- знания живут в понятной структуре, а не в истории чатов
+
+---
+
+## MVP4 — production hardening
+
+### Цель
+Довести систему до состояния, где она может устойчиво обслуживать несколько важных сайтов и долго жить.
+
+### Что войдёт
+- несколько реальных site packs
+- стабильный handoff/resume lifecycle
+- проверка backwards compatibility pack changes
+- artifact browser / trace inspection UX
+- улучшенные recoveries
+- более строгий risk layer
+- policy around payment/OTP/CAPTCHA
+
+### Критерий готовности
+- можно поддерживать несколько сайтов без ощущения, что всё держится на случайности
+
+---
+
+## 11. Engineering milestones
+
+Ниже — инженерные шаги, как дойти до MVP'шек.
+
+### M0 — Bootstrap
+- package manager
+- tsconfig
+- lint/test setup
+- Playwright setup
+- базовый CI
+
+### M1 — Playwright runtime
+- session/context/page lifecycle
+- navigation/click/fill/extract
+- screenshots/snapshots
 - structured logging
 
-### Deliverables
-- `src/playwright/*`
-- простой demo script
-
-### Критерий готовности
-- можно открыть сайт, найти элементы, кликнуть, снять артефакты
-
-### Оценка
-- 1–2 дня
-
----
-
-## M2 — shared helper library v1
-
-### Что сделать
-Сделать первые реально полезные browser helpers:
-- navigation helpers
-- popup handling
-- search helpers
-- add-to-cart verification helpers
-- cart open helpers
-- login gate detection
-- generic retry helpers
+### M2 — Shared helpers
+- popups
+- search
+- cart
+- validation
+- retries
 - trace hooks
 
-### Deliverables
-- `src/helpers/*`
-- unit tests
-
-### Критерий готовности
-- агенту уже можно давать Playwright + helper library + короткую инструкцию
-
-### Оценка
-- 2–3 дня
-
----
-
-## M3 — site pack spec
-
-### Что сделать
-Зафиксировать формат site packs.
-
-### Нужно покрыть
-- manifest schema
-- instructions format
-- hints format
-- optional detector/recovery hooks
-- support levels
-- risk flags
-
-### Deliverables
-- `docs/site-pack-spec.md`
-- `src/packs/manifest.ts`
-- `src/packs/loader.ts`
-
-### Критерий готовности
-- можно положить новый pack в `site-packs/` и загрузить его по домену
-
-### Оценка
-- 1 день
-
----
-
-## M4 — instructions pipeline
-
-### Что сделать
-Сделать слой, который подмешивает в запуск site instructions:
-- общие runtime conventions
-- site-specific instructions
-- hints/selectors
-- risk notes
-- last successful patterns from traces
-
-### Deliverables
-- `src/packs/instructions.ts`
-- `src/integrations/openclaw/prompt-context.ts`
-
-### Критерий готовности
-- агент получает не пустой browser session, а контекст по сайту и общие правила выполнения
-
-### Оценка
-- 1–2 дня
-
----
-
-## M5 — traces v1
-
-### Что сделать
-Сделать trace storage и replay-friendly артефакты.
-
-### Deliverables
-- `src/traces/trace-store.ts`
-- `src/traces/trace-schema.ts`
-- `docs/trace-model.md`
-
-### Критерий готовности
-- после запуска можно посмотреть, что происходило пошагово
-- понятно, как использовать traces для улучшения site pack
-
-### Оценка
-- 1–2 дня
-
----
-
-## M6 — site pack example
-
-### Что сделать
-Сделать один полноценный demo pack.
-
-### Что должно быть внутри
+### M3 — Site pack spec
 - manifest
 - instructions
 - hints
-- минимум один detector
-- минимум один recovery
-- demo flow
-
-### Критерий готовности
-- демонстрация generic mode vs pack-assisted mode на одном сайте
-
-### Оценка
-- 2 дня
-
----
-
-## M7 — progressive hardening layer
-
-### Что сделать
-Добавить механику усиления сайтов без переписывания всего flow.
-
-### Что именно
 - support levels
-- optional pack hooks
-- fallback chains
-- success validators
-- site-specific recoveries
+- pack loader
 
-### Критерий готовности
-- можно усиливать один проблемный участок, не превращая весь сайт в огромный адаптер
+### M4 — Traces v1
+- trace schema
+- artifact layout
+- replay basics
 
-### Оценка
-- 1–2 дня
+### M5 — Handoff v1
+- pause/resume
+- VNC event capture
+- demo artifacts
 
----
+### M6 — Candidate knowledge pipeline
+- candidate formats
+- action extraction
+- knowledge writes to `learned/`
 
-## M8 — OpenClaw integration
+### M7 — Validation pipeline
+- replay candidates
+- confidence updates
+- approved vs candidate split
 
-### Что сделать
-Сделать интеграционный слой под OpenClaw.
+### M8 — Progressive hardening
+- support level upgrade path
+- detector/recovery injection
+- site-specific strengthenings
 
-### Что важно
-Не строить жёсткий site API.  
-Нужно уметь запускать browser session с правильным контекстом:
-- Playwright access
-- helper library
-- site instructions
-- current pack
-- traces summary
-
-### Deliverables
-- `src/integrations/openclaw/session-bridge.ts`
-- `src/integrations/openclaw/prompt-context.ts`
-
-### Критерий готовности
-- OpenClaw может запускать браузерные задачи с нужным operational context
-
-### Оценка
-- 1 день
+### M9 — Release hardening
+- docs
+- examples
+- testing matrix
+- release baseline
 
 ---
 
-## M9 — safety/handoff layer
+## 12. MVP mapping to milestones
 
-### Что сделать
-Описать и реализовать handoff точки.
+Чтобы не потеряться в терминах:
 
-### Что покрыть
-- login notes
-- OTP/2FA/CAPTCHA
-- payment gates
-- final confirmation
-- trace before handoff
-- resume after handoff
-
-### Критерий готовности
-- рискованные моменты не теряются и не выполняются «мимоходом»
-
-### Оценка
-- 1 день
+- **MVP0** ≈ M0 + M1 + M2 + M3 + M4
+- **MVP1** ≈ MVP0 + M5 + часть M6
+- **MVP2** ≈ MVP1 + M6 + M7
+- **MVP3** ≈ MVP2 + M8
+- **MVP4** ≈ MVP3 + M9
 
 ---
 
-## M10 — docs and release baseline
+## 13. Что делать прямо сейчас
 
-### Что сделать
-- обновить README
-- добавить quickstart
-- добавить how-to for new site pack
-- добавить примеры generic run и pack-assisted run
-- собрать `v0.1.0`
+Если двигаться прагматично, следующий реальный порядок такой:
 
-### Критерий готовности
-- новый разработчик понимает, как добавить сайт и как усилить его постепенно
+1. поднять TypeScript + Playwright
+2. сделать runtime
+3. сделать helper library v1
+4. зафиксировать site pack spec
+5. сделать traces v1
+6. сделать один example site pack
+7. после этого добавлять handoff/demos/learning
 
-### Оценка
-- 1 день
-
----
-
-## 13. Порядок реализации
-
-Рекомендуемый порядок:
-
-1. M0 bootstrap
-2. M1 Playwright runtime
-3. M2 shared helpers
-4. M3 site pack spec
-5. M4 instructions pipeline
-6. M5 traces
-7. M6 example pack
-8. M7 progressive hardening
-9. M8 OpenClaw integration
-10. M9 safety/handoff
-11. M10 docs/release
-
-Причина простая:
-- сначала нужен живой Playwright runtime
-- потом helpers
-- потом packs/instructions
-- и только потом более сложные усиления
+Почему именно так:
+- без живого runtime нечего учить
+- без helpers агент будет тонуть в raw DOM-хаосе
+- без traces нечем будет питать learning loop
+- без pack format знаниям некуда складываться
 
 ---
 
-## 14. v0.1 scope
-
-Чтобы не утонуть, в `v0.1` надо сделать только это.
-
-### Обязательно
-- Playwright runtime
-- shared helpers v1
-- site pack format
-- instructions injection
-- traces v1
-- один demo site pack
-- handoff points для рискованных шагов
-
-### Не обязательно
-- универсальный checkout engine
-- автоматическое обучение packs
-- полноценный RAG по traces
-- богатая capability taxonomy
-- много сайтов сразу
-
----
-
-## 15. Минимальный backlog по коммитам
+## 14. Первый backlog на ближайшие коммиты
 
 ### Commit 1
 Bootstrap:
 - package.json
 - tsconfig
 - eslint/prettier
-- test runner
+- vitest/jest
 - Playwright
 
 ### Commit 2
-Playwright runtime:
-- browser session
+Runtime:
+- browser-session
 - controller
 - waits
 - snapshots
 
 ### Commit 3
-Shared helpers v1:
+Helpers:
 - navigation
 - popups
 - search
-- cart helpers
+- cart
 - validation
+- tracing helpers
 
 ### Commit 4
-Site pack spec:
-- manifest schema
-- instructions format
+Pack spec:
+- manifest
+- instructions
+- hints
 - loader
-- example manifest
+- example pack skeleton
 
 ### Commit 5
-Trace layer:
+Traces:
 - trace schema
-- trace store
-- step logging
+- artifact layout
+- replay basics
 
 ### Commit 6
 Example pack:
 - instructions.md
 - hints.json
-- detector
-- recovery
 - demo flow
 
 ### Commit 7
-OpenClaw bridge:
-- prompt context builder
-- session bridge
-- handoff handling
+Handoff foundation:
+- pause/resume
+- handoff events
+- demo artifact capture skeleton
+
+### Commit 8
+Candidate knowledge:
+- learned/ format
+- knowledge write pipeline
+- source/confidence metadata
 
 ---
 
-## 16. Что делать прямо сейчас
+## 15. Самый важный итог
 
-Самый практичный следующий шаг:
+Архитектура проекта должна опираться на формулу:
 
-1. поднять TypeScript + Playwright
-2. сделать минимальный browser runtime
-3. написать первые shared helpers
-4. зафиксировать site pack spec
-5. сделать один example pack
+**Playwright + helpers + site packs + traces + human demos + knowledge authoring**
 
-Это даст живую, реалистичную основу под модель:
+А не на:
+- «сырой браузер и хаос»
+- «узкий API на каждый сайт»
+- «память только в логах»
 
-**Playwright + instructions + site packs + traces**
-
-А уже потом можно смотреть, где реально нужны более жёсткие abstractions.
+Если это выдержать, то система сможет:
+- быстро стартовать на новых сайтах
+- усиливаться на важных сайтах
+- учиться у человека через VNC
+- пополнять знания силами самого OpenClaw
+- не превращаться в кладбище одноразовых скриптов
