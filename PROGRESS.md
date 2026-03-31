@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 13:16 UTC**
+Последнее обновление: **2026-03-31 13:45 UTC**
 
 ## Короткий статус
 
@@ -10,9 +10,13 @@
 - добавлена схема текущей архитектуры в `ARCHITECTURE_CURRENT.md`
 - LitRes уже тестируется на живом сайте
 - поиск `1984` через новый runtime уже работает
-- `Commit 6.1` реализован локально: LitRes bootstrap/login attempt теперь встроен в normal `session open` flow
+- `Commit 6.1` реализован и запушен как `998608a`
+- LitRes bootstrap/login attempt теперь встроен в normal `session open` flow
+- LitRes bootstrap ownership перенесён внутрь repo; зависимость от workspace script path убрана
 - `authContext` расширен явными bootstrap outcome-флагами (`handoffRequired`, `bootstrapFailed`, `redirectedToSberId`, `bootstrapStatus` и др.)
 - build/test/lint проходят после интеграции bootstrap path
+- живой smoke-тест на LitRes после push показал, что login bootstrap пока до usable authenticated state не доводит flow до конца
+- при свежем прогоне `session context` уже корректно возвращает `authContext` (BUG-003 больше не воспроизводится)
 
 ## Правило ведения файла
 
@@ -104,10 +108,12 @@
   - добавлены тесты на reuse storage state и login gate detection
 
 ### Commit 6.1 — Full Sber ID login inside browser-platform flow
-- **Статус:** `done locally`
+- **Статус:** `done`
+- **Git:** `998608a`
 - **Что сделано:**
-  - `session open` для LitRes теперь не только reuse-ит storage state, но и при необходимости запускает встроенный bootstrap attempt через существующий `litres-sberid-login/scripts/litres-login.js`
-  - bootstrap path использует существующие артефакты Sber/LitRes (`sber-cookies.json`, `tmp/sberid-login/litres/storage-state.json`), а не отдельный новый login-механизм
+  - `session open` для LitRes теперь не только reuse-ит storage state, но и при необходимости запускает встроенный bootstrap attempt
+  - bootstrap implementation теперь живёт внутри repo (`src/daemon/litres-auth.ts`), а не во внешнем workspace skill script
+  - bootstrap path по умолчанию всё ещё использует существующие артефакты Sber/LitRes (`sber-cookies.json`, `tmp/sberid-login/litres/storage-state.json`)
   - после bootstrap runtime переоткрывает ту же LitRes session уже с обновлённым storage state
   - `authContext` расширен полями:
     - `handoffRequired`
@@ -178,8 +184,13 @@
 
 ### Проверено, но пока не работает как нужно
 - `litres-sberid-login` запускается и уводит в Sber ID
-- но авторизационный state **не подхватывается автоматически** в `browser-platform`
-- после возврата на LitRes страница всё ещё выглядит анонимной (`Войти` виден)
+- встроенный bootstrap path в `browser-platform` теперь тоже запускается как часть normal flow
+- `session context` теперь уже показывает `authContext` корректно
+- но после живого smoke-теста LitRes auth state всё ещё такой:
+  - `state = login_gate_detected`
+  - `handoffRequired = true`
+  - `redirectedToSberId = true`
+- на самой странице LitRes по-прежнему виден `Войти`, то есть usable authenticated state пока не достигнут
 
 ---
 
@@ -188,20 +199,19 @@
 ### Уже занесено в BUGS.md
 - `BUG-001` — главная LitRes ошибочно классифицировалась как `auth_form` (`fixed`)
 - `BUG-002` — LitRes home/search могут ошибочно классифицироваться как `cart` (`open`)
+- `BUG-003` — `session context` не показывал `authContext` в CLI output после Commit 6/6.1 (`fixed`)
 
 ### Дополнительные blockers
-- login state между:
-  - `litres-sberid-login`
-  - и `browser-platform`
-  пока не склеен
+- integrated LitRes bootstrap path пока не доводит flow до реально usable authenticated state
+- нужно починить serialization/output path для `session context`, чтобы planner реально видел `authContext`
 
 ---
 
 ## Что нужно сделать следующим
 
 ### Самый ближайший шаг
-1. реализовать `Commit 6.1` — full Sber ID login inside browser-platform flow
-2. при этом переиспользовать уже существующий `litres-sberid-login` skill как основу bootstrap path
+1. проверить и починить output/serialization path для `session context` (`BUG-003`)
+2. разобраться, почему integrated bootstrap path всё ещё оставляет LitRes в анонимном состоянии
 
 ### После этого
 3. довести сценарий:

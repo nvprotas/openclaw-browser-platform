@@ -81,7 +81,7 @@ describe('integrated LitRes bootstrap', () => {
     });
 
     expect(result.attempted).toBe(true);
-    expect(result.scriptPath).toContain('litres-login.js');
+    expect(result.scriptPath).toBe('repo:src/daemon/litres-auth.ts');
     expect(result.statePath).toContain('browser-platform-missing-state.json');
     expect(result.status).toBe('skipped_missing_cookies');
     expect(result.bootstrapFailed).toBe(true);

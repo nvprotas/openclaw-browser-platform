@@ -10,7 +10,7 @@ This repository currently contains:
 - baseline ESLint, Prettier, Vitest, and Playwright config
 - CLI entrypoint with JSON-first command handling
 - minimal localhost daemon skeleton with stateful in-memory session registry
-- LitRes-oriented session/auth reuse via storage-state loading and auth-state reporting
+- LitRes-oriented session/auth reuse via storage-state loading, repo-owned bootstrap, and auth-state reporting
 - file-backed daemon discovery via `.tmp/browser-platform/daemon.json`
 - integration and unit tests for daemon/session lifecycle
 

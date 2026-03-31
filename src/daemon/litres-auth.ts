@@ -1,16 +1,14 @@
-import { access } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { chromium } from 'playwright';
+import type { Page } from 'playwright';
 import type { LoadedSitePack } from '../packs/loader.js';
 
-const execFileAsync = promisify(execFile);
-
 export const DEFAULT_LITRES_STORAGE_STATE = '/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json';
-export const DEFAULT_LITRES_LOGIN_SCRIPT =
-  '/root/.openclaw/workspace/skills/litres-sberid-login/scripts/litres-login.js';
 export const DEFAULT_SBER_COOKIES_PATH = '/root/.openclaw/workspace/sber-cookies.json';
 export const DEFAULT_LITRES_BOOTSTRAP_OUT_DIR = '/root/.openclaw/workspace/tmp/sberid-login/litres';
+export const DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL = 'https://www.litres.ru/auth/login/';
+export const REPO_OWNED_LITRES_BOOTSTRAP = 'repo:src/daemon/litres-auth.ts';
 
 export interface LitresBootstrapResolution {
   storageStatePath: string | null;
@@ -26,7 +24,6 @@ export interface LitresBootstrapAttemptResult {
     | 'not_attempted'
     | 'reused_existing_state'
     | 'not_applicable'
-    | 'skipped_missing_script'
     | 'skipped_missing_cookies'
     | 'redirected_to_sberid'
     | 'handoff_required'
@@ -44,14 +41,6 @@ export interface LitresBootstrapAttemptResult {
   errorMessage: string | null;
 }
 
-interface LitresLoginScriptJson {
-  ok?: boolean;
-  status?: string;
-  finalUrl?: string;
-  statePath?: string;
-  outDir?: string;
-}
-
 export async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -59,6 +48,22 @@ export async function fileExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function ensureDir(dir: string): Promise<void> {
+  await mkdir(dir, { recursive: true });
+}
+
+async function saveBodyText(page: Page, file: string): Promise<string> {
+  const text = await page.locator('body').innerText().catch(() => '');
+  await writeFile(file, text || '', 'utf8');
+  return text || '';
+}
+
+async function maybeScreenshot(page: Page, file: string, enabled: boolean, screenshots: string[]): Promise<void> {
+  if (!enabled) return;
+  await page.screenshot({ path: file, fullPage: true });
+  screenshots.push(file);
 }
 
 export async function resolveStorageStateForSession(input: {
@@ -96,9 +101,10 @@ export async function resolveStorageStateForSession(input: {
 export async function runIntegratedLitresBootstrap(input: {
   matchedPack: LoadedSitePack | null;
   storageStatePath: string | null;
-  scriptPath?: string;
   cookiesPath?: string;
   outDir?: string;
+  headed?: boolean;
+  debugScreenshots?: boolean;
 }): Promise<LitresBootstrapAttemptResult> {
   if (input.matchedPack?.summary.siteId !== 'litres') {
     return {
@@ -117,26 +123,8 @@ export async function runIntegratedLitresBootstrap(input: {
     };
   }
 
-  const scriptPath = path.resolve(input.scriptPath ?? DEFAULT_LITRES_LOGIN_SCRIPT);
   const cookiesPath = path.resolve(input.cookiesPath ?? DEFAULT_SBER_COOKIES_PATH);
   const outDir = path.resolve(input.outDir ?? DEFAULT_LITRES_BOOTSTRAP_OUT_DIR);
-  if (!(await fileExists(scriptPath))) {
-    return {
-      attempted: true,
-      ok: false,
-      status: 'skipped_missing_script',
-      handoffRequired: false,
-      redirectedToSberId: false,
-      bootstrapFailed: true,
-      scriptPath,
-      statePath: input.storageStatePath,
-      outDir,
-      finalUrl: null,
-      rawStatus: null,
-      errorMessage: 'LitRes login bootstrap script is missing'
-    };
-  }
-
   if (!(await fileExists(cookiesPath))) {
     return {
       attempted: true,
@@ -145,7 +133,7 @@ export async function runIntegratedLitresBootstrap(input: {
       handoffRequired: false,
       redirectedToSberId: false,
       bootstrapFailed: true,
-      scriptPath,
+      scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath: input.storageStatePath,
       outDir,
       finalUrl: null,
@@ -155,24 +143,65 @@ export async function runIntegratedLitresBootstrap(input: {
   }
 
   const statePath = path.resolve(input.storageStatePath ?? DEFAULT_LITRES_STORAGE_STATE);
+  const screenshots: string[] = [];
+  await ensureDir(outDir);
+  await ensureDir(path.dirname(statePath));
+
+  const cookies = JSON.parse(await readFile(cookiesPath, 'utf8')) as Array<{
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+    sameSite?: 'Strict' | 'Lax' | 'None';
+  }>;
+
+  const browser = await chromium.launch({ headless: !input.headed });
+  const reusedSavedState = await fileExists(statePath);
+  const context = reusedSavedState
+    ? await browser.newContext({ viewport: { width: 1440, height: 1200 }, storageState: statePath })
+    : await browser.newContext({ viewport: { width: 1440, height: 1200 } });
+  const page = await context.newPage();
 
   try {
-    const { stdout } = await execFileAsync(process.execPath, [
-      scriptPath,
-      '--cookies',
-      cookiesPath,
-      '--out-dir',
-      outDir,
-      '--state',
-      statePath
+    await context.addCookies(cookies as Parameters<typeof context.addCookies>[0]);
+    await context.storageState({ path: statePath });
+
+    await page.goto(DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });
+    await page.waitForTimeout(1500);
+    await maybeScreenshot(page, path.join(outDir, '01-login-page.png'), Boolean(input.debugScreenshots), screenshots);
+
+    const otherWays = page.locator('text=Другие способы').first();
+    await otherWays.waitFor({ state: 'visible', timeout: 30000 });
+    await otherWays.click({ timeout: 30000 });
+    await page.waitForTimeout(1500);
+    await maybeScreenshot(page, path.join(outDir, '02-other-ways.png'), Boolean(input.debugScreenshots), screenshots);
+
+    const sberIcon = page.locator('img[alt="sb"]').first();
+    await sberIcon.waitFor({ state: 'visible', timeout: 30000 });
+
+    const beforeClickUrl = page.url();
+    await Promise.allSettled([
+      page.waitForURL(/id\.sber\.ru|callbacks\/social-auth|litres\.ru/i, { timeout: 20000 }),
+      sberIcon.click({ timeout: 10000 })
     ]);
 
-    const parsed = JSON.parse(stdout.trim()) as LitresLoginScriptJson;
-    const rawStatus = parsed.status ?? null;
-    const finalUrl = parsed.finalUrl ?? null;
+    await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+
+    const finalUrl = page.url();
+    const text = await saveBodyText(page, path.join(outDir, 'page.txt'));
+    await maybeScreenshot(page, path.join(outDir, '03-after-sber-click.png'), Boolean(input.debugScreenshots), screenshots);
+    await context.storageState({ path: statePath });
+
+    const lowered = text.toLowerCase();
+    const redirectedToSberId = /id\.sber\.ru/i.test(finalUrl);
+    const maybeAuthenticated = /callbacks\/social-auth/i.test(finalUrl) || /выйти|профиль|аккаунт|мой кабинет/i.test(lowered);
     const stateExists = await fileExists(statePath);
 
-    if (rawStatus === 'redirected-to-sberid') {
+    if (redirectedToSberId) {
       return {
         attempted: true,
         ok: true,
@@ -180,16 +209,16 @@ export async function runIntegratedLitresBootstrap(input: {
         handoffRequired: true,
         redirectedToSberId: true,
         bootstrapFailed: false,
-        scriptPath,
+        scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
         statePath,
-        outDir: parsed.outDir ?? outDir,
+        outDir,
         finalUrl,
-        rawStatus,
+        rawStatus: 'redirected-to-sberid',
         errorMessage: null
       };
     }
 
-    if (rawStatus === 'litres-callback' || rawStatus === 'maybe-authenticated') {
+    if (maybeAuthenticated) {
       return {
         attempted: true,
         ok: true,
@@ -197,11 +226,11 @@ export async function runIntegratedLitresBootstrap(input: {
         handoffRequired: false,
         redirectedToSberId: false,
         bootstrapFailed: false,
-        scriptPath,
+        scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
         statePath,
-        outDir: parsed.outDir ?? outDir,
+        outDir,
         finalUrl,
-        rawStatus,
+        rawStatus: finalUrl.includes('/callbacks/social-auth') ? 'litres-callback' : 'maybe-authenticated',
         errorMessage: null
       };
     }
@@ -213,14 +242,18 @@ export async function runIntegratedLitresBootstrap(input: {
       handoffRequired: false,
       redirectedToSberId: false,
       bootstrapFailed: !stateExists,
-      scriptPath,
+      scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath,
-      outDir: parsed.outDir ?? outDir,
-      finalUrl,
-      rawStatus,
+      outDir,
+      finalUrl: finalUrl === beforeClickUrl ? finalUrl : finalUrl,
+      rawStatus: finalUrl === beforeClickUrl ? 'loaded' : 'navigated',
       errorMessage: stateExists ? null : 'Bootstrap finished without producing a reusable state file'
     };
   } catch (error) {
+    const errorShot = path.join(outDir, 'error.png');
+    await page.screenshot({ path: errorShot, fullPage: true }).catch(() => {});
+    if (!screenshots.includes(errorShot)) screenshots.push(errorShot);
+
     return {
       attempted: true,
       ok: false,
@@ -228,12 +261,14 @@ export async function runIntegratedLitresBootstrap(input: {
       handoffRequired: false,
       redirectedToSberId: false,
       bootstrapFailed: true,
-      scriptPath,
+      scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath,
       outDir,
-      finalUrl: null,
+      finalUrl: page.url(),
       rawStatus: null,
       errorMessage: error instanceof Error ? error.message : String(error)
     };
+  } finally {
+    await browser.close();
   }
 }

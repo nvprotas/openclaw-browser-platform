@@ -153,21 +153,21 @@ Site-specific knowledge:
 
 ---
 
-## 5. Где сейчас главный разрыв
+## 5. LitRes auth ownership now
 
-Сейчас есть **две почти независимые части**:
+Теперь LitRes bootstrap/login path **принадлежит самому `browser-platform`**.
 
-### A. `litres-sberid-login`
-Отдельный login/bootstrap flow.
-
-### B. `browser-platform`
+### A. `browser-platform`
 Основной daemon/runtime для LitRes flow.
 
-Проблема в том, что **auth context между ними пока не склеен**.
+### B. Repo-owned LitRes bootstrap
+Встроенный Playwright-based bootstrap живёт в `src/daemon/litres-auth.ts` и запускается из normal `session open` flow.
 
-То есть сейчас:
-- login skill может довести процесс до Sber ID / обновить storage state
-- но `browser-platform session open` пока не подхватывает этот auth state автоматически как часть обычного LitRes flow
+Внешний workspace skill больше не является runtime-зависимостью для открытия LitRes session.
+
+При этом по умолчанию всё ещё переиспользуются те же практические артефакты:
+- `/root/.openclaw/workspace/sber-cookies.json`
+- `/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json`
 
 ---
 
@@ -218,20 +218,16 @@ session open(litres)
 ### Важно
 Это **не обязательно** означает полную реализацию Sber ID внутри browser-platform с нуля.
 
-Практичный план такой:
-- использовать уже существующий `litres-sberid-login` skill как источник bootstrap-логики
-- использовать уже существующий LitRes storage-state path
-- постепенно переносить login из «внешнего подготовительного шага» в нормальный browser-platform flow
+Практичный результат сейчас такой:
+- repo сам владеет bootstrap-логикой
+- используется тот же стабильный login entrypoint (`https://www.litres.ru/auth/login/`)
+- по умолчанию переиспользуется существующий LitRes storage-state path
+- cookies/state assets из workspace остаются совместимыми и используются как default inputs
 
-То есть существующий skill нужно учитывать как:
-- источник знаний о стабильном login entrypoint
-- источник уже проверенного bootstrap path
-- источник storage-state, который browser-platform должен уметь переиспользовать
-
-Но при этом целевая архитектура остаётся такой:
+То есть целевая архитектура уже стала такой:
 - основной LitRes flow живёт внутри browser-platform
 - login воспринимается как часть этого flow
-- внешний skill не должен оставаться обязательным ручным ритуалом навсегда
+- внешний workspace skill больше не обязателен для runtime bootstrap
 
 ---
 

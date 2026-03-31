@@ -26,7 +26,6 @@ export interface SessionAuthContext {
     | 'not_attempted'
     | 'reused_existing_state'
     | 'not_applicable'
-    | 'skipped_missing_script'
     | 'skipped_missing_cookies'
     | 'redirected_to_sberid'
     | 'handoff_required'
