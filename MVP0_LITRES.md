@@ -119,7 +119,7 @@ site-packs/litres/
 - `support_level: "profiled"`
 - `flows: ["search", "open_product", "add_to_cart", "open_cart"]`
 - `risk_flags.payment_requires_human: true`
-- `risk_flags.login_may_require_external_bootstrap: true`
+- `risk_flags.login_may_require_human_handoff: true`
 
 #### `instructions.md`
 Текстом:

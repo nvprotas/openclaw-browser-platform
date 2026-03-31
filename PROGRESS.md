@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 14:46 UTC**
+Последнее обновление: **2026-03-31 14:51 UTC**
 
 ## Короткий статус
 
@@ -24,6 +24,7 @@
 - практические знания из живого прогона записаны в LitRes pack: search submit через кнопку `Найти` и селектор закрытия post-login модалки
 - увеличен лимит `instructions summary` в pack parser, чтобы новые LitRes operational notes не выпадали из runtime context; build/test/lint снова зелёные
 - `site-packs/litres/login.md` синхронизирован с текущим repo-owned LitRes auth flow и больше не содержит устаревший placeholder про purely external login step
+- проведена быстрая ревизия остальных LitRes pack-файлов: явный устаревший хвост найден только в `manifest.json` (`login_may_require_external_bootstrap` -> `login_may_require_human_handoff`); связанная строка в `MVP0_LITRES.md` тоже обновлена; targeted pack tests зелёные
 
 ## Правило ведения файла
 

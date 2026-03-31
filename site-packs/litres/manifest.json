@@ -7,7 +7,7 @@
   "flows": ["search", "open_product", "add_to_cart", "open_cart"],
   "risk_flags": {
     "payment_requires_human": true,
-    "login_may_require_external_bootstrap": true,
+    "login_may_require_human_handoff": true,
     "final_checkout_not_in_scope": true
   }
 }
