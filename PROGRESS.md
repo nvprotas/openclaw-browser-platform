@@ -44,6 +44,7 @@
 - после живого прогона с книгой `Задача трех тел` усилен payment runtime: `run-step` теперь делает короткий post-click stabilization/polling на checkout/payment шагах, чтобы поздно появляющиеся сигналы вроде `payecom` iframe, `Войти по Сбер ID` и handoff URLs успевали попасть в обычный action result без ручного HTML-снапшота
 - в tracing/validation добавлены более точные payment observations: `SBERPAY_ENTRY_VISIBLE`, `SBER_ID_HANDOFF_VISIBLE`, а вместо грубого `NO_OBVIOUS_CHANGE` на живом payment flow теперь может возвращаться `PAYMENT_FLOW_STILL_ACTIVE`
 - в `openclaw/skill-template/SKILL.md` и `site-packs/litres/checkout.md` зафиксирован stop-condition: если пользователь просил именно дойти до SberPay, задача считается выполненной при достижении ветки `payecom` / `Войти по Сбер ID` и возврате structured JSON; финальный `Оплатить` без отдельного явного запроса не нажимать
+- Commit 7 по LitRes search formalized: helper `src/helpers/search.ts`, пример `examples/demo-litres-search.ts` и тесты теперь закрывают flow `home -> search -> search_results -> product` без вмешательства в auth/payment boundary
 - build/test после этих правок снова зелёные: `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) прошли успешно
 - добавлены unit tests для payment extraction/observation logic; после этого `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) снова зелёные; заодно увеличены лимиты `instructions summary` и `knownSignals`, чтобы новые checkout notes не вытесняли старые critical signals из runtime context
 - проведена проверка installer rerun/update semantics на уже установленной копии: локальный `./install.sh` и bootstrap-режим поверх существующего `TARGET_DIR` повторно отрабатывают и накатывают изменения (в том числе обновление `openclaw/skill-template/SKILL.md` в workspace skill); найден и исправлен edge case, где rerun падал на `Existing repo remote mismatch`, если один и тот же remote был задан эквивалентными, но не идентичными строками (`file://...` vs локальный путь, GitHub HTTPS vs SSH); после правки `install.sh` нормализует URL remote перед сравнением, а repro-проверки `bash -n install.sh`, локальный rerun и bootstrap rerun на existing target снова зелёные
@@ -159,10 +160,12 @@
   - добавлены/обновлены unit tests под bootstrap outcome
 
 ### Commit 7 — LitRes search flow
-- **Статус:** `partially proven manually`
-- **Примечание:**
-  - через текущий runtime уже подтверждён реальный поиск `1984`
-  - но formal commit по этому этапу ещё не делался
+- **Статус:** `done`
+- **Что закрыто:**
+  - оформлен helper-модуль `src/helpers/search.ts` для поиска search input, submit targets и эвристики открытия карточки из `search_results`
+  - LitRes pack hints расширены селектором `search_result_link`
+  - добавлен пример `examples/demo-litres-search.ts`
+  - добавлены unit/integration tests, формально доказывающие flow `home -> search -> search_results -> product`
 
 ### Commit 8 — LitRes add-to-cart + cart validation
 - **Статус:** `not started`

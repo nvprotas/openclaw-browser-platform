@@ -109,6 +109,11 @@ All implemented commands return JSON when called with `--json`.
 - `browser-platform session snapshot --session <id> --json`
 - `browser-platform session close --session <id> --json`
 
+## Examples
+
+- LitRes search MVP0 demo script: `node --import tsx examples/demo-litres-search.ts 1984`
+- The script uses repo-local helpers from `src/helpers/search.ts` to drive `home -> search -> search_results -> product`.
+
 ## Important runtime notes
 
 ### 1. Run from a stable working directory

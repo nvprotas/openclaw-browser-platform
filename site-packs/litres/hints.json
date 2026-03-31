@@ -17,6 +17,11 @@
       "button[aria-label^='Найти']",
       "button[data-testid='search__button']"
     ],
+    "search_result_link": [
+      "a[href*='/book/']",
+      "a[href*='/audiobook/']",
+      "main a[href*='/book/']"
+    ],
     "post_login_modal_close": [
       "div[data-testid='modal--overlay'] header > div:nth-child(2)"
     ],

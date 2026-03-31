@@ -15,6 +15,6 @@
     "isolatedModules": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["bin/**/*.ts", "src/**/*.ts", "tests/**/*.ts", "playwright.config.ts", "eslint.config.js"],
+  "include": ["bin/**/*.ts", "src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts", "playwright.config.ts", "eslint.config.js"],
   "exclude": ["dist", "node_modules"]
 }

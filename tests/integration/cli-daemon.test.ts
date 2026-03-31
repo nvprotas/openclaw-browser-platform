@@ -7,6 +7,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { SessionObservation } from '../../src/daemon/types.js';
+import { chooseSearchResultTarget, fillSearchAndSubmit } from '../../src/helpers/search.js';
+import { matchSitePackByUrl } from '../../src/packs/loader.js';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
@@ -467,6 +470,68 @@ describe('browser-platform CLI + daemon runtime', () => {
         observations: expect.arrayContaining([
           expect.objectContaining({ code: 'CART_VISIBLE' })
         ])
+      }
+    });
+  }, 30_000);
+
+  it.skipIf(!browserRuntimeAvailable)('proves a LitRes-like search -> results -> product flow with search helpers', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    await runCli(cwd, ['daemon', 'ensure', '--json']);
+    const open = await runCli(cwd, ['session', 'open', '--url', serverUrl, '--json']);
+    const sessionId = String((open.json?.session as { sessionId: string }).sessionId);
+    const pack = await matchSitePackByUrl('https://www.litres.ru/');
+    const searchPlan = fillSearchAndSubmit(pack, 'Sample Book');
+
+    const fill = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ ...searchPlan.fillTargets[0], selector: '#query' })
+    ]);
+    expect(fill.json?.ok).toBe(true);
+
+    const submitTarget = searchPlan.submitTargets.find((target) => target.role === 'button') ?? searchPlan.submitTargets[0];
+    const submit = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ ...submitTarget, text: 'Submit search', name: 'Submit search' })
+    ]);
+    expect(submit.json).toMatchObject({
+      ok: true,
+      action: {
+        after: {
+          title: 'Search Results',
+          pageSignatureGuess: 'search_results'
+        }
+      }
+    });
+
+    const observed = await runCli(cwd, ['session', 'observe', '--session', sessionId, '--json']);
+    const resultTarget = chooseSearchResultTarget(observed.json?.session as SessionObservation, 'Sample Book');
+    expect(resultTarget).toEqual({ action: 'click', text: 'Sample Book Result' });
+
+    const openProduct = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify(resultTarget)
+    ]);
+    expect(openProduct.json).toMatchObject({
+      ok: true,
+      action: {
+        after: {
+          title: 'Sample Book',
+          pageSignatureGuess: 'product_page'
+        }
       }
     });
   }, 30_000);
