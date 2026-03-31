@@ -112,6 +112,35 @@ CLI/daemon — это runtime.
 
 **knowledge-driven browser runtime для OpenClaw с постепенным усилением по сайтам.**
 
+## 2.1 Pilot site: LitRes
+
+Стартовая проверка архитектуры делается не на абстрактном “example-shop”, а на **реальном сайте LitRes**.
+
+Почему именно LitRes:
+- уже есть существующий контекст вокруг `litres.ru`
+- для LitRes важны реальные состояния: логин, поиск, карточка книги, корзина, checkout entry
+- сайт достаточно живой, чтобы быстро показать, где нужны shared helpers, а где нужны site-specific hints/recoveries
+- можно валидировать не теорию, а реальный пользовательский сценарий
+
+### Что считаем пилотным LitRes flow
+1. восстановить авторизованную сессию
+2. найти книгу по запросу
+3. открыть карточку книги
+4. добавить книгу в корзину
+5. открыть корзину
+6. дойти до checkout entry
+7. остановиться перед финальным рискованным шагом
+
+### Что важно для первого этапа
+Для LitRes на старте не нужно изобретать auth с нуля.  
+Наоборот, MVP должен уметь **переиспользовать уже существующее авторизованное состояние / существующий login bootstrap**, а не пытаться сразу решить весь Sber ID flow внутри browser-platform.
+
+То есть LitRes нужен нам как:
+- первый реальный site pack
+- первый реальный trace source
+- первый реальный handoff/demo source
+- база для выделения первых shared helpers
+
 ---
 
 ## 3. Как это подключается к OpenClaw
@@ -633,9 +662,11 @@ openclaw-browser-platform/
 
   browser/
     site-packs/
-      example-shop/
+      litres/
         manifest.json
         instructions.md
+        login.md
+        checkout.md
         hints.json
         learned/
           candidate-flows.json
@@ -692,7 +723,13 @@ openclaw-browser-platform/
   - action logs
   - screenshots
   - DOM/HTML snapshots
-- один example site pack
+- первый реальный site pack: **LitRes**
+- LitRes pilot flow v1:
+  - восстановление уже существующей авторизованной сессии
+  - поиск книги по названию/автору
+  - открытие карточки книги
+  - добавление в корзину
+  - открытие корзины
 - simple handoff marker:
   - агент может сказать, что нужна помощь человека
   - trace фиксирует остановку
@@ -707,7 +744,7 @@ openclaw-browser-platform/
 ### Критерий готовности
 - агент может через skill вызвать CLI
 - daemon держит живую browser session
-- можно пройти базовый flow на простом сайте
+- можно пройти базовый LitRes flow: поиск -> карточка -> корзина
 - traces позволяют понять, где сломалось
 
 ---
@@ -735,6 +772,11 @@ openclaw-browser-platform/
   - какой сигнал success observed
 - candidate knowledge format
 - OpenClaw knowledge writes v1 в `learned/`
+- LitRes-specific handoff use cases:
+  - неожиданная модалка
+  - сломанный add-to-cart
+  - нестандартный переход в корзину
+  - checkout entry, если UI изменился
 
 ### Что НЕ войдёт
 - автоматическая промоция в approved
@@ -772,7 +814,7 @@ openclaw-browser-platform/
 - автоматический rewrite approved pack knowledge без правил
 
 ### Критерий готовности
-- после 1–2 демонстраций агент проходит похожий flow стабильнее
+- после 1–2 демонстраций агент проходит похожий LitRes flow стабильнее
 - новые знания можно объяснить и проверить
 
 ---
@@ -914,7 +956,43 @@ openclaw-browser-platform/
 
 ---
 
-## 19. Что делать прямо сейчас
+## 19. Pilot execution plan: LitRes first
+
+Чтобы не расползаться в абстракции, первый реальный трек разработки должен идти вокруг **LitRes**.
+
+### LitRes scope для ближайших итераций
+
+#### MVP0 scope
+- поднять daemon + CLI
+- научиться открывать `litres.ru`
+- научиться подхватывать существующую авторизованную сессию
+- собрать первый pack `site-packs/litres/`
+- пройти flow:
+  - search
+  - open product
+  - add to cart
+  - open cart
+
+#### MVP1 scope
+- handoff на LitRes через VNC
+- писать demo artifacts
+- учиться по ручным действиям человека на:
+  - broken add-to-cart
+  - broken cart open
+  - changed UI elements
+
+#### MVP2 scope
+- replay candidate knowledge на LitRes
+- подтверждать selectors/signals/flow notes повторным прохождением
+- начинать переносить реально работающие LitRes-паттерны в shared helpers
+
+### Зачем именно так
+LitRes здесь нужен как живой тест архитектуры.  
+Если модель выдержит LitRes end-to-end до корзины, значит основа daemon/CLI/skill/site-pack выбрана правильно.
+
+---
+
+## 20. Что делать прямо сейчас
 
 Если двигаться прагматично, порядок такой:
 
@@ -925,8 +1003,8 @@ openclaw-browser-platform/
 5. сделать workspace skill
 6. зафиксировать site pack spec
 7. сделать traces v1
-8. сделать один example site pack
-9. потом добавлять handoff и learning
+8. сделать первый реальный pack: `litres`
+9. потом добавлять handoff и learning вокруг LitRes flow
 
 ### Почему именно так
 - без daemon невозможно нормально держать stateful browser session
@@ -937,7 +1015,7 @@ openclaw-browser-platform/
 
 ---
 
-## 20. Первый backlog на ближайшие коммиты
+## 21. Первый backlog на ближайшие коммиты
 
 ### Commit 1
 Bootstrap:
@@ -975,6 +1053,7 @@ OpenClaw integration:
 - workspace skill template
 - exec contract examples
 - `session open/observe/act`
+- LitRes operational context packet
 
 ### Commit 6
 Site packs:
@@ -982,7 +1061,8 @@ Site packs:
 - instructions
 - hints
 - loader
-- example pack skeleton
+- `litres` pack skeleton
+- LitRes auth/session bootstrap notes
 
 ### Commit 7
 Traces:
@@ -998,7 +1078,7 @@ Handoff foundation:
 
 ---
 
-## 21. Самый важный итог
+## 22. Самый важный итог
 
 Стартовая архитектура проекта должна опираться на формулу:
 
