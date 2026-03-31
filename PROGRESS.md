@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 14:51 UTC**
+Последнее обновление: **2026-03-31 15:55 UTC**
 
 ## Короткий статус
 
@@ -25,6 +25,10 @@
 - увеличен лимит `instructions summary` в pack parser, чтобы новые LitRes operational notes не выпадали из runtime context; build/test/lint снова зелёные
 - `site-packs/litres/login.md` синхронизирован с текущим repo-owned LitRes auth flow и больше не содержит устаревший placeholder про purely external login step
 - проведена быстрая ревизия остальных LitRes pack-файлов: явный устаревший хвост найден только в `manifest.json` (`login_may_require_external_bootstrap` -> `login_may_require_human_handoff`); связанная строка в `MVP0_LITRES.md` тоже обновлена; targeted pack tests зелёные
+- в план добавлен следующий безопасный checkout шаг: дойти до payment boundary и, если появляется SberPay intent (`payecom` / `platiecom` / `formUrl` / related fields), извлекать payment identifiers в structured JSON без попытки подтвердить оплату; это отражено в `ROADMAP.md` и `MVP0_LITRES.md`
+- репозиторий подготовлен к дистрибуции в текущем виде: `playwright` перенесён в runtime dependencies, добавлены `files` + `prepack` в `package.json`, расширен `README.md`, добавлены `docs/OPENCLAW_SETUP.md` и `docs/DISTRIBUTION.md`, а также готовый `openclaw/skill-template/SKILL.md` для подключения к чистому OpenClaw; `npm run build`, `npm test` и `npm pack --dry-run` прошли зелёно
+- `install.sh` усилен до dual-mode installer: тот же файл теперь работает и как repo-local `./install.sh`, и как будущий bootstrap one-liner `curl ... | bash` (в non-local режиме он сам клонирует/обновляет repo в `TARGET_DIR`, затем запускает локальный install)
+- обновлены `README.md`, `docs/OPENCLAW_SETUP.md`, `docs/DISTRIBUTION.md` под one-liner UX; safe-проверки зелёные: `bash -n install.sh`, локальный `RUN_TESTS=0 RESTART_GATEWAY=0 RUN_SMOKE_TEST=0 SKILL_MODE=skip ./install.sh`, и bootstrap-smoke `cat install.sh | ... bash` на временном локальном git-репо прошли успешно
 
 ## Правило ведения файла
 

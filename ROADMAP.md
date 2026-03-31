@@ -129,7 +129,8 @@ CLI/daemon — это runtime.
 4. добавить книгу в корзину
 5. открыть корзину
 6. дойти до checkout entry
-7. остановиться перед финальным рискованным шагом
+7. если появляется SberPay URL / deeplink / payment form boundary — извлечь payment intent identifiers (`orderId`, `bankInvoiceId`, `mdOrder`, `formUrl` и связанные поля)
+8. остановиться перед финальным рискованным шагом
 
 ### Что важно для первого этапа
 Для LitRes на старте не нужно изобретать auth с нуля.  
@@ -711,6 +712,10 @@ openclaw-browser-platform/
   - cart
   - validation
   - retries
+- payment-intent extraction boundary v1:
+  - детект `payecom.ru` / `platiecom.ru` / сходных checkout redirects
+  - извлечение `orderId`, `bankInvoiceId`, `mdOrder`, `formUrl` и связанных полей
+  - structured JSON artifact без попытки подтвердить платёж
 - базовый site pack format:
   - `manifest.json`
   - `instructions.md`
@@ -730,6 +735,8 @@ openclaw-browser-platform/
   - открытие карточки книги
   - добавление в корзину
   - открытие корзины
+  - checkout entry
+  - извлечение SberPay payment intent при появлении checkout boundary
 - simple handoff marker:
   - агент может сказать, что нужна помощь человека
   - trace фиксирует остановку
@@ -744,7 +751,8 @@ openclaw-browser-platform/
 ### Критерий готовности
 - агент может через skill вызвать CLI
 - daemon держит живую browser session
-- можно пройти базовый LitRes flow: поиск -> карточка -> корзина
+- можно пройти базовый LitRes flow: поиск -> карточка -> корзина -> checkout boundary
+- если на checkout boundary появляется SberPay intent, его идентификаторы можно сохранить в structured JSON без попытки подтвердить оплату
 - traces позволяют понять, где сломалось
 
 ---

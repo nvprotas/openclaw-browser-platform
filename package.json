@@ -8,6 +8,19 @@
   "bin": {
     "browser-platform": "./dist/bin/browser-platform.js"
   },
+  "files": [
+    "dist/",
+    "site-packs/",
+    "docs/",
+    "openclaw/",
+    "install.sh",
+    "README.md",
+    "ARCHITECTURE_CURRENT.md",
+    "ROADMAP.md",
+    "MVP0_LITRES.md",
+    "PROGRESS.md",
+    "BUGS.md"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean": "rm -rf dist .tmp coverage test-results playwright-report",
@@ -17,10 +30,14 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "playwright:test": "playwright test"
+    "playwright:test": "playwright test",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "playwright": "^1.53.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",
@@ -29,7 +46,6 @@
     "eslint": "^9.24.0",
     "eslint-config-prettier": "^10.1.2",
     "globals": "^16.0.0",
-    "playwright": "^1.53.0",
     "prettier": "^3.5.3",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3",
