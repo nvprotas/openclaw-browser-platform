@@ -23,6 +23,16 @@ export class SessionRegistry {
         knownRisks: [],
         instructionsSummary: [],
         knownSignals: []
+      },
+      authContext: {
+        state: 'anonymous',
+        loginGateDetected: false,
+        bootstrapAttempted: false,
+        bootstrapSource: null,
+        storageStatePath: null,
+        storageStateExists: false,
+        authenticatedSignals: [],
+        anonymousSignals: []
       }
     };
 
@@ -36,7 +46,7 @@ export class SessionRegistry {
 
   touch(
     sessionId: string,
-    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext'>>
+    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext' | 'authContext'>>
   ): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
     if (!existing) {

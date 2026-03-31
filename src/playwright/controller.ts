@@ -9,10 +9,17 @@ export class PlaywrightController {
 
   constructor(private readonly rootDir: string) {}
 
-  async openSession(sessionId: string, url: string): Promise<{ url: string; title: string }> {
+  async openSession(
+    sessionId: string,
+    url: string,
+    options?: {
+      storageStatePath?: string;
+    }
+  ): Promise<{ url: string; title: string }> {
     const session = new BrowserSession({
       sessionId,
-      snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots')
+      snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots'),
+      storageStatePath: options?.storageStatePath
     });
 
     const opened = await session.open(url);

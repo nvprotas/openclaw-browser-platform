@@ -47,8 +47,11 @@ export async function getDaemonStatus(): Promise<DaemonStatusResponse> {
   return request<DaemonStatusResponse>(await readRunningDaemonInfo(), '/v1/daemon/status');
 }
 
-export async function openSession(url: string): Promise<SessionOpenResponse> {
-  return request<SessionOpenResponse>(await readRunningDaemonInfo(), '/v1/session/open', { url });
+export async function openSession(url: string, options?: { storageStatePath?: string }): Promise<SessionOpenResponse> {
+  return request<SessionOpenResponse>(await readRunningDaemonInfo(), '/v1/session/open', {
+    url,
+    storageStatePath: options?.storageStatePath ?? null
+  });
 }
 
 export async function getSessionContext(sessionId: string): Promise<SessionContextResponse> {

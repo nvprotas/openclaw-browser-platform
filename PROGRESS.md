@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 12:48 UTC**
+Последнее обновление: **2026-03-31 12:56 UTC**
 
 ## Короткий статус
 
@@ -84,10 +84,21 @@
   - добавлены тесты на загрузку/match pack и context summary
 
 ### Commit 6 — Session reuse for LitRes
-- **Статус:** `next`
-- **Уточнение:**
-  - login должен стать частью обычного LitRes flow
-  - не отдельным внешним предварительным шагом
+- **Статус:** `done`
+- **Что сделано:**
+  - `session open` теперь умеет принимать `--storage-state <path>`
+  - для LitRes добавлен auto-pick bootstrap path: `/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json`
+  - storage state подхватывается внутри normal browser-platform flow, а не как отдельный ручной pre-step
+  - в `session open/context` появился `authContext`:
+    - `authenticated`
+    - `anonymous`
+    - `login_gate_detected`
+    - `bootstrapAttempted`
+    - `bootstrapSource`
+    - `storageStatePath`
+    - `storageStateExists`
+  - auth state пересчитывается также после `observe` / `act` / `snapshot`
+  - добавлены тесты на reuse storage state и login gate detection
 
 ### Commit 7 — LitRes search flow
 - **Статус:** `partially proven manually`

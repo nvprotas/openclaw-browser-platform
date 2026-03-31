@@ -10,6 +10,17 @@ export interface SessionPackContext {
   knownSignals: string[];
 }
 
+export interface SessionAuthContext {
+  state: 'authenticated' | 'anonymous' | 'login_gate_detected';
+  loginGateDetected: boolean;
+  bootstrapAttempted: boolean;
+  bootstrapSource: 'explicit' | 'auto_litres' | null;
+  storageStatePath: string | null;
+  storageStateExists: boolean;
+  authenticatedSignals: string[];
+  anonymousSignals: string[];
+}
+
 export interface SessionRecord {
   sessionId: string;
   url: string;
@@ -18,6 +29,7 @@ export interface SessionRecord {
   status: 'open' | 'closed';
   title: string | null;
   packContext: SessionPackContext;
+  authContext: SessionAuthContext;
 }
 
 export interface SessionObservation {

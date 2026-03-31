@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -23,8 +23,44 @@ beforeAll(async () => {
 beforeEach(async () => {
   server = http.createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    const isAuthenticated = (request.headers.cookie ?? '').includes('auth=1');
     response.statusCode = 200;
     response.setHeader('content-type', 'text/html; charset=utf-8');
+
+    if (url.pathname === '/auth/login') {
+      response.end(`<!doctype html>
+<html>
+  <head><title>Login</title></head>
+  <body>
+    <main>
+      <h1>Войти</h1>
+      <form action="/auth/login" method="post">
+        <label>Email</label>
+        <input type="email" />
+        <label>Пароль</label>
+        <input type="password" />
+        <button type="submit">Войти</button>
+      </form>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (url.pathname === '/account') {
+      response.end(`<!doctype html>
+<html>
+  <head><title>Account</title></head>
+  <body>
+    <main>
+      <h1>${isAuthenticated ? 'Профиль' : 'Гость'}</h1>
+      <p>${isAuthenticated ? 'Мои книги' : 'Войти'}</p>
+      <button>${isAuthenticated ? 'Выйти' : 'Войти'}</button>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
 
     if (url.pathname === '/search') {
       const query = url.searchParams.get('query') ?? '';
@@ -170,6 +206,11 @@ describe('browser-platform CLI + daemon runtime', () => {
         packContext: {
           matchedPack: false,
           siteId: null
+        },
+        authContext: {
+          state: 'anonymous',
+          bootstrapAttempted: false,
+          storageStateExists: false
         }
       });
 
@@ -181,6 +222,9 @@ describe('browser-platform CLI + daemon runtime', () => {
           packContext: {
             matchedPack: false,
             instructionsSummary: []
+          },
+          authContext: {
+            state: 'anonymous'
           }
         }
       });
@@ -218,6 +262,82 @@ describe('browser-platform CLI + daemon runtime', () => {
     },
     30_000
   );
+
+  it.skipIf(!browserRuntimeAvailable)('reuses provided storage state and reports auth state', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    const storageStatePath = path.join(cwd, 'storage-state.json');
+    await writeFile(
+      storageStatePath,
+      `${JSON.stringify(
+        {
+          cookies: [
+            {
+              name: 'auth',
+              value: '1',
+              domain: '127.0.0.1',
+              path: '/',
+              expires: -1,
+              httpOnly: false,
+              secure: false,
+              sameSite: 'Lax'
+            }
+          ],
+          origins: []
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    await runCli(cwd, ['daemon', 'ensure', '--json']);
+    const open = await runCli(cwd, [
+      'session',
+      'open',
+      '--url',
+      `${serverUrl}/account`,
+      '--storage-state',
+      storageStatePath,
+      '--json'
+    ]);
+
+    expect(open.json).toMatchObject({
+      ok: true,
+      session: {
+        title: 'Account',
+        authContext: {
+          state: 'authenticated',
+          bootstrapAttempted: true,
+          bootstrapSource: 'explicit',
+          storageStateExists: true,
+          storageStatePath,
+          authenticatedSignals: expect.arrayContaining(['visible_my_books', 'visible_logout'])
+        }
+      }
+    });
+  }, 30_000);
+
+  it.skipIf(!browserRuntimeAvailable)('detects login gate and reports it in auth state', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    await runCli(cwd, ['daemon', 'ensure', '--json']);
+    const open = await runCli(cwd, ['session', 'open', '--url', `${serverUrl}/auth/login`, '--json']);
+
+    expect(open.json).toMatchObject({
+      ok: true,
+      session: {
+        title: 'Login',
+        authContext: {
+          state: 'login_gate_detected',
+          loginGateDetected: true,
+          bootstrapAttempted: false
+        }
+      }
+    });
+  }, 30_000);
 
   it.skipIf(!browserRuntimeAvailable)('runs a realistic action flow through session act', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));

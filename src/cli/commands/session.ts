@@ -7,7 +7,10 @@ import type { SessionActionPayload } from '../../daemon/types.js';
 export async function handleSessionOpen(args: string[]): Promise<unknown> {
   await handleDaemonEnsure();
   const url = requireFlag(args, '--url');
-  return openSession(url);
+  const storageStateIndex = args.indexOf('--storage-state');
+  const storageStatePath =
+    storageStateIndex !== -1 && storageStateIndex < args.length - 1 ? args[storageStateIndex + 1] : undefined;
+  return openSession(url, { storageStatePath });
 }
 
 export async function handleSessionContext(args: string[]): Promise<unknown> {

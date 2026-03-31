@@ -8,6 +8,7 @@ export interface BrowserSessionOptions {
   sessionId: string;
   snapshotRootDir: string;
   launchOptions?: LaunchOptions;
+  storageStatePath?: string;
 }
 
 export interface PageStateSummary extends ObserveSummary {
@@ -43,7 +44,8 @@ export class BrowserSession {
     });
 
     const context = await browser.newContext({
-      viewport: { width: 1440, height: 900 }
+      viewport: { width: 1440, height: 900 },
+      storageState: this.options.storageStatePath
     });
 
     const page = await context.newPage();

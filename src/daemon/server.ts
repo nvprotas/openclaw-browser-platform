@@ -3,7 +3,9 @@ import { randomBytes } from 'node:crypto';
 import { BrowserPlatformError } from '../core/errors.js';
 import { PlaywrightController } from '../playwright/controller.js';
 import { matchSitePackByUrl } from '../packs/loader.js';
+import { detectLoginGate } from '../helpers/login-gates.js';
 import { getDefaultStateStore } from './state-store.js';
+import { resolveStorageStateForSession } from './litres-auth.js';
 import { SessionRegistry } from './session-registry.js';
 import type {
   DaemonInfo,
@@ -94,16 +96,27 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
       }
 
       if (request.method === 'POST' && request.url === '/v1/session/open') {
-        const body = (await readJsonBody(request)) as { url?: string };
+        const body = (await readJsonBody(request)) as { url?: string; storageStatePath?: string };
         if (!body?.url) {
           sendJson(response, 400, { ok: false, error: { message: 'Missing url' } });
           return;
         }
 
+        const preMatchedPack = await matchSitePackByUrl(body.url);
+        const bootstrap = await resolveStorageStateForSession({
+          requestedUrl: body.url,
+          explicitStorageStatePath: body.storageStatePath,
+          matchedPack: preMatchedPack
+        });
+
         const record = registry.open({ url: body.url });
         try {
-          const opened = await controller.openSession(record.sessionId, body.url);
+          const opened = await controller.openSession(record.sessionId, body.url, {
+            storageStatePath: bootstrap.storageStateExists ? bootstrap.storageStatePath ?? undefined : undefined
+          });
           const matchedPack = await matchSitePackByUrl(opened.url);
+          const observed = await controller.observeSession(record.sessionId);
+          const auth = detectLoginGate(opened.url, observed);
           const session =
             registry.touch(record.sessionId, {
               url: opened.url,
@@ -120,7 +133,17 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                     instructionsSummary: matchedPack.instructionsSummary,
                     knownSignals: matchedPack.knownSignals
                   }
-                : record.packContext
+                : record.packContext,
+              authContext: {
+                state: auth.state,
+                loginGateDetected: auth.loginGateDetected,
+                bootstrapAttempted: bootstrap.bootstrapAttempted,
+                bootstrapSource: bootstrap.bootstrapSource,
+                storageStatePath: bootstrap.storageStatePath,
+                storageStateExists: bootstrap.storageStateExists,
+                authenticatedSignals: auth.authenticatedSignals,
+                anonymousSignals: auth.anonymousSignals
+              }
             }) ?? record;
           sendJson(response, 200, { ok: true, session });
         } catch (error) {
@@ -149,7 +172,18 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         }
 
         const observed = await controller.observeSession(session.sessionId);
-        registry.touch(session.sessionId, { url: observed.url, title: observed.title });
+        const auth = detectLoginGate(observed.url, observed);
+        registry.touch(session.sessionId, {
+          url: observed.url,
+          title: observed.title,
+          authContext: {
+            ...session.authContext,
+            state: auth.state,
+            loginGateDetected: auth.loginGateDetected,
+            authenticatedSignals: auth.authenticatedSignals,
+            anonymousSignals: auth.anonymousSignals
+          }
+        });
         const payload: SessionObservation = {
           sessionId: session.sessionId,
           observedAt: new Date().toISOString(),
@@ -170,7 +204,18 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         }
 
         const action = await controller.actInSession(session.sessionId, body.payload);
-        registry.touch(session.sessionId, { url: action.after.url, title: action.after.title });
+        const auth = detectLoginGate(action.after.url, action.after);
+        registry.touch(session.sessionId, {
+          url: action.after.url,
+          title: action.after.title,
+          authContext: {
+            ...session.authContext,
+            state: auth.state,
+            loginGateDetected: auth.loginGateDetected,
+            authenticatedSignals: auth.authenticatedSignals,
+            anonymousSignals: auth.anonymousSignals
+          }
+        });
         const payload: SessionActionResult = {
           sessionId: session.sessionId,
           actedAt: new Date().toISOString(),
@@ -202,7 +247,18 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         }
 
         const snapshotResult = await controller.snapshotSession(session.sessionId);
-        registry.touch(session.sessionId, { url: snapshotResult.state.url, title: snapshotResult.state.title });
+        const auth = detectLoginGate(snapshotResult.state.url, snapshotResult.state);
+        registry.touch(session.sessionId, {
+          url: snapshotResult.state.url,
+          title: snapshotResult.state.title,
+          authContext: {
+            ...session.authContext,
+            state: auth.state,
+            loginGateDetected: auth.loginGateDetected,
+            authenticatedSignals: auth.authenticatedSignals,
+            anonymousSignals: auth.anonymousSignals
+          }
+        });
         const snapshot: SessionSnapshot = {
           sessionId: session.sessionId,
           capturedAt: new Date().toISOString(),

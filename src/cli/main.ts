@@ -83,5 +83,5 @@ async function dispatch(args: string[]): Promise<unknown> {
 }
 
 function printHelp(): void {
-  console.log(`browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> --json\n  browser-platform session context --session <id> --json\n  browser-platform session observe --session <id> --json\n  browser-platform session act --session <id> --json '<payload>'\n  browser-platform session snapshot --session <id> --json\n  browser-platform session close --session <id> --json`);
+  console.log(`browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> [--storage-state <path>] --json\n  browser-platform session context --session <id> --json\n  browser-platform session observe --session <id> --json\n  browser-platform session act --session <id> --json '<payload>'\n  browser-platform session snapshot --session <id> --json\n  browser-platform session close --session <id> --json`);
 }

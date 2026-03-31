@@ -10,6 +10,7 @@ This repository currently contains:
 - baseline ESLint, Prettier, Vitest, and Playwright config
 - CLI entrypoint with JSON-first command handling
 - minimal localhost daemon skeleton with stateful in-memory session registry
+- LitRes-oriented session/auth reuse via storage-state loading and auth-state reporting
 - file-backed daemon discovery via `.tmp/browser-platform/daemon.json`
 - integration and unit tests for daemon/session lifecycle
 
@@ -17,7 +18,7 @@ This repository currently contains:
 
 - `browser-platform daemon ensure --json`
 - `browser-platform daemon status --json`
-- `browser-platform session open --url <url> --json`
+- `browser-platform session open --url <url> [--storage-state <path>] --json`
 - `browser-platform session context --session <id> --json`
 - `browser-platform session close --session <id> --json`
 
