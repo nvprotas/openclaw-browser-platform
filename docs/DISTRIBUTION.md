@@ -18,10 +18,10 @@ cd openclaw-browser-platform
 ./install.sh
 ```
 
-One-liner bootstrap mode after publishing this same script at a stable URL:
+One-liner bootstrap mode from GitHub raw:
 
 ```bash
-curl -fsSL https://openclaw.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
 Useful variants:
@@ -42,6 +42,8 @@ npm run test
 npm run build
 npm link
 ```
+
+For OpenClaw-facing installs, distribution is not complete until the bundled `openclaw/skill-template/SKILL.md` is copied into the target workspace/shared skills directory and the resulting runtime is exercised from the OpenClaw workspace `cwd`.
 
 ## Mode B — release snapshot: `npm pack`
 

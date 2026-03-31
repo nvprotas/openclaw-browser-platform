@@ -13,6 +13,7 @@ Current pilot support is strongest for **LitRes (`litres.ru`)**.
 ## Core rule
 
 Treat `browser-platform` as a **stateful browser runtime**.
+Call it through OpenClaw `exec`, not as a made-up native tool.
 Do not fire one-off unrelated commands blindly.
 Prefer the loop:
 
@@ -28,6 +29,7 @@ daemon ensure
 ```
 
 Always request `--json` output.
+When using OpenClaw `exec`, set `workdir` / `cwd` to the workspace root so the daemon state stays stable.
 
 ## Recommended command order
 

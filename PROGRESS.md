@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 21:14 UTC**
+Последнее обновление: **2026-03-31 21:26 UTC**
 
 ## Короткий статус
 
@@ -46,6 +46,10 @@
 - в `openclaw/skill-template/SKILL.md` и `site-packs/litres/checkout.md` зафиксирован stop-condition: если пользователь просил именно дойти до SberPay, задача считается выполненной при достижении ветки `payecom` / `Войти по Сбер ID` и возврате structured JSON; финальный `Оплатить` без отдельного явного запроса не нажимать
 - Commit 8.1 formally closed: `paymentContext` теперь агрессивнее поднимается из runtime без ручного HTML-снапшота — детектируются `payecom` iframe/src, payecom/platiecom handoff URLs, nested/encoded `formUrl` и `href`, а extraction дополняет `bankInvoiceId`, `mdOrder`, `merchantOrderId`, `merchantOrderNumber`, `formUrl` без поломки существующего JSON
 - после ветки `a.sbid-button`/`Войти по Сбер ID` tracing/runtime теперь лучше маркируют safe boundary: отдельно видны `PAYMENT_BOUNDARY_CARD_FORM_VISIBLE` и deeper SberPay method-selection state; это помогает останавливаться до финального `Оплатить`
+- Commit 9 по OpenClaw skill integration доведён до MVP0-ready состояния: bundled `openclaw/skill-template/SKILL.md` явно фиксирует OpenClaw `exec` usage и stable workspace `cwd`, а `README.md`, `docs/OPENCLAW_SETUP.md` и `docs/DISTRIBUTION.md` синхронизированы под реальный GitHub-raw install/update path и repo-owned skill-install flow
+- добавлен формальный integration test `tests/integration/install-script.test.ts`, который через заглушки проверяет repo-local `install.sh`: копирование bundled SKILL.md в workspace/shared skill dir, gateway restart hook и то, что smoke `browser-platform daemon ensure/status --json` запускается именно из OpenClaw workspace `cwd`
+- targeted проверки под Commit 9 зелёные: `npm run build`, `npm run lint`, `npx vitest run tests/integration/install-script.test.ts tests/unit/cli-main.test.ts --reporter verbose`
+- полный `npm test`/широкий прогон с `tests/integration/cli-daemon.test.ts` в текущем окружении снова зависает без нового вывода уже после старта Vitest; Commit 9 не лезет в auth/payment runtime, поэтому для закрытия шага использованы точечные зелёные проверки skill-facing слоя
 - Commit 7 по LitRes search formalized: helper `src/helpers/search.ts`, пример `examples/demo-litres-search.ts` и тесты теперь закрывают flow `home -> search -> search_results -> product` без вмешательства в auth/payment boundary
 - build/test после этих правок снова зелёные: `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) прошли успешно
 - добавлены unit tests для payment extraction/observation logic; после этого `npm run build` и targeted `vitest` (`auth-state`, `payment-context`, `packs-loader`, `site-pack-context`) снова зелёные; заодно увеличены лимиты `instructions summary` и `knownSignals`, чтобы новые checkout notes не вытесняли старые critical signals из runtime context
@@ -182,7 +186,12 @@
   - unit/integration tests теперь формально доказывают flow `search -> product -> add_to_cart -> cart`
 
 ### Commit 9 — OpenClaw skill integration v1
-- **Статус:** `not started`
+- **Статус:** `done`
+- **Что закрыто:**
+  - bundled OpenClaw skill/template доведён до явного production-facing usage: `exec` + stable workspace `cwd` + JSON-first command loop
+  - `README.md`, `docs/OPENCLAW_SETUP.md` и `docs/DISTRIBUTION.md` синхронизированы под реальный install/update flow через GitHub raw `install.sh`
+  - добавлена формальная integration-проверка installer/skill-facing flow (`tests/integration/install-script.test.ts`) для workspace/shared skill install и smoke-run из workspace `cwd`
+  - релевантные build/lint/targeted tests подтверждают, что skill-facing integration path не разъехался
 
 ### Commit 10 — Traces v1 + MVP0 acceptance
 - **Статус:** `not started`

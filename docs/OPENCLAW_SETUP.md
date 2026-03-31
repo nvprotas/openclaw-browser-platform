@@ -25,10 +25,10 @@ From a local clone:
 ./install.sh
 ```
 
-After publishing this same script at a stable URL, the bootstrap one-liner is:
+Bootstrap one-liner from GitHub raw:
 
 ```bash
-curl -fsSL https://openclaw.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
 Useful variants:
@@ -133,6 +133,8 @@ daemon ensure
 -> session snapshot (when needed)
 -> session close
 ```
+
+In practice that means the skill should call `browser-platform` via OpenClaw `exec`, always request `--json`, and keep `cwd` pinned to the OpenClaw workspace root so `.tmp/browser-platform/` stays stable across separate invocations.
 
 ## 9. LitRes-specific note
 

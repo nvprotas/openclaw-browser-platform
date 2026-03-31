@@ -68,6 +68,7 @@ For now, the simplest and most reliable installation path is:
 4. build the project
 5. expose the CLI with `npm link`
 6. copy the bundled OpenClaw skill template into the workspace
+7. let the skill call the CLI through OpenClaw `exec` while using the workspace root as stable `cwd`
 
 Fast path from a cloned repo:
 
@@ -75,10 +76,10 @@ Fast path from a cloned repo:
 ./install.sh
 ```
 
-One-liner bootstrap mode after publishing this same script at a stable URL:
+One-liner bootstrap mode from GitHub raw:
 
 ```bash
-curl -fsSL https://openclaw.ai/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
 Useful overrides:
@@ -95,6 +96,8 @@ Exact step-by-step instructions live here:
 - [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md)
 - OpenClaw skill template: [`openclaw/skill-template/SKILL.md`](openclaw/skill-template/SKILL.md)
 - Installer script: [`install.sh`](install.sh)
+
+The bundled skill template is intentionally repo-owned and should be copied as-is into OpenClaw, so docs/tests can stay aligned with the real MVP0 integration path.
 
 ## Supported commands
 
@@ -128,6 +131,7 @@ The daemon state store currently lives under:
 
 So when OpenClaw calls the CLI, use a stable workspace directory as `cwd`.
 For a normal OpenClaw deployment, the workspace root is the right place.
+Do **not** launch browser-platform from arbitrary repo subdirectories or transient temp folders if you want the daemon, session registry, and artifacts to remain reusable across separate `exec` calls.
 
 ### 2. Site packs are repo/package-local
 
