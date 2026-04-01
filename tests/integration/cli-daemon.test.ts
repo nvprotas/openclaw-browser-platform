@@ -364,7 +364,7 @@ describe('browser-platform CLI + daemon runtime', () => {
         reason: 'auth_boundary',
         connect: {
           host: '127.0.0.1',
-          port: null,
+          port: expect.any(Number),
           url: null,
           novncUrl: null
         },
@@ -378,7 +378,13 @@ describe('browser-platform CLI + daemon runtime', () => {
       sessionId,
       handoff: {
         active: true,
-        reason: 'auth_boundary'
+        reason: 'auth_boundary',
+        connect: {
+          host: '127.0.0.1',
+          port: expect.any(Number),
+          url: null,
+          novncUrl: null
+        }
       }
     });
 

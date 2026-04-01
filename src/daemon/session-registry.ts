@@ -147,7 +147,13 @@ export class SessionRegistry {
       handoff: {
         ...session.handoff,
         active: false,
-        resumedAt: new Date().toISOString()
+        resumedAt: new Date().toISOString(),
+        connect: {
+          host: '127.0.0.1',
+          port: null,
+          url: null,
+          novncUrl: null
+        }
       }
     });
   }

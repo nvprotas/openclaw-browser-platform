@@ -11,6 +11,7 @@ import {
   type LitresBootstrapAttemptResult
 } from './litres-auth.js';
 import { SessionRegistry } from './session-registry.js';
+import { createLocalVncBackendManager } from '../handoff/vnc.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
@@ -76,6 +77,7 @@ function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: f
 
 export async function startDaemonServer(): Promise<DaemonInfo> {
   const registry = new SessionRegistry();
+  const vncBackend = createLocalVncBackendManager();
   const stateStore = getDefaultStateStore();
   const controller = new PlaywrightController(stateStore.root);
   const token = randomBytes(24).toString('hex');
@@ -363,6 +365,11 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        await vncBackend.stop(session.sessionId);
+        if (session.handoff.active || session.handoff.connect.port !== null) {
+          registry.stopHandoff(session.sessionId);
+        }
+
         await controller.closeSession(session.sessionId);
         sendJson(response, 200, { ok: true, session: registry.close(session.sessionId) });
         return;
@@ -379,11 +386,24 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Invalid handoff reason', { code: 'INVALID_HANDOFF_REASON' });
         }
 
-        const updated = registry.startHandoff(session.sessionId, body.reason ?? null);
+        const started = registry.startHandoff(session.sessionId, body.reason ?? null);
+        try {
+          const connect = await vncBackend.start(session.sessionId);
+          registry.touch(session.sessionId, {
+            handoff: {
+              ...(started?.handoff ?? session.handoff),
+              connect
+            }
+          });
+        } catch (error) {
+          await vncBackend.stop(session.sessionId);
+          registry.stopHandoff(session.sessionId);
+          throw error;
+        }
         const payload: SessionHandoffResponse = {
           ok: true,
           sessionId: session.sessionId,
-          handoff: updated?.handoff ?? session.handoff
+          handoff: registry.get(session.sessionId)?.handoff ?? started?.handoff ?? session.handoff
         };
         sendJson(response, 200, payload);
         return;
@@ -396,10 +416,36 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        const backendStatus = vncBackend.status(session.sessionId);
+        if (backendStatus.running) {
+          if (
+            !session.handoff.active ||
+            backendStatus.connect.port !== session.handoff.connect.port ||
+            backendStatus.connect.host !== session.handoff.connect.host
+          ) {
+            registry.touch(session.sessionId, {
+              handoff: {
+                ...session.handoff,
+                active: true,
+                connect: backendStatus.connect
+              }
+            });
+          }
+        } else if (session.handoff.active || session.handoff.connect.port !== null) {
+          registry.touch(session.sessionId, {
+            handoff: {
+              ...session.handoff,
+              active: false,
+              connect: backendStatus.connect,
+              stoppedAt: session.handoff.stoppedAt ?? new Date().toISOString()
+            }
+          });
+        }
+
         const payload: SessionHandoffResponse = {
           ok: true,
           sessionId: session.sessionId,
-          handoff: session.handoff
+          handoff: registry.get(session.sessionId)?.handoff ?? session.handoff
         };
         sendJson(response, 200, payload);
         return;
@@ -412,6 +458,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        await vncBackend.stop(session.sessionId);
         const updated = registry.resumeHandoff(session.sessionId);
         const payload: SessionHandoffResponse = {
           ok: true,
@@ -429,6 +476,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        await vncBackend.stop(session.sessionId);
         const updated = registry.stopHandoff(session.sessionId);
         const payload: SessionHandoffResponse = {
           ok: true,
@@ -462,8 +510,11 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
   await stateStore.writeDaemonInfo(info);
 
   const shutdown = async (): Promise<void> => {
+    await vncBackend.stopAll();
     await controller.closeAll();
-    server.close();
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
   };
 
   process.on('SIGTERM', () => {

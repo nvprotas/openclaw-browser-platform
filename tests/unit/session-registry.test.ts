@@ -39,7 +39,13 @@ describe('SessionRegistry', () => {
     expect(resumed?.handoff).toMatchObject({
       active: false,
       reason: 'auth_boundary',
-      resumedAt: expect.any(String)
+      resumedAt: expect.any(String),
+      connect: {
+        host: '127.0.0.1',
+        port: null,
+        url: null,
+        novncUrl: null
+      }
     });
 
     const stopped = registry.stopHandoff(opened.sessionId);
