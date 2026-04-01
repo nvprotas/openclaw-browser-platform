@@ -142,6 +142,45 @@ CLI/daemon — это runtime.
 - первый реальный handoff/demo source
 - база для выделения первых shared helpers
 
+## 2.2 Следующий этап после MVP0: MVP1 VNC/noVNC handoff
+
+После формального закрытия MVP0 следующий milestone — **MVP1: human handoff через VNC/noVNC**.
+
+Его задача:
+- не заменить agent-driven runtime
+- а добавить безопасный human-in-the-loop слой для сложных boundary:
+  - auth / OTP
+  - нестабильные login gates
+  - безопасный payment boundary review
+  - manual debug на живой session
+
+Принципиальная модель остаётся такой же:
+
+```text
+OpenClaw skill
+  -> exec
+  -> browser-platform CLI
+  -> browser-platform daemon
+  -> Playwright
+```
+
+А рядом появляется handoff layer:
+
+```text
+daemon
+  -> browser session
+  -> VNC backend
+  -> optional noVNC web access
+```
+
+Ключевой принцип MVP1:
+- агент остаётся основным оператором сценария
+- человек подключается только временно на boundary
+- после handoff агент продолжает **ту же** session
+- финальные рискованные действия по-прежнему не выполняются автоматически
+
+Детальный план вынесен в отдельный артефакт: `MVP1_VNC.md`.
+
 ---
 
 ## 3. Как это подключается к OpenClaw

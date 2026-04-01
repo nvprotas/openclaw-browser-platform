@@ -2,7 +2,7 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 21:39 UTC**
+Последнее обновление: **2026-03-31 21:46 UTC**
 
 ## Короткий статус
 
@@ -62,6 +62,7 @@
 - `session act` trace теперь формально сохраняет `before/after`, diff и observations, а `session snapshot` trace связывает диагностику с конкретными `screenshotPath` + `htmlPath`; этого достаточно, чтобы показывать и успешный LitRes pilot, и диагностический/failure coverage без рискованных платёжных шагов
 - integration tests обновлены: `tests/integration/cli-daemon.test.ts` теперь проверяет наличие trace artifacts и их содержимое для `open/observe/act/snapshot`
 - `README.md` и `MVP0_LITRES.md` синхронизированы под финальный статус MVP0: acceptance checklist отмечен как закрытый, явно зафиксированы успешный LitRes pilot coverage и diagnostic/failure coverage, а также расположение trace/snapshot artifacts
+- после закрытия MVP0 подготовлен отдельный planning artifact `MVP1_VNC.md` для следующего milestone: human handoff через VNC/noVNC; в `ROADMAP.md` добавлена явная связка `MVP0 -> MVP1`, а сам MVP1 разбит на Commit 11-15: handoff CLI/state, local VNC backend, noVNC access, safe resume flow и trace/acceptance
 
 ## Правило ведения файла
 
