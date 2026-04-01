@@ -366,7 +366,7 @@ describe('browser-platform CLI + daemon runtime', () => {
           host: '127.0.0.1',
           port: expect.any(Number),
           url: null,
-          novncUrl: null
+          novncUrl: expect.any(String)
         },
         startedAt: expect.any(String)
       }
@@ -383,7 +383,7 @@ describe('browser-platform CLI + daemon runtime', () => {
           host: '127.0.0.1',
           port: expect.any(Number),
           url: null,
-          novncUrl: null
+          novncUrl: expect.any(String)
         }
       }
     });
