@@ -92,6 +92,31 @@ export interface SessionHandoffConnect {
   novncUrl: string | null;
 }
 
+export type SessionHandoffPostResumeCheckCode =
+  | 'AUTH_RESTORED'
+  | 'LOGIN_GATE_STILL_VISIBLE'
+  | 'PAYMENT_BOUNDARY_STILL_ACTIVE'
+  | 'PAYMENT_JSON_REPORT_REQUIRED';
+
+export interface SessionHandoffPostResumeCheck {
+  code: SessionHandoffPostResumeCheckCode;
+  ok: boolean;
+  message: string;
+}
+
+export interface SessionHandoffPostResume {
+  observedAt: string;
+  url: string;
+  title: string;
+  pageSignatureGuess: string;
+  authState: SessionAuthContext['state'];
+  loginGateDetected: boolean;
+  paymentBoundaryVisible: boolean;
+  shouldReportPaymentJson: boolean;
+  checks: SessionHandoffPostResumeCheck[];
+  safeToProceed: boolean;
+}
+
 export interface SessionHandoff {
   active: boolean;
   mode: HandoffMode;
@@ -302,4 +327,5 @@ export interface SessionHandoffResponse {
   ok: true;
   sessionId: string;
   handoff: SessionHandoff;
+  postResume?: SessionHandoffPostResume | null;
 }

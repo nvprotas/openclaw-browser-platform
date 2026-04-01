@@ -388,6 +388,21 @@ describe('browser-platform CLI + daemon runtime', () => {
       }
     });
 
+    const contextBeforeResume = await runCli(cwd, ['session', 'context', '--session', sessionId, '--json']);
+    expect(contextBeforeResume.json).toMatchObject({
+      ok: true,
+      session: {
+        sessionId,
+        authContext: {
+          state: 'anonymous',
+          loginGateDetected: false
+        },
+        paymentContext: {
+          detected: false
+        }
+      }
+    });
+
     const lockedAction = await runCliExpectFailure(cwd, [
       'session',
       'act',
@@ -414,8 +429,46 @@ describe('browser-platform CLI + daemon runtime', () => {
       handoff: {
         active: false,
         resumedAt: expect.any(String)
+      },
+      postResume: {
+        observedAt: expect.any(String),
+        url: `${serverUrl}/`,
+        title: 'Observation Fixture',
+        pageSignatureGuess: 'product_page',
+        authState: 'anonymous',
+        loginGateDetected: false,
+        paymentBoundaryVisible: false,
+        shouldReportPaymentJson: false,
+        safeToProceed: false,
+        checks: expect.arrayContaining([
+          expect.objectContaining({ code: 'AUTH_RESTORED', ok: false }),
+          expect.objectContaining({ code: 'LOGIN_GATE_STILL_VISIBLE', ok: true }),
+          expect.objectContaining({ code: 'PAYMENT_BOUNDARY_STILL_ACTIVE', ok: true }),
+          expect.objectContaining({ code: 'PAYMENT_JSON_REPORT_REQUIRED', ok: true })
+        ])
       }
     });
+
+    const contextAfterResume = await runCli(cwd, ['session', 'context', '--session', sessionId, '--json']);
+    expect(contextAfterResume.json).toMatchObject({
+      ok: true,
+      session: {
+        sessionId,
+        url: `${serverUrl}/`,
+        title: 'Observation Fixture',
+        authContext: {
+          state: 'anonymous',
+          loginGateDetected: false
+        },
+        paymentContext: {
+          detected: false,
+          shouldReportImmediately: false
+        }
+      }
+    });
+    expect((contextAfterResume.json?.session as { updatedAt: string }).updatedAt).not.toBe(
+      (contextBeforeResume.json?.session as { updatedAt: string }).updatedAt
+    );
 
     const unlockedAction = await runCli(cwd, [
       'session',

@@ -13,6 +13,7 @@ import {
 import { SessionRegistry } from './session-registry.js';
 import { createLocalVncBackendManager } from '../handoff/vnc.js';
 import { createLocalNovncGatewayManager } from '../handoff/novnc.js';
+import { buildPostHandoffResumeValidation } from '../helpers/handoff-validation.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
@@ -472,10 +473,34 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         await novncGateway.stop(session.sessionId);
         await vncBackend.stop(session.sessionId);
         const updated = registry.resumeHandoff(session.sessionId);
+        const observed = await controller.observeSession(session.sessionId);
+        const auth = detectLoginGate(observed.url, observed);
+        const observedAt = new Date().toISOString();
+        const postResumeObservation: SessionObservation = {
+          sessionId: session.sessionId,
+          observedAt,
+          ...observed
+        };
+
+        registry.touch(session.sessionId, {
+          url: observed.url,
+          title: observed.title,
+          authContext: {
+            ...session.authContext,
+            state: auth.state,
+            loginGateDetected: auth.loginGateDetected,
+            authenticatedSignals: auth.authenticatedSignals,
+            anonymousSignals: auth.anonymousSignals
+          },
+          paymentContext: observed.paymentContext
+        });
+
+        const postResume = buildPostHandoffResumeValidation(postResumeObservation, auth);
         const payload: SessionHandoffResponse = {
           ok: true,
           sessionId: session.sessionId,
-          handoff: updated?.handoff ?? session.handoff
+          handoff: updated?.handoff ?? session.handoff,
+          postResume
         };
         sendJson(response, 200, payload);
         return;
