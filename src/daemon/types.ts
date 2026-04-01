@@ -81,6 +81,27 @@ export interface SessionPaymentContext {
   extractionJson: SberPayExtractionJson | null;
 }
 
+export type HandoffMode = 'vnc';
+
+export type HandoffReason = 'auth_boundary' | 'payment_boundary' | 'manual_debug' | 'unknown_ui_state';
+
+export interface SessionHandoffConnect {
+  host: string;
+  port: number | null;
+  url: string | null;
+  novncUrl: string | null;
+}
+
+export interface SessionHandoff {
+  active: boolean;
+  mode: HandoffMode;
+  connect: SessionHandoffConnect;
+  reason: HandoffReason | null;
+  startedAt: string | null;
+  resumedAt: string | null;
+  stoppedAt: string | null;
+}
+
 export interface SessionRecord {
   sessionId: string;
   url: string;
@@ -91,6 +112,7 @@ export interface SessionRecord {
   packContext: SessionPackContext;
   authContext: SessionAuthContext;
   paymentContext: SessionPaymentContext;
+  handoff: SessionHandoff;
 }
 
 export interface SessionTraceArtifact {
@@ -274,4 +296,10 @@ export interface SessionSnapshotResponse {
 export interface SessionActResponse {
   ok: true;
   action: SessionActionResult;
+}
+
+export interface SessionHandoffResponse {
+  ok: true;
+  sessionId: string;
+  handoff: SessionHandoff;
 }

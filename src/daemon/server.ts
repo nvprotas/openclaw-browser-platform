@@ -16,6 +16,8 @@ import type {
   DaemonStatusResponse,
   SessionActionPayload,
   SessionActionResult,
+  HandoffReason,
+  SessionHandoffResponse,
   SessionObservation,
   SessionSnapshot
 } from './types.js';
@@ -26,6 +28,10 @@ function sendJson(response: http.ServerResponse, statusCode: number, payload: un
   response.statusCode = statusCode;
   response.setHeader('content-type', 'application/json');
   response.end(`${JSON.stringify(payload)}\n`);
+}
+
+function isHandoffReason(value: unknown): value is HandoffReason {
+  return value === 'auth_boundary' || value === 'payment_boundary' || value === 'manual_debug' || value === 'unknown_ui_state';
 }
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
@@ -44,7 +50,7 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
 function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: false; error: { message: string; code?: string } } } {
   if (error instanceof BrowserPlatformError) {
     const statusCode =
-      error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : 400;
+      error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : error.code === 'SESSION_LOCKED_FOR_HANDOFF' ? 423 : 400;
     return {
       statusCode,
       payload: {
@@ -259,6 +265,15 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         if (!session) {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
+        if (session.handoff.active) {
+          throw new BrowserPlatformError('Session is locked for handoff', {
+            code: 'SESSION_LOCKED_FOR_HANDOFF',
+            details: {
+              sessionId: session.sessionId,
+              handoff: session.handoff
+            }
+          });
+        }
         if (!body?.payload) {
           throw new BrowserPlatformError('Missing action payload', { code: 'INVALID_ACTION_PAYLOAD' });
         }
@@ -350,6 +365,77 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
 
         await controller.closeSession(session.sessionId);
         sendJson(response, 200, { ok: true, session: registry.close(session.sessionId) });
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/start') {
+        const body = (await readJsonBody(request)) as { sessionId?: string; reason?: string | null };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        if (body.reason !== null && body.reason !== undefined && !isHandoffReason(body.reason)) {
+          throw new BrowserPlatformError('Invalid handoff reason', { code: 'INVALID_HANDOFF_REASON' });
+        }
+
+        const updated = registry.startHandoff(session.sessionId, body.reason ?? null);
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: updated?.handoff ?? session.handoff
+        };
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/status') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: session.handoff
+        };
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/resume') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        const updated = registry.resumeHandoff(session.sessionId);
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: updated?.handoff ?? session.handoff
+        };
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/stop') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        const updated = registry.stopHandoff(session.sessionId);
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: updated?.handoff ?? session.handoff
+        };
+        sendJson(response, 200, payload);
         return;
       }
 

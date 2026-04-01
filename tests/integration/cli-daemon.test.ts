@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { chromium } from 'playwright';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -16,9 +16,31 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 const cliPath = path.join(repoRoot, 'dist/bin/browser-platform.js');
 const tempDirs: string[] = [];
-const browserRuntimeAvailable = existsSync(chromium.executablePath());
 let server: http.Server;
 let serverUrl = '';
+
+function hasUsableChromiumRuntime(): boolean {
+  if (!existsSync(chromium.executablePath())) {
+    return false;
+  }
+
+  const probe = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      "import { chromium } from 'playwright'; const browser = await chromium.launch({ headless: true }); await browser.close();"
+    ],
+    {
+      stdio: 'ignore',
+      timeout: 10_000
+    }
+  );
+
+  return probe.status === 0 && !probe.error;
+}
+
+const browserRuntimeAvailable = hasUsableChromiumRuntime();
 
 beforeAll(async () => {
   await execFileAsync('npm', ['run', 'build'], { cwd: repoRoot });
@@ -186,6 +208,27 @@ async function runCli(cwd: string, args: string[]) {
   };
 }
 
+async function runCliExpectFailure(cwd: string, args: string[]) {
+  try {
+    const result = await execFileAsync(process.execPath, [cliPath, ...args], { cwd });
+    return {
+      stdout: result.stdout.trim(),
+      stderr: result.stderr.trim(),
+      json: result.stdout.trim() ? (JSON.parse(result.stdout) as Record<string, unknown>) : null,
+      exitCode: 0
+    };
+  } catch (error) {
+    const failure = error as { stdout?: string; stderr?: string; code?: number };
+    const stdout = failure.stdout?.trim() ?? '';
+    return {
+      stdout,
+      stderr: failure.stderr?.trim() ?? '',
+      json: stdout ? (JSON.parse(stdout) as Record<string, unknown>) : null,
+      exitCode: typeof failure.code === 'number' ? failure.code : 1
+    };
+  }
+}
+
 describe('browser-platform CLI + daemon runtime', () => {
   it.skipIf(!browserRuntimeAvailable)(
     'keeps session state across invocations and exposes observe/snapshot JSON',
@@ -208,6 +251,16 @@ describe('browser-platform CLI + daemon runtime', () => {
         url: serverUrl + '/',
         title: 'Observation Fixture',
         status: 'open',
+        handoff: {
+          active: false,
+          mode: 'vnc',
+          connect: {
+            host: '127.0.0.1',
+            port: null,
+            url: null,
+            novncUrl: null
+          }
+        },
         trace: {
           tracePath: expect.stringContaining(path.join('.tmp', 'browser-platform', 'artifacts', 'traces'))
         },
@@ -292,6 +345,104 @@ describe('browser-platform CLI + daemon runtime', () => {
     },
     30_000
   );
+
+  it.skipIf(!browserRuntimeAvailable)('locks session act while handoff is active and unlocks after resume', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    await runCli(cwd, ['daemon', 'ensure', '--json']);
+    const open = await runCli(cwd, ['session', 'open', '--url', serverUrl, '--json']);
+    const sessionId = String((open.json?.session as { sessionId: string }).sessionId);
+
+    const start = await runCli(cwd, ['handoff', 'start', '--session', sessionId, '--reason', 'auth_boundary', '--json']);
+    expect(start.json).toMatchObject({
+      ok: true,
+      sessionId,
+      handoff: {
+        active: true,
+        mode: 'vnc',
+        reason: 'auth_boundary',
+        connect: {
+          host: '127.0.0.1',
+          port: null,
+          url: null,
+          novncUrl: null
+        },
+        startedAt: expect.any(String)
+      }
+    });
+
+    const statusWhileActive = await runCli(cwd, ['handoff', 'status', '--session', sessionId, '--json']);
+    expect(statusWhileActive.json).toMatchObject({
+      ok: true,
+      sessionId,
+      handoff: {
+        active: true,
+        reason: 'auth_boundary'
+      }
+    });
+
+    const lockedAction = await runCliExpectFailure(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'fill', selector: '#query', value: 'Blocked while handoff is active' })
+    ]);
+    expect(lockedAction.json).toMatchObject({
+      ok: false,
+      error: {
+        code: 'SESSION_LOCKED_FOR_HANDOFF',
+        message: 'Session is locked for handoff',
+        details: {
+          sessionId
+        }
+      }
+    });
+
+    const resume = await runCli(cwd, ['handoff', 'resume', '--session', sessionId, '--json']);
+    expect(resume.json).toMatchObject({
+      ok: true,
+      sessionId,
+      handoff: {
+        active: false,
+        resumedAt: expect.any(String)
+      }
+    });
+
+    const unlockedAction = await runCli(cwd, [
+      'session',
+      'act',
+      '--session',
+      sessionId,
+      '--json',
+      JSON.stringify({ action: 'fill', selector: '#query', value: 'Sample Book' })
+    ]);
+    expect(unlockedAction.json).toMatchObject({
+      ok: true,
+      action: {
+        action: 'fill'
+      }
+    });
+
+    const stop = await runCli(cwd, ['handoff', 'stop', '--session', sessionId, '--json']);
+    expect(stop.json).toMatchObject({
+      ok: true,
+      sessionId,
+      handoff: {
+        active: false,
+        mode: 'vnc',
+        connect: {
+          host: '127.0.0.1',
+          port: null,
+          url: null,
+          novncUrl: null
+        },
+        stoppedAt: expect.any(String)
+      }
+    });
+  }, 30_000);
 
   it.skipIf(!browserRuntimeAvailable)('reuses provided storage state and reports auth state', async () => {
     const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
