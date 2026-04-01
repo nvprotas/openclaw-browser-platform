@@ -112,6 +112,39 @@ All implemented commands return JSON when called with `--json`.
 - `browser-platform session act --session <id> --json '<payload>'`
 - `browser-platform session snapshot --session <id> --json`
 - `browser-platform session close --session <id> --json`
+- `browser-platform handoff start --session <id> [--reason <reason>] --json`
+- `browser-platform handoff status --session <id> --json`
+- `browser-platform handoff resume --session <id> --json`
+- `browser-platform handoff stop --session <id> --json`
+
+## Handoff / trace status
+
+MVP1 уже включает локальный `handoff`-контур для human override:
+
+- `handoff start` поднимает локальный VNC backend и noVNC gateway только на `127.0.0.1`
+- `handoff status` показывает текущее состояние connect metadata
+- `handoff resume` останавливает human surface и возвращает управление агенту
+- `handoff stop` завершает backend-процессы и очищает временные connect-артефакты
+
+Безопасные значения по умолчанию:
+
+- VNC bind только на localhost
+- noVNC bind только на localhost
+- ничего не публикуется наружу автоматически
+
+Trace artifacts теперь фиксируют lifecycle handoff через события:
+
+- `handoff_started`
+- `handoff_connect_info_issued`
+- `handoff_human_active`
+- `handoff_resumed`
+- `handoff_stopped`
+
+Trace writer применяет privacy redact перед записью JSON:
+
+- скрываются OTP, пароли, секреты, токены, CVV/CVC и другие sensitive keys
+- redaction применяется и к form/input `value`
+- query-параметры вида `token=...` в trace payload тоже маскируются
 
 ## Examples
 
@@ -147,6 +180,7 @@ Current trace coverage:
 - `session observe` writes the observed page summary
 - `session act` writes before/after state, diff, and success/failure observations
 - `session snapshot` writes a trace JSON that points at the saved screenshot + HTML snapshot paths
+- handoff commands write lifecycle traces with the events listed above
 
 The heavier screenshot/HTML artifacts still live under:
 

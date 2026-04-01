@@ -2,6 +2,8 @@
 
 Это план следующего этапа после завершения MVP0.
 
+Текущий статус: **Commit 11-15 выполнены, MVP1 закрыт**.
+
 Цель MVP1: добавить **human handoff** для живых browser sessions, не ломая уже доказанную связку:
 
 ```text
@@ -77,6 +79,14 @@ daemon
 - человек подключается только на сложных границах
 - после handoff агент продолжает **ту же** session
 - traces фиксируют, где был человек, а где агент
+
+## Текущий статус по коммитам
+
+- [x] Commit 11 — Handoff state model + CLI contract
+- [x] Commit 12 — Local VNC backend v1
+- [x] Commit 13 — noVNC access v1
+- [x] Commit 14 — Safe handoff/resume flow
+- [x] Commit 15 — Trace integration + MVP1 acceptance
 
 ---
 
@@ -286,6 +296,9 @@ browser-platform handoff stop --session <id> --json
 
 ## Commit 15 — Trace integration + MVP1 acceptance
 
+### Статус
+- выполнено
+
 ### Что сделать
 - писать handoff lifecycle events в trace artifacts
 - добавить acceptance docs
@@ -305,28 +318,34 @@ browser-platform handoff stop --session <id> --json
 ### Done when
 - MVP1 можно показать как working human-in-the-loop flow
 
+### Что закрыто
+- handoff trace artifacts пишутся через существующий trace writer
+- trace events зафиксированы как `handoff_started`, `handoff_connect_info_issued`, `handoff_human_active`, `handoff_resumed`, `handoff_stopped`
+- privacy redact защищает OTP, пароли, секреты, токены, CVV/CVC и чувствительные `value`-поля
+- docs и acceptance checklist синхронизированы с текущим состоянием MVP1
+
 ---
 
 ## 8. Acceptance checklist
 
 ### Техническая приёмка
-- [ ] handoff state живёт в daemon/session state
-- [ ] CLI возвращает JSON для `handoff start/status/resume/stop`
-- [ ] VNC backend поднимается и очищается без orphan processes
-- [ ] noVNC link/endpoint поднимается и закрывается корректно
-- [ ] traces содержат handoff lifecycle events
+- [x] handoff state живёт в daemon/session state
+- [x] CLI возвращает JSON для `handoff start/status/resume/stop`
+- [x] VNC backend поднимается и очищается без orphan processes
+- [x] noVNC link/endpoint поднимается и закрывается корректно
+- [x] traces содержат handoff lifecycle events
 
 ### Функциональная приёмка
-- [ ] auth boundary можно передать человеку и потом продолжить
-- [ ] payment boundary можно передать человеку и потом продолжить
-- [ ] агент не вмешивается, пока handoff active
-- [ ] после resume session остаётся той же
-- [ ] финальные рискованные шаги по-прежнему не нажимаются автоматически
+- [x] auth boundary можно передать человеку и потом продолжить
+- [x] payment boundary можно передать человеку и потом продолжить
+- [x] агент не вмешивается, пока handoff active
+- [x] после resume session остаётся той же
+- [x] финальные рискованные шаги по-прежнему не нажимаются автоматически
 
 ### Инженерная приёмка
-- [ ] по trace видно, где именно начался и закончился handoff
-- [ ] cleanup не оставляет зависших backend-процессов
-- [ ] docs достаточно, чтобы развернуть локальный handoff без чтения кода
+- [x] по trace видно, где именно начался и закончился handoff
+- [x] cleanup не оставляет зависших backend-процессов
+- [x] docs достаточно, чтобы развернуть локальный handoff без чтения кода
 
 ---
 

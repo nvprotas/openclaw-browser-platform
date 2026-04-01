@@ -37,6 +37,19 @@ function isHandoffReason(value: unknown): value is HandoffReason {
   return value === 'auth_boundary' || value === 'payment_boundary' || value === 'manual_debug' || value === 'unknown_ui_state';
 }
 
+async function writeHandoffTrace(
+  controller: PlaywrightController,
+  sessionId: string,
+  event: 'handoff_started' | 'handoff_connect_info_issued' | 'handoff_human_active' | 'handoff_resumed' | 'handoff_stopped',
+  payload: Record<string, unknown>
+): Promise<void> {
+  await controller.writeTrace(sessionId, event, {
+    event,
+    sessionId,
+    ...payload
+  });
+}
+
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -391,6 +404,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         }
 
         const started = registry.startHandoff(session.sessionId, body.reason ?? null);
+        await writeHandoffTrace(controller, session.sessionId, 'handoff_started', {
+          reason: started?.handoff.reason ?? session.handoff.reason,
+          handoff: started?.handoff ?? session.handoff
+        });
         try {
           const vncConnect = await vncBackend.start(session.sessionId);
           const connect = await novncGateway.start(session.sessionId, vncConnect);
@@ -399,6 +416,17 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
               ...(started?.handoff ?? session.handoff),
               connect
             }
+          });
+          const activeHandoff = registry.get(session.sessionId)?.handoff ?? started?.handoff ?? session.handoff;
+          await writeHandoffTrace(controller, session.sessionId, 'handoff_connect_info_issued', {
+            reason: activeHandoff.reason,
+            connect: activeHandoff.connect,
+            handoff: activeHandoff
+          });
+          await writeHandoffTrace(controller, session.sessionId, 'handoff_human_active', {
+            reason: activeHandoff.reason,
+            connect: activeHandoff.connect,
+            handoff: activeHandoff
           });
         } catch (error) {
           await novncGateway.stop(session.sessionId);
@@ -496,6 +524,11 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         });
 
         const postResume = buildPostHandoffResumeValidation(postResumeObservation, auth);
+        await writeHandoffTrace(controller, session.sessionId, 'handoff_resumed', {
+          reason: updated?.handoff.reason ?? session.handoff.reason,
+          handoff: updated?.handoff ?? session.handoff,
+          postResume
+        });
         const payload: SessionHandoffResponse = {
           ok: true,
           sessionId: session.sessionId,
@@ -516,6 +549,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         await novncGateway.stop(session.sessionId);
         await vncBackend.stop(session.sessionId);
         const updated = registry.stopHandoff(session.sessionId);
+        await writeHandoffTrace(controller, session.sessionId, 'handoff_stopped', {
+          reason: updated?.handoff.reason ?? session.handoff.reason,
+          handoff: updated?.handoff ?? session.handoff
+        });
         const payload: SessionHandoffResponse = {
           ok: true,
           sessionId: session.sessionId,

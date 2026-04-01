@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawnSync } from 'node:child_process';
@@ -227,6 +227,16 @@ async function runCliExpectFailure(cwd: string, args: string[]) {
       exitCode: typeof failure.code === 'number' ? failure.code : 1
     };
   }
+}
+
+async function readTraceEvents(cwd: string, sessionId: string): Promise<Array<{ event?: string; [key: string]: unknown }>> {
+  const traceDir = path.join(cwd, '.tmp', 'browser-platform', 'artifacts', 'traces', sessionId);
+  const files = await readdir(traceDir);
+  const traceFiles = files.filter((file) => file.endsWith('.json'));
+
+  return Promise.all(
+    traceFiles.map(async (file) => JSON.parse(await readFile(path.join(traceDir, file), 'utf8')) as { event?: string; [key: string]: unknown })
+  );
 }
 
 describe('browser-platform CLI + daemon runtime', () => {
@@ -499,6 +509,48 @@ describe('browser-platform CLI + daemon runtime', () => {
           novncUrl: null
         },
         stoppedAt: expect.any(String)
+      }
+    });
+
+    const traceEvents = await readTraceEvents(cwd, sessionId);
+    const handoffEvents = traceEvents.filter((entry) => typeof entry.event === 'string' && String(entry.event).startsWith('handoff_'));
+    expect(handoffEvents.map((entry) => entry.event)).toEqual(
+      expect.arrayContaining([
+        'handoff_started',
+        'handoff_connect_info_issued',
+        'handoff_human_active',
+        'handoff_resumed',
+        'handoff_stopped'
+      ])
+    );
+    expect(handoffEvents.find((entry) => entry.event === 'handoff_started')).toMatchObject({
+      sessionId,
+      reason: 'auth_boundary',
+      handoff: {
+        active: true,
+        mode: 'vnc'
+      }
+    });
+    expect(handoffEvents.find((entry) => entry.event === 'handoff_connect_info_issued')).toMatchObject({
+      sessionId,
+      handoff: {
+        connect: {
+          host: '127.0.0.1',
+          port: expect.any(Number),
+          novncUrl: expect.any(String)
+        }
+      }
+    });
+    expect(handoffEvents.find((entry) => entry.event === 'handoff_resumed')).toMatchObject({
+      sessionId,
+      postResume: {
+        safeToProceed: false
+      }
+    });
+    expect(handoffEvents.find((entry) => entry.event === 'handoff_stopped')).toMatchObject({
+      sessionId,
+      handoff: {
+        active: false
       }
     });
   }, 30_000);
