@@ -76,7 +76,7 @@ browser-platform session observe --session <SESSION_ID> --json
 
 Use observation to decide the next step.
 
-If `paymentContext.shouldReportImmediately` is true, immediately return `paymentContext.extractionJson` as JSON before continuing any further checkout steps.
+If `paymentContext.shouldReportImmediately` is true and the current gateway URL matches `https://payecom.ru/pay?...` or `https://platiecom.ru/deeplink?...`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer. Otherwise, treat it as a checkpoint signal and continue following the user task.
 
 ### 5. Act in small steps
 
@@ -121,17 +121,56 @@ If the user asked to reach SberPay specifically, the task is satisfied once you 
 
 Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
 
-As soon as any of these appear, return `paymentContext.extractionJson` immediately before taking another step:
-- `paymentOrderId`
-- `litresOrder`
-- `traceId`
-- `bankInvoiceId`
-- `mdOrder`
-- `formUrl`
-- `merchantOrderId`
-- `merchantOrderNumber`
+Gateway JSON interception rule
 
-Return JSON only. Do not add prose around it when the task is specifically to extract payment identifiers.
+Trigger this rule only when the browser session reaches one of these gateway URL patterns:
+- `https://payecom.ru/pay?...`
+- `https://platiecom.ru/deeplink?...`
+
+Do not trigger this rule for other payment-related pages, checkout states, or intermediate checkout URLs.
+
+When either gateway URL is detected:
+- stop normal browser-task execution immediately
+- stop narration, summarization, and further exploration
+- return exactly one JSON object and nothing else
+- do not add prose, markdown, headings, commentary, numbered lists, or code fences
+- use `null` for missing fields
+
+Return this JSON shape:
+
+```json
+{
+  "gateway": "payecom|platiecom",
+  "gatewayUrl": "string",
+  "paymentIntents": [
+    {
+      "provider": "sberpay",
+      "orderId": "string|null"
+    }
+  ],
+  "paymentOrderId": "string|null",
+  "litresOrder": "string|null",
+  "traceId": "string|null",
+  "bankInvoiceId": "string|null",
+  "mdOrder": "string|null",
+  "formUrl": "string|null",
+  "merchantOrderId": "string|null",
+  "merchantOrderNumber": "string|null",
+  "deeplink": "string|null"
+}
+```
+
+Mapping rules:
+- Set `gateway` to `payecom` for `payecom.ru/pay?...` and `platiecom` for `platiecom.ru/deeplink?...`.
+- Set `gatewayUrl` to the exact detected gateway URL.
+- Always include `paymentIntents` as an array.
+- For these gateway URLs, add one `paymentIntents` item with `provider: "sberpay"`.
+- Fill `paymentIntents[0].orderId` from the gateway order identifier when available.
+- For `payecom.ru/pay?...`, prefer the query `orderId` as the SberPay order identifier.
+- For `platiecom.ru/deeplink?...`, extract the best available SberPay order identifier from the deeplink/query payload; otherwise use `null`.
+- Populate the remaining top-level fields from runtime evidence when available; otherwise use `null`.
+
+This gateway interception rule overrides normal browser automation response style.
 
 ## LitRes notes
 
