@@ -1,6 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { createEmptyPaymentContext } from '../helpers/payment-context.js';
-import type { SessionRecord } from './types.js';
+import type { SessionHandoff, HandoffReason, SessionRecord } from './types.js';
+
+function createDefaultHandoff(): SessionHandoff {
+  return {
+    active: false,
+    mode: 'vnc',
+    connect: {
+      host: '127.0.0.1',
+      port: null,
+      url: null,
+      novncUrl: null
+    },
+    reason: null,
+    startedAt: null,
+    resumedAt: null,
+    stoppedAt: null
+  };
+}
 
 export class SessionRegistry {
   private readonly sessions = new Map<string, SessionRecord>();
@@ -43,7 +60,8 @@ export class SessionRegistry {
         bootstrapFinalUrl: null,
         bootstrapError: null
       },
-      paymentContext: createEmptyPaymentContext()
+      paymentContext: createEmptyPaymentContext(),
+      handoff: createDefaultHandoff()
     };
 
     this.sessions.set(session.sessionId, session);
@@ -56,7 +74,7 @@ export class SessionRegistry {
 
   touch(
     sessionId: string,
-    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext' | 'authContext' | 'paymentContext'>>
+    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext' | 'authContext' | 'paymentContext' | 'handoff'>>
   ): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
     if (!existing) {
@@ -74,10 +92,86 @@ export class SessionRegistry {
   }
 
   close(sessionId: string): SessionRecord | undefined {
-    return this.touch(sessionId, { status: 'closed' });
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    return this.touch(sessionId, {
+      status: 'closed',
+      handoff: session.handoff.active
+        ? {
+            ...session.handoff,
+            active: false,
+            stoppedAt: new Date().toISOString()
+          }
+        : session.handoff
+    });
   }
 
   countOpen(): number {
     return Array.from(this.sessions.values()).filter((session) => session.status === 'open').length;
+  }
+
+  startHandoff(sessionId: string, reason: HandoffReason | null): SessionRecord | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    const now = new Date().toISOString();
+    const handoff = session.handoff.active
+      ? {
+          ...session.handoff,
+          reason: reason ?? session.handoff.reason ?? 'unknown_ui_state'
+        }
+      : {
+          ...createDefaultHandoff(),
+          active: true,
+          reason: reason ?? 'unknown_ui_state',
+          startedAt: now,
+          resumedAt: null,
+          stoppedAt: null
+        };
+
+    return this.touch(sessionId, { handoff });
+  }
+
+  resumeHandoff(sessionId: string): SessionRecord | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    return this.touch(sessionId, {
+      handoff: {
+        ...session.handoff,
+        active: false,
+        resumedAt: new Date().toISOString(),
+        connect: {
+          host: '127.0.0.1',
+          port: null,
+          url: null,
+          novncUrl: null
+        }
+      }
+    });
+  }
+
+  stopHandoff(sessionId: string): SessionRecord | undefined {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return undefined;
+    }
+
+    return this.touch(sessionId, {
+      handoff: {
+        ...createDefaultHandoff(),
+        reason: null,
+        startedAt: session.handoff.startedAt,
+        resumedAt: session.handoff.resumedAt,
+        stoppedAt: new Date().toISOString()
+      }
+    });
   }
 }

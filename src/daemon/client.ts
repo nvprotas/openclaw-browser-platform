@@ -7,6 +7,7 @@ import type {
   SessionActResponse,
   SessionActionPayload,
   SessionCloseResponse,
+  SessionHandoffResponse,
   SessionContextResponse,
   SessionObserveResponse,
   SessionOpenResponse,
@@ -24,11 +25,15 @@ async function request<T>(info: DaemonInfo, route: string, body?: JsonValue): Pr
   });
 
   const text = await response.text();
-  const payload = text ? (JSON.parse(text) as T | { error?: { message?: string } }) : undefined;
+  const payload = text ? (JSON.parse(text) as T | { error?: { message?: string; code?: string; details?: Record<string, unknown> } }) : undefined;
 
   if (!response.ok) {
-    const message = (payload as { error?: { message?: string } } | undefined)?.error?.message ?? response.statusText;
-    throw new BrowserPlatformError(message, { code: 'DAEMON_REQUEST_FAILED' });
+    const error = (payload as { error?: { message?: string; code?: string; details?: Record<string, unknown> } } | undefined)?.error;
+    const message = error?.message ?? response.statusText;
+    throw new BrowserPlatformError(message, {
+      code: error?.code ?? 'DAEMON_REQUEST_FAILED',
+      details: error?.details
+    });
   }
 
   return payload as T;
@@ -75,4 +80,23 @@ export async function snapshotSession(sessionId: string): Promise<SessionSnapsho
 
 export async function closeSession(sessionId: string): Promise<SessionCloseResponse> {
   return request<SessionCloseResponse>(await readRunningDaemonInfo(), '/v1/session/close', { sessionId });
+}
+
+export async function startHandoff(sessionId: string, options?: { reason?: string | null }): Promise<SessionHandoffResponse> {
+  return request<SessionHandoffResponse>(await readRunningDaemonInfo(), '/v1/handoff/start', {
+    sessionId,
+    reason: options?.reason ?? null
+  });
+}
+
+export async function getHandoffStatus(sessionId: string): Promise<SessionHandoffResponse> {
+  return request<SessionHandoffResponse>(await readRunningDaemonInfo(), '/v1/handoff/status', { sessionId });
+}
+
+export async function resumeHandoff(sessionId: string): Promise<SessionHandoffResponse> {
+  return request<SessionHandoffResponse>(await readRunningDaemonInfo(), '/v1/handoff/resume', { sessionId });
+}
+
+export async function stopHandoff(sessionId: string): Promise<SessionHandoffResponse> {
+  return request<SessionHandoffResponse>(await readRunningDaemonInfo(), '/v1/handoff/stop', { sessionId });
 }

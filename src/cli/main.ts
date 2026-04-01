@@ -2,6 +2,12 @@ import { BrowserPlatformError } from '../core/errors.js';
 import { startDaemonServer } from '../daemon/server.js';
 import { handleDaemonEnsure, handleDaemonStatus } from './commands/daemon.js';
 import {
+  handleHandoffResume,
+  handleHandoffStart,
+  handleHandoffStatus,
+  handleHandoffStop
+} from './commands/handoff.js';
+import {
   handleSessionAct,
   handleSessionClose,
   handleSessionContext,
@@ -79,9 +85,25 @@ async function dispatch(args: string[]): Promise<unknown> {
     return handleSessionClose(args);
   }
 
+  if (args[0] === 'handoff' && args[1] === 'start') {
+    return handleHandoffStart(args);
+  }
+
+  if (args[0] === 'handoff' && args[1] === 'status') {
+    return handleHandoffStatus(args);
+  }
+
+  if (args[0] === 'handoff' && args[1] === 'resume') {
+    return handleHandoffResume(args);
+  }
+
+  if (args[0] === 'handoff' && args[1] === 'stop') {
+    return handleHandoffStop(args);
+  }
+
   throw new BrowserPlatformError(`Unknown command: ${args.join(' ')}`, { code: 'UNKNOWN_COMMAND' });
 }
 
 function printHelp(): void {
-  console.log(`browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> [--storage-state <path>] --json\n  browser-platform session context --session <id> --json\n  browser-platform session observe --session <id> --json\n  browser-platform session act --session <id> --json '<payload>'\n  browser-platform session snapshot --session <id> --json\n  browser-platform session close --session <id> --json`);
+  console.log(`browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> [--storage-state <path>] --json\n  browser-platform session context --session <id> --json\n  browser-platform session observe --session <id> --json\n  browser-platform session act --session <id> --json '<payload>'\n  browser-platform session snapshot --session <id> --json\n  browser-platform session close --session <id> --json\n  browser-platform handoff start --session <id> [--reason <reason>] --json\n  browser-platform handoff status --session <id> --json\n  browser-platform handoff resume --session <id> --json\n  browser-platform handoff stop --session <id> --json`);
 }

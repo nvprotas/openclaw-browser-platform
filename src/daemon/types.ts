@@ -81,6 +81,52 @@ export interface SessionPaymentContext {
   extractionJson: SberPayExtractionJson | null;
 }
 
+export type HandoffMode = 'vnc';
+
+export type HandoffReason = 'auth_boundary' | 'payment_boundary' | 'manual_debug' | 'unknown_ui_state';
+
+export interface SessionHandoffConnect {
+  host: string;
+  port: number | null;
+  url: string | null;
+  novncUrl: string | null;
+}
+
+export type SessionHandoffPostResumeCheckCode =
+  | 'AUTH_RESTORED'
+  | 'LOGIN_GATE_STILL_VISIBLE'
+  | 'PAYMENT_BOUNDARY_STILL_ACTIVE'
+  | 'PAYMENT_JSON_REPORT_REQUIRED';
+
+export interface SessionHandoffPostResumeCheck {
+  code: SessionHandoffPostResumeCheckCode;
+  ok: boolean;
+  message: string;
+}
+
+export interface SessionHandoffPostResume {
+  observedAt: string;
+  url: string;
+  title: string;
+  pageSignatureGuess: string;
+  authState: SessionAuthContext['state'];
+  loginGateDetected: boolean;
+  paymentBoundaryVisible: boolean;
+  shouldReportPaymentJson: boolean;
+  checks: SessionHandoffPostResumeCheck[];
+  safeToProceed: boolean;
+}
+
+export interface SessionHandoff {
+  active: boolean;
+  mode: HandoffMode;
+  connect: SessionHandoffConnect;
+  reason: HandoffReason | null;
+  startedAt: string | null;
+  resumedAt: string | null;
+  stoppedAt: string | null;
+}
+
 export interface SessionRecord {
   sessionId: string;
   url: string;
@@ -91,6 +137,7 @@ export interface SessionRecord {
   packContext: SessionPackContext;
   authContext: SessionAuthContext;
   paymentContext: SessionPaymentContext;
+  handoff: SessionHandoff;
 }
 
 export interface SessionTraceArtifact {
@@ -274,4 +321,11 @@ export interface SessionSnapshotResponse {
 export interface SessionActResponse {
   ok: true;
   action: SessionActionResult;
+}
+
+export interface SessionHandoffResponse {
+  ok: true;
+  sessionId: string;
+  handoff: SessionHandoff;
+  postResume?: SessionHandoffPostResume | null;
 }

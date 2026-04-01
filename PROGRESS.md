@@ -2,10 +2,19 @@
 
 Текущий прогресс по `openclaw-browser-platform`.
 
-Последнее обновление: **2026-03-31 21:46 UTC**
+Последнее обновление: **2026-04-01 UTC**
 
 ## Короткий статус
 
+- MVP1 закрыт: Commit 11-15 выполнены, handoff trace integration и privacy redact добавлены
+- ключевые артефакты этой итерации:
+  - `src/traces/writer.ts`
+  - `src/daemon/server.ts`
+  - `tests/unit/trace-writer.test.ts`
+  - `tests/integration/cli-daemon.test.ts`
+  - `README.md`
+  - `MVP1_VNC.md`
+- проверка по этой задаче должна пройти через `npm run build` и выборочный `vitest` набор, указанный в задаче
 - Commit 5 завершён и зафиксирован в git как `5b79465`
 - добавлена схема текущей архитектуры в `ARCHITECTURE_CURRENT.md`
 - LitRes уже тестируется на живом сайте

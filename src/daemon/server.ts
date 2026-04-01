@@ -11,11 +11,16 @@ import {
   type LitresBootstrapAttemptResult
 } from './litres-auth.js';
 import { SessionRegistry } from './session-registry.js';
+import { createLocalVncBackendManager } from '../handoff/vnc.js';
+import { createLocalNovncGatewayManager } from '../handoff/novnc.js';
+import { buildPostHandoffResumeValidation } from '../helpers/handoff-validation.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
   SessionActionPayload,
   SessionActionResult,
+  HandoffReason,
+  SessionHandoffResponse,
   SessionObservation,
   SessionSnapshot
 } from './types.js';
@@ -26,6 +31,23 @@ function sendJson(response: http.ServerResponse, statusCode: number, payload: un
   response.statusCode = statusCode;
   response.setHeader('content-type', 'application/json');
   response.end(`${JSON.stringify(payload)}\n`);
+}
+
+function isHandoffReason(value: unknown): value is HandoffReason {
+  return value === 'auth_boundary' || value === 'payment_boundary' || value === 'manual_debug' || value === 'unknown_ui_state';
+}
+
+async function writeHandoffTrace(
+  controller: PlaywrightController,
+  sessionId: string,
+  event: 'handoff_started' | 'handoff_connect_info_issued' | 'handoff_human_active' | 'handoff_resumed' | 'handoff_stopped',
+  payload: Record<string, unknown>
+): Promise<void> {
+  await controller.writeTrace(sessionId, event, {
+    event,
+    sessionId,
+    ...payload
+  });
 }
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
@@ -44,7 +66,7 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
 function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: false; error: { message: string; code?: string } } } {
   if (error instanceof BrowserPlatformError) {
     const statusCode =
-      error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : 400;
+      error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : error.code === 'SESSION_LOCKED_FOR_HANDOFF' ? 423 : 400;
     return {
       statusCode,
       payload: {
@@ -70,6 +92,8 @@ function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: f
 
 export async function startDaemonServer(): Promise<DaemonInfo> {
   const registry = new SessionRegistry();
+  const vncBackend = createLocalVncBackendManager();
+  const novncGateway = createLocalNovncGatewayManager();
   const stateStore = getDefaultStateStore();
   const controller = new PlaywrightController(stateStore.root);
   const token = randomBytes(24).toString('hex');
@@ -259,6 +283,15 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         if (!session) {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
+        if (session.handoff.active) {
+          throw new BrowserPlatformError('Session is locked for handoff', {
+            code: 'SESSION_LOCKED_FOR_HANDOFF',
+            details: {
+              sessionId: session.sessionId,
+              handoff: session.handoff
+            }
+          });
+        }
         if (!body?.payload) {
           throw new BrowserPlatformError('Missing action payload', { code: 'INVALID_ACTION_PAYLOAD' });
         }
@@ -348,8 +381,184 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        await novncGateway.stop(session.sessionId);
+        await vncBackend.stop(session.sessionId);
+        if (session.handoff.active || session.handoff.connect.port !== null) {
+          registry.stopHandoff(session.sessionId);
+        }
+
         await controller.closeSession(session.sessionId);
         sendJson(response, 200, { ok: true, session: registry.close(session.sessionId) });
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/start') {
+        const body = (await readJsonBody(request)) as { sessionId?: string; reason?: string | null };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        if (body.reason !== null && body.reason !== undefined && !isHandoffReason(body.reason)) {
+          throw new BrowserPlatformError('Invalid handoff reason', { code: 'INVALID_HANDOFF_REASON' });
+        }
+
+        const started = registry.startHandoff(session.sessionId, body.reason ?? null);
+        await writeHandoffTrace(controller, session.sessionId, 'handoff_started', {
+          reason: started?.handoff.reason ?? session.handoff.reason,
+          handoff: started?.handoff ?? session.handoff
+        });
+        try {
+          const vncConnect = await vncBackend.start(session.sessionId);
+          const connect = await novncGateway.start(session.sessionId, vncConnect);
+          registry.touch(session.sessionId, {
+            handoff: {
+              ...(started?.handoff ?? session.handoff),
+              connect
+            }
+          });
+          const activeHandoff = registry.get(session.sessionId)?.handoff ?? started?.handoff ?? session.handoff;
+          await writeHandoffTrace(controller, session.sessionId, 'handoff_connect_info_issued', {
+            reason: activeHandoff.reason,
+            connect: activeHandoff.connect,
+            handoff: activeHandoff
+          });
+          await writeHandoffTrace(controller, session.sessionId, 'handoff_human_active', {
+            reason: activeHandoff.reason,
+            connect: activeHandoff.connect,
+            handoff: activeHandoff
+          });
+        } catch (error) {
+          await novncGateway.stop(session.sessionId);
+          await vncBackend.stop(session.sessionId);
+          registry.stopHandoff(session.sessionId);
+          throw error;
+        }
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: registry.get(session.sessionId)?.handoff ?? started?.handoff ?? session.handoff
+        };
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/status') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        const backendStatus = vncBackend.status(session.sessionId);
+        const novncStatus = novncGateway.status(session.sessionId);
+        const currentConnect = novncStatus.running ? novncStatus.connect : backendStatus.connect;
+        const shouldBeActive = backendStatus.running || novncStatus.running;
+
+        if (shouldBeActive) {
+          if (
+            !session.handoff.active ||
+            currentConnect.port !== session.handoff.connect.port ||
+            currentConnect.host !== session.handoff.connect.host ||
+            currentConnect.url !== session.handoff.connect.url ||
+            currentConnect.novncUrl !== session.handoff.connect.novncUrl
+          ) {
+            registry.touch(session.sessionId, {
+              handoff: {
+                ...session.handoff,
+                active: true,
+                connect: currentConnect
+              }
+            });
+          }
+        } else if (session.handoff.active || session.handoff.connect.port !== null || session.handoff.connect.novncUrl !== null) {
+          registry.touch(session.sessionId, {
+            handoff: {
+              ...session.handoff,
+              active: false,
+              connect: currentConnect,
+              stoppedAt: session.handoff.stoppedAt ?? new Date().toISOString()
+            }
+          });
+        }
+
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: registry.get(session.sessionId)?.handoff ?? session.handoff
+        };
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/resume') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        await novncGateway.stop(session.sessionId);
+        await vncBackend.stop(session.sessionId);
+        const updated = registry.resumeHandoff(session.sessionId);
+        const observed = await controller.observeSession(session.sessionId);
+        const auth = detectLoginGate(observed.url, observed);
+        const observedAt = new Date().toISOString();
+        const postResumeObservation: SessionObservation = {
+          sessionId: session.sessionId,
+          observedAt,
+          ...observed
+        };
+
+        registry.touch(session.sessionId, {
+          url: observed.url,
+          title: observed.title,
+          authContext: {
+            ...session.authContext,
+            state: auth.state,
+            loginGateDetected: auth.loginGateDetected,
+            authenticatedSignals: auth.authenticatedSignals,
+            anonymousSignals: auth.anonymousSignals
+          },
+          paymentContext: observed.paymentContext
+        });
+
+        const postResume = buildPostHandoffResumeValidation(postResumeObservation, auth);
+        await writeHandoffTrace(controller, session.sessionId, 'handoff_resumed', {
+          reason: updated?.handoff.reason ?? session.handoff.reason,
+          handoff: updated?.handoff ?? session.handoff,
+          postResume
+        });
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: updated?.handoff ?? session.handoff,
+          postResume
+        };
+        sendJson(response, 200, payload);
+        return;
+      }
+
+      if (request.method === 'POST' && request.url === '/v1/handoff/stop') {
+        const body = (await readJsonBody(request)) as { sessionId?: string };
+        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        if (!session) {
+          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+        }
+
+        await novncGateway.stop(session.sessionId);
+        await vncBackend.stop(session.sessionId);
+        const updated = registry.stopHandoff(session.sessionId);
+        await writeHandoffTrace(controller, session.sessionId, 'handoff_stopped', {
+          reason: updated?.handoff.reason ?? session.handoff.reason,
+          handoff: updated?.handoff ?? session.handoff
+        });
+        const payload: SessionHandoffResponse = {
+          ok: true,
+          sessionId: session.sessionId,
+          handoff: updated?.handoff ?? session.handoff
+        };
+        sendJson(response, 200, payload);
         return;
       }
 
@@ -376,8 +585,12 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
   await stateStore.writeDaemonInfo(info);
 
   const shutdown = async (): Promise<void> => {
+    await novncGateway.stopAll();
+    await vncBackend.stopAll();
     await controller.closeAll();
-    server.close();
+    await new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    });
   };
 
   process.on('SIGTERM', () => {
