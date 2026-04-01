@@ -30,6 +30,7 @@ daemon ensure
 
 Always request `--json` output.
 When using OpenClaw `exec`, set `workdir` / `cwd` to the workspace root so the daemon state stays stable.
+When calling `exec` for `browser-platform` commands, keep `yieldMs` short: use `yieldMs: 7000` (or less) by default, and never exceed 7000. If an operation may take longer, run with short `yieldMs` and continue via `process(action=poll, timeout=...)` instead of a large single `yieldMs`.
 
 ## Recommended command order
 
