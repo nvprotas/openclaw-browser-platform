@@ -1,6 +1,7 @@
 import type { ActionObservationSummary, SessionPaymentContext } from '../daemon/types.js';
 import type { PageStateSummary } from '../playwright/browser-session.js';
 import { buildActionDiff, summarizeObservation } from './tracing.js';
+import { buildHardStopSignal } from './hard-stop.js';
 
 function paymentFingerprint(context: SessionPaymentContext): string {
   return JSON.stringify({
@@ -57,6 +58,15 @@ export function buildPostActionObservations(before: PageStateSummary, after: Pag
       level: 'info',
       code: 'PAYMENT_IDS_DETECTED',
       message: `Payment identifiers detected. Return paymentContext.extractionJson as JSON before continuing: ${summarizePaymentContext(after.paymentContext)}`
+    });
+  }
+
+  const hardStop = buildHardStopSignal(after.url, after.paymentContext);
+  if (hardStop) {
+    observations.push({
+      level: 'warning',
+      code: 'HARD_STOP_GATEWAY_PAYMENT_JSON_READY',
+      message: `Hard stop required (${hardStop.gateway}): return hardStop.finalPayload JSON and do not continue normal flow.`
     });
   }
 

@@ -148,6 +148,11 @@ Current trace coverage:
 - `session act` writes before/after state, diff, and success/failure observations
 - `session snapshot` writes a trace JSON that points at the saved screenshot + HTML snapshot paths
 
+Hard-stop contract for payment extraction:
+- `session observe`, `session act`, and `session snapshot` may now include `hardStop`
+- `hardStop.reason = "gateway_payment_json_ready"` means fail-closed: stop normal flow and return only `hardStop.finalPayload`
+- hard stop is emitted only for gateway URLs `https://payecom.ru/pay?...` and `https://platiecom.ru/deeplink?...` when extraction JSON is ready
+
 The heavier screenshot/HTML artifacts still live under:
 
 ```text

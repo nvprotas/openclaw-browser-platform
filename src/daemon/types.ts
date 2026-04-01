@@ -97,6 +97,14 @@ export interface SessionTraceArtifact {
   tracePath: string;
 }
 
+export interface HardStopSignal {
+  enabled: true;
+  reason: 'gateway_payment_json_ready';
+  gateway: 'payecom' | 'platiecom';
+  gatewayUrl: string;
+  finalPayload: SberPayExtractionJson;
+}
+
 export interface SessionObservation {
   sessionId: string;
   observedAt: string;
@@ -125,6 +133,7 @@ export interface SessionObservation {
   urlHints: string[];
   pageSignatureGuess: string;
   paymentContext: SessionPaymentContext;
+  hardStop?: HardStopSignal;
   trace?: SessionTraceArtifact;
 }
 
@@ -135,6 +144,7 @@ export interface SessionSnapshot {
   screenshotPath: string;
   htmlPath: string;
   state: SessionObservation;
+  hardStop?: HardStopSignal;
   trace?: SessionTraceArtifact;
 }
 
@@ -223,6 +233,7 @@ export interface SessionActionResult {
   after: SessionObservation;
   changes: ActionDiffSummary;
   observations: ActionObservationSummary[];
+  hardStop?: HardStopSignal;
   trace?: SessionTraceArtifact;
 }
 

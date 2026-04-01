@@ -11,6 +11,7 @@ import {
   type LitresBootstrapAttemptResult
 } from './litres-auth.js';
 import { SessionRegistry } from './session-registry.js';
+import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
@@ -246,7 +247,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         const payload: SessionObservation = {
           sessionId: session.sessionId,
           observedAt: new Date().toISOString(),
-          ...observed
+          ...observed,
+          hardStop: buildHardStopSignal(observed.url, observed.paymentContext) ?? undefined
         };
         payload.trace = await controller.writeTrace(session.sessionId, 'observe', payload);
         sendJson(response, 200, { ok: true, session: payload });
@@ -277,6 +279,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           },
           paymentContext: action.after.paymentContext
         });
+        const hardStop = buildHardStopSignal(action.after.url, action.after.paymentContext);
         const payload: SessionActionResult = {
           sessionId: session.sessionId,
           actedAt: new Date().toISOString(),
@@ -286,15 +289,18 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           before: {
             sessionId: session.sessionId,
             observedAt: new Date().toISOString(),
-            ...action.before
+            ...action.before,
+            hardStop: buildHardStopSignal(action.before.url, action.before.paymentContext) ?? undefined
           },
           after: {
             sessionId: session.sessionId,
             observedAt: new Date().toISOString(),
-            ...action.after
+            ...action.after,
+            hardStop: hardStop ?? undefined
           },
           changes: action.changes,
-          observations: action.observations
+          observations: action.observations,
+          hardStop: hardStop ?? undefined
         };
         payload.trace = await controller.writeTrace(session.sessionId, `act-${action.action}`,
           payload
@@ -324,6 +330,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           },
           paymentContext: snapshotResult.state.paymentContext
         });
+        const hardStop = buildHardStopSignal(snapshotResult.state.url, snapshotResult.state.paymentContext);
         const snapshot: SessionSnapshot = {
           sessionId: session.sessionId,
           capturedAt: new Date().toISOString(),
@@ -333,8 +340,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           state: {
             sessionId: session.sessionId,
             observedAt: new Date().toISOString(),
-            ...snapshotResult.state
-          }
+            ...snapshotResult.state,
+            hardStop: hardStop ?? undefined
+          },
+          hardStop: hardStop ?? undefined
         };
         snapshot.trace = await controller.writeTrace(session.sessionId, 'snapshot', snapshot);
         sendJson(response, 200, { ok: true, snapshot });
