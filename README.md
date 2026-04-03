@@ -105,6 +105,7 @@ Exact step-by-step instructions live here:
 
 - [`docs/OPENCLAW_SETUP.md`](docs/OPENCLAW_SETUP.md)
 - [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md)
+- [`docs/ADDING_SITES.md`](docs/ADDING_SITES.md)
 - OpenClaw skill template: [`openclaw/skill-template/SKILL.md`](openclaw/skill-template/SKILL.md)
 - Installer script: [`install.sh`](install.sh)
 
@@ -203,6 +204,7 @@ The current recommended OpenClaw integration path is still **clone + build + lin
 ## Related docs
 
 - [`ARCHITECTURE_CURRENT.md`](ARCHITECTURE_CURRENT.md)
+- [`docs/ADDING_SITES.md`](docs/ADDING_SITES.md)
 - [`ROADMAP.md`](ROADMAP.md)
 - [`MVP0_LITRES.md`](MVP0_LITRES.md)
 - [`PROGRESS.md`](PROGRESS.md)
