@@ -36,7 +36,7 @@ export interface BrowserSessionSnapshotResult extends SnapshotPaths {
   state: PageStateSummary;
 }
 
-const CAMOUFOX_WS_REGEX = /(wss?:\/\/[^\s"'<>]+)|((?:ws|wss):[^\s"'<>]+)/i;
+const CAMOUFOX_WS_REGEX = /wss?:\/\/[^\s"'<>]+/i;
 
 export function extractWebsocketEndpoint(logLine: string): string | null {
   const normalized = logLine.trim();
@@ -49,7 +49,7 @@ export function extractWebsocketEndpoint(logLine: string): string | null {
     return null;
   }
 
-  const candidate = (matched[1] ?? matched[2] ?? '').replace(/[\])},;]+$/, '');
+  const candidate = matched[0].replace(/[\])},;]+$/, '');
   return candidate.startsWith('ws://') || candidate.startsWith('wss://') ? candidate : null;
 }
 
@@ -109,11 +109,11 @@ export class BrowserSession {
   }
 
   private async openCamoufoxBrowser(): Promise<Browser> {
-    const process = spawn('python', ['-m', 'camoufox', 'server'], { stdio: ['ignore', 'pipe', 'pipe'] });
-    this.camoufoxProcess = process;
+    const proc = spawn('python', ['-m', 'camoufox', 'server'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    this.camoufoxProcess = proc;
 
     const timeoutMs = this.options.camoufoxStartupTimeoutMs ?? 15_000;
-    const wsEndpoint = await this.waitForCamoufoxEndpoint(process, timeoutMs);
+    const wsEndpoint = await this.waitForCamoufoxEndpoint(proc, timeoutMs);
 
     try {
       return await firefox.connect(wsEndpoint, { timeout: timeoutMs });
@@ -129,18 +129,22 @@ export class BrowserSession {
     }
   }
 
-  private async waitForCamoufoxEndpoint(process: ChildProcess, timeoutMs: number): Promise<string> {
+  private async waitForCamoufoxEndpoint(proc: ChildProcess, timeoutMs: number): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       const recentLogs: string[] = [];
       let settled = false;
+      let lineBuffer = '';
 
       const cleanup = () => {
         settled = true;
         clearTimeout(timeout);
-        process.stdout?.off('data', onData);
-        process.stderr?.off('data', onData);
-        process.off('exit', onExit);
-        process.off('error', onError);
+        proc.stdout?.off('data', onData);
+        proc.stderr?.off('data', onData);
+        proc.off('exit', onExit);
+        proc.off('error', onError);
+        // drain to avoid pipe backpressure
+        proc.stdout?.resume();
+        proc.stderr?.resume();
       };
 
       const finishWithError = (message: string): void => {
@@ -158,8 +162,10 @@ export class BrowserSession {
       };
 
       const onData = (chunk: Buffer) => {
-        const text = chunk.toString('utf8');
-        for (const rawLine of text.split(/\r?\n/)) {
+        lineBuffer += chunk.toString('utf8');
+        const parts = lineBuffer.split(/\r?\n/);
+        lineBuffer = parts.pop() ?? '';
+        for (const rawLine of parts) {
           const line = rawLine.trim();
           if (!line) {
             continue;
@@ -187,10 +193,10 @@ export class BrowserSession {
         finishWithError(`Timed out waiting for Camoufox ws endpoint after ${timeoutMs}ms`);
       }, timeoutMs);
 
-      process.stdout?.on('data', onData);
-      process.stderr?.on('data', onData);
-      process.once('exit', onExit);
-      process.once('error', onError);
+      proc.stdout?.on('data', onData);
+      proc.stderr?.on('data', onData);
+      proc.once('exit', onExit);
+      proc.once('error', onError);
     });
   }
 
@@ -199,11 +205,18 @@ export class BrowserSession {
       return;
     }
 
-    if (!this.camoufoxProcess.killed) {
-      this.camoufoxProcess.kill('SIGTERM');
-    }
-
+    const proc = this.camoufoxProcess;
     this.camoufoxProcess = null;
+
+    if (!proc.killed) {
+      proc.kill('SIGTERM');
+      const killTimer = setTimeout(() => {
+        if (!proc.killed) {
+          proc.kill('SIGKILL');
+        }
+      }, 3_000);
+      killTimer.unref();
+    }
   }
 
   page(): Page {

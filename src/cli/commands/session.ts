@@ -14,10 +14,16 @@ export async function handleSessionOpen(args: string[]): Promise<unknown> {
   return openSession(url, { storageStatePath, backend });
 }
 
-function resolveBackend(args: string[]): SessionBackend {
+export function resolveBackend(args: string[]): SessionBackend {
   const backendIndex = args.indexOf('--backend');
-  if (backendIndex === -1 || backendIndex >= args.length - 1) {
+  if (backendIndex === -1) {
     return 'chromium';
+  }
+
+  if (backendIndex >= args.length - 1) {
+    throw new BrowserPlatformError('--backend requires a value. Allowed values: chromium, camoufox', {
+      code: 'INVALID_BACKEND'
+    });
   }
 
   const backendRaw = args[backendIndex + 1]?.toLowerCase();

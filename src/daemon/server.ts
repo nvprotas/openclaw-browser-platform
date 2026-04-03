@@ -108,6 +108,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           return;
         }
 
+        if (body.backend !== undefined && body.backend !== 'chromium' && body.backend !== 'camoufox') {
+          sendJson(response, 400, { ok: false, error: { message: 'Invalid backend. Allowed values: chromium, camoufox', code: 'INVALID_BACKEND' } });
+          return;
+        }
         const backend: SessionBackend = body.backend === 'camoufox' ? 'camoufox' : 'chromium';
 
         const preMatchedPack = await matchSitePackByUrl(body.url);

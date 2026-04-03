@@ -4,9 +4,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 const waitForInitialLoadMock = vi.fn(async () => undefined);
 
 class FakeProcess extends EventEmitter {
-  stdout = new EventEmitter();
-  stderr = new EventEmitter();
+  stdout = new EventEmitter() as EventEmitter & { resume?: () => void };
+  stderr = new EventEmitter() as EventEmitter & { resume?: () => void };
   killed = false;
+
+  constructor() {
+    super();
+    this.stdout.resume = vi.fn();
+    this.stderr.resume = vi.fn();
+  }
 
   kill() {
     this.killed = true;
@@ -15,7 +21,11 @@ class FakeProcess extends EventEmitter {
   }
 }
 
-const spawnMock = vi.fn(() => new FakeProcess());
+let latestProc: FakeProcess | undefined;
+const spawnMock = vi.fn(() => {
+  latestProc = new FakeProcess();
+  return latestProc;
+});
 
 const page = {
   goto: vi.fn(async () => undefined),
@@ -53,6 +63,7 @@ vi.mock('../../src/playwright/waits.js', () => ({
 
 afterEach(() => {
   vi.clearAllMocks();
+  latestProc = undefined;
 });
 
 describe('camoufox backend', () => {
@@ -77,12 +88,12 @@ describe('camoufox backend', () => {
       backend: 'camoufox'
     });
 
-    const proc = spawnMock.mock.results[0]?.value as FakeProcess | undefined;
-    setTimeout(() => {
-      (proc ?? spawnMock.mock.results[0].value as FakeProcess).stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
-    }, 5);
-
-    await session.open('https://example.com');
+    // spawn is called synchronously inside open(), so capture after open() starts
+    const openPromise = session.open('https://example.com');
+    // yield to let spawn() execute before emitting data
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openPromise;
 
     expect(spawnMock).toHaveBeenCalledWith('python', ['-m', 'camoufox', 'server'], {
       stdio: ['ignore', 'pipe', 'pipe']
@@ -91,10 +102,99 @@ describe('camoufox backend', () => {
     expect(chromiumLaunchMock).not.toHaveBeenCalled();
   });
 
+  it('drains stdout/stderr after endpoint is found', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's3',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('ws://127.0.0.1:9222\n'));
+    await openPromise;
+
+    expect(latestProc!.stdout.resume).toHaveBeenCalled();
+    expect(latestProc!.stderr.resume).toHaveBeenCalled();
+  });
+
   it('extracts ws endpoint from noisy log lines', async () => {
     const mod = await import('../../src/playwright/browser-session.js');
     expect(mod.extractWebsocketEndpoint('INFO :: websocket at ws://127.0.0.1:9333/path')).toBe('ws://127.0.0.1:9333/path');
     expect(mod.extractWebsocketEndpoint('ready: wss://host.example/ws?token=abc')).toBe('wss://host.example/ws?token=abc');
     expect(mod.extractWebsocketEndpoint('no endpoint here')).toBeNull();
+  });
+
+  it('correctly parses endpoint split across multiple chunks', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's4',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    // URL split across two chunks — no newline in first chunk
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:'));
+    latestProc!.stdout.emit('data', Buffer.from('9555\n'));
+    await openPromise;
+
+    expect(firefoxConnectMock).toHaveBeenCalledWith('ws://127.0.0.1:9555', expect.any(Object));
+  });
+
+  it('rejects with timeout error if endpoint never arrives', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's5',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      camoufoxStartupTimeoutMs: 20
+    });
+
+    await expect(session.open('https://example.com')).rejects.toMatchObject({
+      details: { cause: expect.stringContaining('Timed out waiting for Camoufox ws endpoint') }
+    });
+  });
+
+  it('rejects with early-exit error if camoufox process exits before publishing endpoint', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's6',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.emit('exit', 1, null);
+
+    await expect(openPromise).rejects.toMatchObject({
+      details: { cause: expect.stringContaining('exited before publishing ws endpoint') }
+    });
+  });
+});
+
+describe('resolveBackend (CLI)', () => {
+  it('returns chromium by default', async () => {
+    const mod = await import('../../src/cli/commands/session.js');
+    expect(mod.resolveBackend([])).toBe('chromium');
+    expect(mod.resolveBackend(['--url', 'https://x.com'])).toBe('chromium');
+  });
+
+  it('returns camoufox when specified', async () => {
+    const mod = await import('../../src/cli/commands/session.js');
+    expect(mod.resolveBackend(['--backend', 'camoufox'])).toBe('camoufox');
+  });
+
+  it('throws INVALID_BACKEND for unknown value', async () => {
+    const mod = await import('../../src/cli/commands/session.js');
+    expect(() => mod.resolveBackend(['--backend', 'firefox'])).toThrow('Unsupported backend');
+  });
+
+  it('throws INVALID_BACKEND when --backend has no value', async () => {
+    const mod = await import('../../src/cli/commands/session.js');
+    expect(() => mod.resolveBackend(['--url', 'https://x.com', '--backend'])).toThrow('--backend requires a value');
   });
 });

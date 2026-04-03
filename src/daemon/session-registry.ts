@@ -57,7 +57,7 @@ export class SessionRegistry {
 
   touch(
     sessionId: string,
-    patch: Partial<Pick<SessionRecord, 'backend' | 'url' | 'title' | 'status' | 'packContext' | 'authContext' | 'paymentContext'>>
+    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext' | 'authContext' | 'paymentContext'>>
   ): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
     if (!existing) {
