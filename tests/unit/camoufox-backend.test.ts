@@ -7,6 +7,10 @@ class FakeProcess extends EventEmitter {
   stdout = new EventEmitter() as EventEmitter & { resume?: () => void };
   stderr = new EventEmitter() as EventEmitter & { resume?: () => void };
   killed = false;
+  exitCode: number | null = null;
+  signalCode: NodeJS.Signals | null = null;
+  exitOnTerm = true;
+  killSignals: NodeJS.Signals[] = [];
 
   constructor() {
     super();
@@ -14,9 +18,21 @@ class FakeProcess extends EventEmitter {
     this.stderr.resume = vi.fn();
   }
 
-  kill() {
+  finish(code: number | null, signal: NodeJS.Signals | null) {
+    this.exitCode = code;
+    this.signalCode = signal;
+    this.emit('exit', code, signal);
+  }
+
+  kill(signal: NodeJS.Signals = 'SIGTERM') {
     this.killed = true;
-    this.emit('exit', 0, 'SIGTERM');
+    this.killSignals.push(signal);
+    if (signal === 'SIGTERM' && this.exitOnTerm) {
+      this.finish(null, 'SIGTERM');
+    }
+    if (signal === 'SIGKILL') {
+      this.finish(null, 'SIGKILL');
+    }
     return true;
   }
 }
@@ -168,11 +184,39 @@ describe('camoufox backend', () => {
 
     const openPromise = session.open('https://example.com');
     await Promise.resolve();
-    latestProc!.emit('exit', 1, null);
+    latestProc!.finish(1, null);
 
     await expect(openPromise).rejects.toMatchObject({
       details: { cause: expect.stringContaining('exited before publishing ws endpoint') }
     });
+  });
+
+  it('escalates to SIGKILL if camoufox ignores SIGTERM during shutdown', async () => {
+    vi.useFakeTimers();
+    try {
+      const mod = await import('../../src/playwright/browser-session.js');
+      const session = new mod.BrowserSession({
+        sessionId: 's7',
+        snapshotRootDir: '/tmp/snapshots',
+        backend: 'camoufox'
+      });
+
+      const openPromise = session.open('https://example.com');
+      await Promise.resolve();
+      latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+      await openPromise;
+
+      latestProc!.exitOnTerm = false;
+      await session.close();
+
+      expect(latestProc!.killSignals).toEqual(['SIGTERM']);
+
+      await vi.advanceTimersByTimeAsync(3_000);
+
+      expect(latestProc!.killSignals).toEqual(['SIGTERM', 'SIGKILL']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

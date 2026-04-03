@@ -208,15 +208,19 @@ export class BrowserSession {
     const proc = this.camoufoxProcess;
     this.camoufoxProcess = null;
 
-    if (!proc.killed) {
+    if (this.isProcessRunning(proc)) {
       proc.kill('SIGTERM');
       const killTimer = setTimeout(() => {
-        if (!proc.killed) {
+        if (this.isProcessRunning(proc)) {
           proc.kill('SIGKILL');
         }
       }, 3_000);
       killTimer.unref();
     }
+  }
+
+  private isProcessRunning(proc: ChildProcess): boolean {
+    return proc.exitCode === null && proc.signalCode === null;
   }
 
   page(): Page {
