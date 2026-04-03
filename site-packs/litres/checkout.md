@@ -5,6 +5,8 @@ Checkout is intentionally bounded in MVP0.
 - reaching cart or checkout entry is in scope
 - live validated flow now reaches LitRes purchase page `Оформление покупки` from cart via checkout login gate: `Перейти к покупке -> Другие способы -> Sber`
 - on the LitRes purchase page, `СБП` and `SberPay` are distinct payment branches
+- terminology is strict: `СБП`/`SBP` means `Система быстрых платежей`, while `SberPay`/`СберПей` means `SberPay`
+- in most tasks, prioritize the `SberPay` branch unless the user explicitly asks for `СБП`
 - selecting `Российская карта` and pressing `Продолжить` can open a `payecom.ru` payment boundary (`/pay` / `/pay_ru`)
 - on the payecom boundary, a distinct SberPay branch is exposed as `Войти по Сбер ID`
 - if the user asked to reach SberPay specifically, the task is complete once this SberPay branch is reached and the structured extractor JSON is returned

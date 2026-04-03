@@ -122,6 +122,12 @@ If the user asked to reach SberPay specifically, the task is satisfied once you 
 
 Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
 
+Payment terminology (strict):
+- `СБП` / `SBP` means `Система быстрых платежей` (Fast Payment System).
+- `SberPay` / `СберПей` means `SberPay`.
+- `СБП` and `SberPay` are completely different payment methods; never treat them as synonyms.
+- In the vast majority of checkout tasks here, prioritize the `SberPay` branch unless the user explicitly asks for `СБП`.
+
 Gateway JSON interception rule
 
 Trigger this rule only when the browser session reaches one of these gateway URL patterns:
