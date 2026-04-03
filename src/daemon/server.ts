@@ -17,6 +17,7 @@ import type {
   DaemonStatusResponse,
   SessionActionPayload,
   SessionActionResult,
+  SessionBackend,
   SessionObservation,
   SessionSnapshot
 } from './types.js';
@@ -101,11 +102,13 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
       }
 
       if (request.method === 'POST' && request.url === '/v1/session/open') {
-        const body = (await readJsonBody(request)) as { url?: string; storageStatePath?: string };
+        const body = (await readJsonBody(request)) as { url?: string; storageStatePath?: string; backend?: SessionBackend };
         if (!body?.url) {
           sendJson(response, 400, { ok: false, error: { message: 'Missing url' } });
           return;
         }
+
+        const backend: SessionBackend = body.backend === 'camoufox' ? 'camoufox' : 'chromium';
 
         const preMatchedPack = await matchSitePackByUrl(body.url);
         const bootstrap = await resolveStorageStateForSession({
@@ -114,11 +117,12 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           matchedPack: preMatchedPack
         });
 
-        const record = registry.open({ url: body.url });
+        const record = registry.open({ url: body.url, backend });
         try {
           const openWithStatePath = bootstrap.storageStateExists ? bootstrap.storageStatePath ?? undefined : undefined;
           let opened = await controller.openSession(record.sessionId, body.url, {
-            storageStatePath: openWithStatePath
+            storageStatePath: openWithStatePath,
+            backend
           });
           let matchedPack = await matchSitePackByUrl(opened.url);
           let observed = await controller.observeSession(record.sessionId);
@@ -150,7 +154,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           if (bootstrapResult.attempted && refreshedStatePath && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
             await controller.closeSession(record.sessionId);
             opened = await controller.openSession(record.sessionId, body.url, {
-              storageStatePath: refreshedStatePath
+              storageStatePath: refreshedStatePath,
+              backend
             });
             matchedPack = await matchSitePackByUrl(opened.url);
             observed = await controller.observeSession(record.sessionId);

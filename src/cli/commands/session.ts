@@ -2,7 +2,7 @@ import { BrowserPlatformError } from '../../core/errors.js';
 import { requireFlag } from '../argv.js';
 import { actInSession, closeSession, getSessionContext, observeSession, openSession, snapshotSession } from '../../daemon/client.js';
 import { handleDaemonEnsure } from './daemon.js';
-import type { SessionActionPayload } from '../../daemon/types.js';
+import type { SessionActionPayload, SessionBackend } from '../../daemon/types.js';
 
 export async function handleSessionOpen(args: string[]): Promise<unknown> {
   await handleDaemonEnsure();
@@ -10,7 +10,24 @@ export async function handleSessionOpen(args: string[]): Promise<unknown> {
   const storageStateIndex = args.indexOf('--storage-state');
   const storageStatePath =
     storageStateIndex !== -1 && storageStateIndex < args.length - 1 ? args[storageStateIndex + 1] : undefined;
-  return openSession(url, { storageStatePath });
+  const backend = resolveBackend(args);
+  return openSession(url, { storageStatePath, backend });
+}
+
+function resolveBackend(args: string[]): SessionBackend {
+  const backendIndex = args.indexOf('--backend');
+  if (backendIndex === -1 || backendIndex >= args.length - 1) {
+    return 'chromium';
+  }
+
+  const backendRaw = args[backendIndex + 1]?.toLowerCase();
+  if (backendRaw === 'chromium' || backendRaw === 'camoufox') {
+    return backendRaw;
+  }
+
+  throw new BrowserPlatformError('Unsupported backend. Allowed values: chromium, camoufox', {
+    code: 'INVALID_BACKEND'
+  });
 }
 
 export async function handleSessionContext(args: string[]): Promise<unknown> {

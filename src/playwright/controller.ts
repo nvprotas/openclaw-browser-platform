@@ -4,6 +4,7 @@ import type { SessionActionPayload } from '../daemon/types.js';
 import { TraceWriter } from '../traces/writer.js';
 import { BrowserSession, type BrowserSessionSnapshotResult, type PageStateSummary } from './browser-session.js';
 import { buildActionResult, runStep } from '../runtime/run-step.js';
+import type { SessionBackend } from '../daemon/types.js';
 
 export class PlaywrightController {
   private readonly sessions = new Map<string, BrowserSession>();
@@ -18,12 +19,14 @@ export class PlaywrightController {
     url: string,
     options?: {
       storageStatePath?: string;
+      backend?: SessionBackend;
     }
   ): Promise<{ url: string; title: string }> {
     const session = new BrowserSession({
       sessionId,
       snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots'),
-      storageStatePath: options?.storageStatePath
+      storageStatePath: options?.storageStatePath,
+      backend: options?.backend
     });
 
     const opened = await session.open(url);

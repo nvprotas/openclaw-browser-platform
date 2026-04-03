@@ -59,6 +59,16 @@ node dist/bin/browser-platform.js --help
 node dist/bin/browser-platform.js daemon ensure --json
 ```
 
+### Optional backend: Camoufox (MVP)
+
+`session open` uses `chromium` by default. You can opt into Camoufox per session:
+
+```bash
+node dist/bin/browser-platform.js session open --url https://example.com --backend camoufox --json
+```
+
+Camoufox mode expects `python -m camoufox server` to be available in PATH and connectable by Playwright Firefox.
+
 ## Recommended install mode for a clean OpenClaw host
 
 For now, the simplest and most reliable installation path is:
@@ -106,7 +116,7 @@ All implemented commands return JSON when called with `--json`.
 
 - `browser-platform daemon ensure --json`
 - `browser-platform daemon status --json`
-- `browser-platform session open --url <url> [--storage-state <path>] --json`
+- `browser-platform session open --url <url> [--storage-state <path>] [--backend chromium|camoufox] --json`
 - `browser-platform session context --session <id> --json`
 - `browser-platform session observe --session <id> --json`
 - `browser-platform session act --session <id> --json '<payload>'`
