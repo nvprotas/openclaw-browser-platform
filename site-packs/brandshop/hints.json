@@ -1,0 +1,66 @@
+{
+  "button_texts": {
+    "search_submit": ["Найти", "Искать", "Search", "Изменить запрос"],
+    "add_to_cart": ["Добавить в корзину", "В корзину"],
+    "open_cart": ["Корзина", "Cart", "Оформить заказ"]
+  },
+  "selectors": {
+    "search_input": [
+      "input[type='search']",
+      "input[name='q']",
+      "input[name='search']",
+      "form[action*='/search'] input"
+    ],
+    "search_submit": [
+      "button[aria-label='search']",
+      "button.search-header",
+      "form[action*='/search'] button[type='submit']",
+      "button:has-text('Изменить запрос')"
+    ],
+    "search_result_link": [
+      "a.product-card__link[href^='/goods/']",
+      "a[href^='/goods/']",
+      ".product-card a[href*='/goods/']"
+    ],
+    "add_to_cart": [
+      "button.product-order__btn._add-cart",
+      "button[class*='product-order__btn'][class*='_add-cart']",
+      "button:has-text('Добавить в корзину')"
+    ],
+    "cart_link": [
+      "button[aria-label='cart']",
+      ".cart-header button",
+      ".actions-header__icon-btn[aria-label='cart']",
+      "a[href='/checkout/']",
+      "a[href*='/checkout']"
+    ]
+  },
+  "page_signatures": {
+    "home": [
+      "Интернет-магазин модной одежды и обуви BRANDSHOP",
+      "Новинки",
+      "Бренды",
+      "Мужское",
+      "Женское"
+    ],
+    "search_results": [
+      "Результаты поиска",
+      "Изменить запрос",
+      "По этому запросу ничего не найдено",
+      "/search/?q="
+    ],
+    "product_page": [
+      "/goods/",
+      "Добавить в корзину",
+      "Доступные размеры",
+      "Заказ в один клик"
+    ],
+    "cart": [
+      "/cart/",
+      "Корзина",
+      "Оформить заказ",
+      "Оформление заказа",
+      "Перейти к новинкам"
+    ]
+  }
+}
