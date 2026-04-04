@@ -1,0 +1,51 @@
+{
+  "button_texts": {
+    "search_submit": ["Найти", "Поиск"],
+    "add_to_cart": ["Добавить в корзину", "В корзину"],
+    "open_cart": ["Корзина", "Перейти в корзину"]
+  },
+  "selectors": {
+    "search_input": [
+      "form.search-form input[name='q']",
+      "input.search-form__text-input[name='q']",
+      "input#title-search-input",
+      "input#title-search-input2",
+      "input#title-search-input3",
+      "input[name='q']",
+      "input[type='search']"
+    ],
+    "search_submit": [
+      "form.search-form button[type='submit']",
+      "button.search-form__submit",
+      "form.fixed-search-form button[type='submit']",
+      ".fixed-search-form__submit"
+    ],
+    "search_result_link": [
+      ".product a.product__title[href*='/catalog/']",
+      ".product a.product__pic-slider-link[href*='/catalog/']",
+      "a.product__title[href*='/catalog/']",
+      "main .product a[href*='/catalog/']"
+    ],
+    "add_to_cart": [
+      "button.n-product__button.product_add_button.cart-url:visible",
+      "button.product_add_button.cart-url:visible",
+      ".n-product__mobile-size-controls button.product_add_button:visible",
+      ".n-product__row_order button.product_add_button:visible",
+      "button[data-url*='ADD2BASKET']:visible"
+    ],
+    "cart_link": [
+      "a.header__icon-link--cart-new-header[href='/personal/cart/']",
+      "a.header__icon-link--cart[href='/personal/cart/']",
+      ".header__icon-item--cart a[href*='/personal/cart/']",
+      "a[href='/personal/cart/']"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Женское", "Мужское", "Каталог", "Личный кабинет"],
+    "search_results": ["Каталог товаров", "Фильтр", "Сортировать по", "/catalog/all/?q="],
+    "product_page": ["Добавить в корзину", "Купить в один клик", "Выбрать размер"],
+    "cart": ["/personal/cart/", "Корзина", "Корзина пуста"],
+    "login_gate": ["Войти", "Авторизация", "Код из смс"],
+    "cart_modal": ["Товар в корзине", "Продолжить покупки", "Перейти в корзину"]
+  }
+}
