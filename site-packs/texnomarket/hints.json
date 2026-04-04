@@ -1,0 +1,45 @@
+{
+  "button_texts": {
+    "search_submit": ["Искать", "Найти", "Search"],
+    "add_to_cart": ["В корзину", "Купить"],
+    "open_cart": ["Ваша корзина", "Перейти в корзину", "Корзина"]
+  },
+  "selectors": {
+    "search_input": [
+      "input#compact-title-search-input",
+      "input#popup-title-search-input",
+      "form[action='/search/index.php'] input[name='q']",
+      "input[name='q']"
+    ],
+    "search_submit": [
+      "form[action='/search/index.php'] button[type='submit']",
+      "input[type='submit'][value='Искать']",
+      "button.search-popup__form-button",
+      "button[name='s'][type='submit']"
+    ],
+    "search_result_link": [
+      ".l-search-page .catalog-item a[href*='/catalog/']",
+      ".b-search-page-block .catalog-item a[href*='/catalog/']",
+      ".l-search-page a[href*='/catalog/'][href*='-']"
+    ],
+    "add_to_cart": [
+      "a.product-detail-buy-button",
+      "a[id*='add_basket_link']",
+      "a[href='javascript:void(0);']:has-text('В корзину')",
+      "button:has-text('В корзину')"
+    ],
+    "cart_link": [
+      "a.js-global-cart",
+      "a[href*='/personal/cart/']",
+      "a[aria-label='Ваша корзина']",
+      ".js-global-cart__count"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Каталог товаров", "Войти", "Регистрация"],
+    "search_results": ["Поиск по сайту", "Искать", "Найдено"],
+    "product_page": ["В корзину", "Описание", "Характеристики"],
+    "cart": ["Ваша корзина", "Оформить заказ", "Состав заказа"]
+  }
+}
+
