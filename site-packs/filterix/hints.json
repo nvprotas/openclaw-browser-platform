@@ -1,0 +1,41 @@
+{
+  "button_texts": {
+    "search_submit": ["Поиск", "Найти"],
+    "add_to_cart": ["В корзину", "Добавить в корзину"],
+    "open_cart": ["Корзина", "В корзине", "Перейти в корзину"]
+  },
+  "selectors": {
+    "search_input": [
+      "form[action='/poisk/'] input[name='q']",
+      "input#search_items",
+      "input[name='q']",
+      "input[type='search']"
+    ],
+    "search_submit": [
+      "form[action='/poisk/'] button[type='submit']",
+      "form[action='/poisk/'] .ico-search"
+    ],
+    "search_result_link": [
+      "main .product-item > a[href*='/product/']",
+      "a[href*='/product/']"
+    ],
+    "add_to_cart": [
+      "button.add-cart.add_item",
+      "button.add_item",
+      "button:has-text('В корзину')"
+    ],
+    "cart_link": [
+      "a.small_basket",
+      "a.small_basket[href*='/basket']",
+      "a[href='/basket/']",
+      "a[href*='/basket']"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Каталог", "Корзина"],
+    "search_results": ["Результаты поиска", "/poisk/?q="],
+    "product_page": ["/product/", "В корзину", "В корзине"],
+    "cart": ["Корзина", "Перейти к оформлению", "Удалить"],
+    "city_popup": ["Ваш город", "Изменить"]
+  }
+}

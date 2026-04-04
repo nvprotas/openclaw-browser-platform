@@ -1,0 +1,16 @@
+{
+  "site_id": "filterix",
+  "domains": ["filterix.ru", "www.filterix.ru"],
+  "start_url": "https://filterix.ru/",
+  "site_type": "vacuum_parts_store",
+  "support_level": "assisted",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "payment_requires_human": true,
+    "final_checkout_not_in_scope": true,
+    "city_selection_may_affect_assortment": true,
+    "modal_overlays_may_block_clicks": true,
+    "login_may_be_required_for_checkout": true,
+    "direct_basket_url_may_redirect_home": true
+  }
+}
