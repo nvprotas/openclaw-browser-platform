@@ -1,0 +1,41 @@
+{
+  "button_texts": {
+    "search_submit": ["Поиск", "Найти", "Искать"],
+    "add_to_cart": ["В корзину", "Купить"],
+    "open_cart": ["Корзина", "Оформить", "Перейти в корзину"]
+  },
+  "selectors": {
+    "search_input": [
+      "input.al-search-input",
+      "input[placeholder='Поиск']",
+      "input[type='search']"
+    ],
+    "search_submit": [
+      "button:has-text('Найти')",
+      "button:has-text('Искать')",
+      "button[aria-label='Поиск']",
+      "form[action*='search'] button[type='submit']"
+    ],
+    "search_result_link": [
+      "a[href*='/product/'][href*='productid']",
+      "a[href*='/search?Find=']",
+      "a[href*='/krasnoyarsk/product/']"
+    ],
+    "add_to_cart": [
+      "button:has-text('В корзину')",
+      "button:has-text('Купить')",
+      "a:has-text('В корзину')"
+    ],
+    "cart_link": [
+      "button[data-testid='bascet-link']",
+      "a[href='/bascet-not-auth']",
+      "a[href*='/bascet']"
+    ]
+  },
+  "page_signatures": {
+    "home": ["каталог", "Войти", "Адреса aптек"],
+    "search_results": ["Поиск", "Найдено", "Результаты"],
+    "product_page": ["В корзину", "В избранное", "Инструкция"],
+    "cart": ["Корзина", "Очистить корзину", "1 шт."]
+  }
+}
