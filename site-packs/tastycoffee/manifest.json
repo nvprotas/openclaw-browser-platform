@@ -1,0 +1,16 @@
+{
+  "site_id": "tastycoffee",
+  "domains": ["shop.tastycoffee.ru"],
+  "start_url": "https://shop.tastycoffee.ru/",
+  "site_type": "coffee_store",
+  "support_level": "assisted",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "payment_requires_human": true,
+    "final_checkout_not_in_scope": true,
+    "cookie_consent_gate_possible": true,
+    "city_selection_may_affect_assortment": true,
+    "product_variant_selection_may_be_required": true,
+    "login_may_be_required_for_checkout": true
+  }
+}

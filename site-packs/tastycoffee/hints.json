@@ -1,0 +1,56 @@
+{
+  "button_texts": {
+    "search_submit": ["Поиска", "Найти", "Поиск"],
+    "add_to_cart": ["Купить", "В корзину", "Добавить в корзину"],
+    "open_cart": ["Корзина", "Перейти в корзину", "Оформить заказ"]
+  },
+  "selectors": {
+    "search_input": [
+      ".header-search input[name='search']",
+      ".header-search input[type='search']",
+      ".tc-input__field--input[type='search']",
+      "input#search",
+      "input[name='search']",
+      ".header-search input",
+      "input[type='search']",
+      "input[name='q']",
+      "[role='searchbox']"
+    ],
+    "search_submit": [
+      ".header-search button[aria-label='Поиска']",
+      ".header-search button[type='submit']",
+      "button[aria-label='Поиска']",
+      "button:has-text('Найти')",
+      "[role='button']:has-text('Поиск')"
+    ],
+    "search_result_link": [
+      "main [itemprop='name'] a[href^='/coffee/']:not([href*='#'])",
+      "main a.press-container[href^='/coffee/']",
+      "main a[href^='/coffee/']:not([href*='#'])",
+      "a[href*='/coffee/']",
+      "main a[href*='/coffee/']"
+    ],
+    "add_to_cart": [
+      "button.tc-btn-pay.active",
+      "button.tc-btn-pay",
+      "button:has-text('Купить')",
+      "[role='button']:has-text('Купить')",
+      "button:has-text('В корзину')"
+    ],
+    "cart_link": [
+      ".header-cart__btn",
+      "button:has-text('Оформить заказ')",
+      ".tc-btn:has-text('Оформить заказ')",
+      "a[href='/basket']",
+      "a[href*='/basket']"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Кофе", "Каталог", "Поиск", "Корзина"],
+    "search_results": ["ПОИСК ТОВАРОВ", "Найдено", "Результаты", "/search?q=", "/coffee"],
+    "product_page": ["Купить", "В корзину", "Помол", "250 г", "1000 г", "₽", "Пачка", "Дрипы"],
+    "cart": ["Корзина", "Корзина пуста", "Оформление заказа", "В каталог"],
+    "auth_form": ["Войти", "Электронная почта", "Пароль", "Через почту"],
+    "cookie_banner": ["tc-cookies", "cookie"]
+  }
+}
