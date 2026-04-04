@@ -1,0 +1,43 @@
+{
+  "button_texts": {
+    "search_submit": ["Найти", "Поиск"],
+    "add_to_cart": ["В корзину"],
+    "open_cart": ["Корзина"]
+  },
+  "selectors": {
+    "search_input": [
+      "form[action='/search/'] input[name='q']",
+      "input.search-input[name='q']",
+      "input[name='q']",
+      "input[type='search']"
+    ],
+    "search_submit": [
+      "form[action='/search/'] button.js-search-submit",
+      "form[action='/search/'] .search-desktop-button",
+      "button.js-search-submit"
+    ],
+    "search_result_link": [
+      ".js-result-wrapper[data-type='analyses'] a.analysis-item__title[href*='/catalog/']",
+      ".analysis-list--search-page a.analysis-item__title[href*='/catalog/']",
+      "a.analysis-item__title[href*='/catalog/']"
+    ],
+    "add_to_cart": [
+      ".research-cart-button.js-add-to-cart:visible",
+      ".analysis-list--search-page .js-add-to-cart:visible",
+      ".analysis-item__cart .js-add-to-cart:visible",
+      ".js-add-to-cart:visible"
+    ],
+    "cart_link": [
+      "a.basket.js-header-basket-container",
+      "a[href='/cart/']",
+      ".navbar-item--cart[href='/cart/']"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Анализы", "Каталог анализов и услуг"],
+    "search_results": ["/search/?q=", "Акции"],
+    "product_page": ["Код на бланке", "Заказать анализ"],
+    "cart": ["/cart/", "Оформление заказа"],
+    "empty_cart": ["Корзина пуста", "Вернуться к продуктам"]
+  }
+}
