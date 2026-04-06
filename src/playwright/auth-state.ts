@@ -32,7 +32,6 @@ export function inferAuthState(url: string, observation: PageStateSummary): Auth
     /litres\.ru\/callbacks\/social-auth/.test(lowerUrl);
 
   const authenticatedSignals = [
-    /мои книги/.test(combined) ? 'visible_my_books' : null,
     /выйти/.test(combined) ? 'visible_logout' : null,
     /профил/.test(combined) ? 'visible_profile' : null,
     /личный кабинет|мой кабинет/.test(combined) ? 'visible_cabinet' : null,

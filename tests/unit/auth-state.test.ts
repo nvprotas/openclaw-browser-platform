@@ -18,7 +18,7 @@ describe('auth state inference', () => {
       title: 'Account',
       readyState: 'complete',
       viewport: { width: 1440, height: 900 },
-      visibleTexts: ['Профиль', 'Мои книги'],
+      visibleTexts: ['Профиль', 'Личный кабинет'],
       visibleButtons: [{ text: 'Выйти', role: 'button', type: 'button', ariaLabel: null }],
       forms: [],
       urlHints: [],
@@ -27,7 +27,9 @@ describe('auth state inference', () => {
     });
 
     expect(state.state).toBe('authenticated');
-    expect(state.authenticatedSignals).toEqual(expect.arrayContaining(['visible_my_books', 'visible_logout']));
+    expect(state.authenticatedSignals).toEqual(
+      expect.arrayContaining(['visible_profile', 'visible_cabinet', 'visible_logout'])
+    );
   });
 
   it('detects login gate', () => {
@@ -81,7 +83,7 @@ describe('auth state inference', () => {
     });
 
     expect(state.state).toBe('login_gate_detected');
-    expect(state.authenticatedSignals).toContain('visible_my_books');
+    expect(state.authenticatedSignals).toEqual([]);
     expect(state.anonymousSignals).toContain('visible_login');
   });
 

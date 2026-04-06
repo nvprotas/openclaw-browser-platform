@@ -362,7 +362,7 @@ describe('browser-platform CLI + daemon runtime', () => {
           bootstrapSource: 'explicit',
           storageStateExists: true,
           storageStatePath,
-          authenticatedSignals: expect.arrayContaining(['visible_my_books', 'visible_logout'])
+          authenticatedSignals: expect.arrayContaining(['visible_logout'])
         }
       }
     });
