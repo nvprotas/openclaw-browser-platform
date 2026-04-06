@@ -1,0 +1,16 @@
+{
+  "site_id": "gemotest",
+  "domains": ["gemotest.ru", "www.gemotest.ru"],
+  "start_url": "https://gemotest.ru/",
+  "site_type": "medical_lab_store",
+  "support_level": "assisted",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "payment_requires_human": true,
+    "final_checkout_not_in_scope": true,
+    "city_selection_may_affect_assortment": true,
+    "department_selection_required_before_checkout": true,
+    "login_may_be_required_for_checkout": true,
+    "hidden_duplicate_cta_possible": true
+  }
+}
