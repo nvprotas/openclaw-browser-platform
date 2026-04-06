@@ -139,9 +139,11 @@ async function waitForLitresBootstrapOutcome(
     lastText = await page.locator('body').innerText().catch(() => '');
     lastState = classifyLitresBootstrapPage({ url: lastUrl, bodyText: lastText });
 
-    if (lastState === 'handoff_sberid' || lastState === 'authenticated_litres') {
+    if (lastState === 'authenticated_litres') {
       break;
     }
+    // If on SberID, keep waiting — valid cookies may trigger an automatic redirect back to litres.
+    // Only stop here if we've been on SberID for the full loop duration (no redirect happened).
   }
 
   await maybeScreenshot(page, path.join(options.outDir, '03-after-sber-click.png'), options.debugScreenshots, options.screenshots);
