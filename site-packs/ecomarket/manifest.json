@@ -1,0 +1,14 @@
+{
+  "site_id": "ecomarket",
+  "domains": ["ecomarket.ru", "www.ecomarket.ru"],
+  "start_url": "https://ecomarket.ru/",
+  "site_type": "grocery_store",
+  "support_level": "assisted",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "checkout_requires_human": true,
+    "final_checkout_not_in_scope": true,
+    "product_modal_overlay_possible": true,
+    "login_or_address_gate_possible": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "site_id": "aptekalegko",
+  "domains": ["aptekalegko.ru", "www.aptekalegko.ru"],
+  "start_url": "https://aptekalegko.ru/",
+  "site_type": "pharmacy_store",
+  "support_level": "assisted",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "geo_or_city_gate_possible": true,
+    "login_or_phone_gate_possible": true,
+    "prescription_or_age_restriction_possible": true,
+    "checkout_requires_human": true,
+    "final_checkout_not_in_scope": true
+  }
+}

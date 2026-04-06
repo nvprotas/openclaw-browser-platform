@@ -1,0 +1,35 @@
+{
+  "button_texts": {
+    "search_submit": ["Search"],
+    "add_to_cart": ["Add to cart"],
+    "open_cart": ["Cart", "Checkout"]
+  },
+  "selectors": {
+    "search_input": [
+      "[class*='Header_input'] input",
+      "input[type='text'][placeholder]"
+    ],
+    "search_submit": [
+      "[class*='Header_search']",
+      "[class*='Header_input'] [class*='Header_search']"
+    ],
+    "search_result_link": [
+      "[class*='Search_products'] [class*='PrdocutCard_cardWrapper']",
+      "[class*='Search_products'] [class*='PrdocutCard_pCard']"
+    ],
+    "add_to_cart": [
+      "[class*='InnerProduct_amountBtn']",
+      "[class*='InnerProduct'] [class*='amountBtn']"
+    ],
+    "cart_link": [
+      "[class*='HeaderCartButton_wrapper']",
+      "a[href='/cart']"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Ecomarket", "Header_catalogue", "Header_input"],
+    "search_results": ["/search?q=", "Search_products", "PrdocutCard"],
+    "product_page": ["&product=", "InnerProduct", "PrdocutCard"],
+    "cart": ["/cart", "checkout", "HeaderCart"]
+  }
+}
