@@ -400,6 +400,30 @@ export async function runIntegratedLitresBootstrap(input: {
     await timedStep(timeline, 'stabilize_login_page', () => livePage.waitForTimeout(3000));
     await maybeScreenshot(livePage, path.join(outDir, '01-login-page.png'), Boolean(input.debugScreenshots), screenshots);
 
+    // Check if already authenticated (login page redirected to home/profile).
+    const afterLoginUrl = livePage.url();
+    const afterLoginText = await livePage.locator('body').innerText().catch(() => '');
+    const afterLoginState = classifyLitresBootstrapPage({ url: afterLoginUrl, bodyText: afterLoginText });
+    if (afterLoginState === 'authenticated_litres') {
+      await timedStep(timeline, 'persist_final_state', () => liveContext.storageState({ path: statePath }), statePath);
+      return finishedResult(startedMs, timeline, {
+        attempted: true,
+        ok: true,
+        status: 'state_refreshed',
+        handoffRequired: false,
+        redirectedToSberId: false,
+        bootstrapFailed: false,
+        usedExistingPage: usingExistingPage,
+        scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
+        statePath,
+        outDir,
+        finalUrl: afterLoginUrl,
+        rawStatus: 'already-authenticated',
+        errorMessage: null,
+        adoptedSession: null
+      });
+    }
+
     // New login UI shows social icons directly; old UI had "Другие способы" button first.
     // Try to find Sber icon directly; if not visible, click the "..." (more) button first.
     const sberIcon = livePage.locator('img[alt="sb"]').first();
