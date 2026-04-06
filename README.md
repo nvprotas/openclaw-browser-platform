@@ -8,7 +8,10 @@ curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/
 
 Stateful browser automation runtime for OpenClaw.
 
-Current pilot site: **LitRes (`litres.ru`)**.
+Поддерживаемые сайты:
+
+- **LitRes (`litres.ru`)**: самый проработанный pack на текущий момент.
+- **Азбука вкуса (`av.ru`)**: уровень `assisted`; описаны стартовые flow поиска/карточки/корзины, но выбор города, способа получения и anti-bot gate могут потребовать ручного участия.
 
 The current architecture is:
 

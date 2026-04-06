@@ -1,0 +1,53 @@
+{
+  "button_texts": {
+    "search_submit": ["Найти", "Поиск"],
+    "add_to_cart": ["Добавить в корзину", "В корзину"],
+    "open_cart": ["Корзина", "Перейти в корзину"],
+    "choose_delivery": ["Выбрать", "Доставка / Самовывоз"]
+  },
+  "selectors": {
+    "search_input": [
+      "input[placeholder='Поиск']",
+      "input[placeholder*='Поиск']",
+      "header input[type='text']",
+      "header input[type='search']"
+    ],
+    "search_submit": [
+      "button:has-text('Найти')",
+      "[role='button']:has-text('Найти')",
+      "text=Найти"
+    ],
+    "search_result_link": [
+      "a[href^='/i/']",
+      "main a[href^='/i/']",
+      "a[href*='/i/']"
+    ],
+    "add_to_cart": [
+      ".product-cart-actions__cart-btn",
+      ".product-cart-actions_container",
+      ".add-to-cart",
+      "text=Добавить в корзину"
+    ],
+    "cart_link": [
+      "a[href='/cart']",
+      "a[href*='/cart']",
+      "header a[href='/cart']"
+    ],
+    "choose_delivery": [
+      "text=Выбрать",
+      "text=Доставка / Самовывоз"
+    ],
+    "city_selector": [
+      "text=Москва",
+      "text=Санкт-Петербург"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Каталог", "Поиск", "Корзина", "Доставка / Самовывоз", "Москва"],
+    "search_results": ["Поиск:", "/search?freeText=", "Показать ещё", "Категории"],
+    "product_page": ["Добавить в корзину", "Наличие в магазинах", "О товаре", "Отзывы"],
+    "cart": ["Корзина", "Оформить заказ", "Состав заказа", "Перейти в корзину"],
+    "delivery_gate": ["Необходимо выбрать способ получения", "Выбрать", "Доставка / Самовывоз"],
+    "anti_bot_challenge": ["hcheck=", "request_id=", "back_location="]
+  }
+}
