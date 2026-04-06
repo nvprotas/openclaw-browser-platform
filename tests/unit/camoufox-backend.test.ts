@@ -84,6 +84,7 @@ vi.mock('../../src/playwright/waits.js', () => ({
 afterEach(() => {
   vi.clearAllMocks();
   latestProc = undefined;
+  delete process.env.CAMOUFOX_PYTHON_BIN;
 });
 
 describe('camoufox backend', () => {
@@ -108,12 +109,23 @@ describe('camoufox backend', () => {
       backend: 'camoufox'
     });
 
-    // spawn is called synchronously inside open(), so capture after open() starts
-    const openPromise = session.open('https://example.com');
-    // yield to let spawn() execute before emitting data
-    await Promise.resolve();
-    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
-    await openPromise;
+    const originalBin = process.env.CAMOUFOX_PYTHON_BIN;
+    process.env.CAMOUFOX_PYTHON_BIN = 'python';
+
+    try {
+      // spawn is called synchronously inside open(), so capture after open() starts
+      const openPromise = session.open('https://example.com');
+      // yield to let spawn() execute before emitting data
+      await Promise.resolve();
+      latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+      await openPromise;
+    } finally {
+      if (originalBin === undefined) {
+        delete process.env.CAMOUFOX_PYTHON_BIN;
+      } else {
+        process.env.CAMOUFOX_PYTHON_BIN = originalBin;
+      }
+    }
 
     expect(spawnMock).toHaveBeenCalledWith('python', ['-m', 'camoufox', 'server'], {
       stdio: ['ignore', 'pipe', 'pipe']
@@ -167,7 +179,11 @@ describe('camoufox backend', () => {
       latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
       await openPromise;
     } finally {
-      process.env.CAMOUFOX_PYTHON_BIN = originalBin;
+      if (originalBin === undefined) {
+        delete process.env.CAMOUFOX_PYTHON_BIN;
+      } else {
+        process.env.CAMOUFOX_PYTHON_BIN = originalBin;
+      }
     }
 
     expect(spawnMock).toHaveBeenCalledWith('python3.12', ['-m', 'camoufox', 'server'], {
@@ -304,5 +320,16 @@ describe('resolveCamoufoxPythonCommand', () => {
   it('returns explicit command from env first', async () => {
     const mod = await import('../../src/playwright/browser-session.js');
     expect(mod.resolveCamoufoxPythonCommand({ CAMOUFOX_PYTHON_BIN: 'python3.12', PATH: '' } as NodeJS.ProcessEnv)).toBe('python3.12');
+  });
+
+  it('uses the default openclaw camoufox venv when present', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const fsMod = await import('node:fs');
+    vi.mocked(fsMod.existsSync).mockImplementation((path: any) =>
+      String(path).endsWith('/.openclaw/venvs/camoufox/bin/python')
+    );
+    expect(mod.resolveCamoufoxPythonCommand({ HOME: '/tmp/user', PATH: '' } as NodeJS.ProcessEnv)).toBe(
+      '/tmp/user/.openclaw/venvs/camoufox/bin/python'
+    );
   });
 });

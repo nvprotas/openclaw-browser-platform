@@ -12,6 +12,7 @@ INSTALL_CAMOUFOX="${INSTALL_CAMOUFOX:-0}"
 CAMOUFOX_PYTHON_BIN="${CAMOUFOX_PYTHON_BIN:-}"
 CAMOUFOX_PACKAGE_SPEC="${CAMOUFOX_PACKAGE_SPEC:-camoufox[geoip]}"
 CAMOUFOX_PIP_USER="${CAMOUFOX_PIP_USER:-1}"
+CAMOUFOX_VENV_DIR="${CAMOUFOX_VENV_DIR:-$OPENCLAW_HOME/venvs/camoufox}"
 
 REPO_URL="${REPO_URL:-https://github.com/nvprotas/openclaw-browser-platform.git}"
 BRANCH="${BRANCH:-master}"
@@ -54,25 +55,43 @@ resolve_camoufox_python_bin() {
 install_camoufox() {
   local pip_args=()
   local python_bin=""
+  local install_python_bin=""
+  local pip_error_file=""
 
   if [ "$INSTALL_CAMOUFOX" != "1" ]; then
     return
   fi
 
   python_bin="$(resolve_camoufox_python_bin)"
+  install_python_bin="$python_bin"
 
   if [ "$CAMOUFOX_PIP_USER" = "1" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
     pip_args=(--user)
   fi
 
-  log "Installing Camoufox Python package via $python_bin"
-  "$python_bin" -m pip install "${pip_args[@]}" -U "$CAMOUFOX_PACKAGE_SPEC"
+  pip_error_file="$(mktemp)"
 
-  log "Fetching Camoufox browser via $python_bin"
-  "$python_bin" -m camoufox fetch
+  log "Installing Camoufox Python package via $install_python_bin"
+  if ! "$install_python_bin" -m pip install "${pip_args[@]}" -U "$CAMOUFOX_PACKAGE_SPEC" 2>"$pip_error_file"; then
+    if grep -q 'externally-managed-environment' "$pip_error_file" && [ -z "${VIRTUAL_ENV:-}" ]; then
+      log "Detected externally managed Python environment; creating Camoufox venv in $CAMOUFOX_VENV_DIR"
+      "$python_bin" -m venv "$CAMOUFOX_VENV_DIR"
+      install_python_bin="$CAMOUFOX_VENV_DIR/bin/python"
+      log "Installing Camoufox Python package via $install_python_bin"
+      "$install_python_bin" -m pip install -U "$CAMOUFOX_PACKAGE_SPEC"
+    else
+      cat "$pip_error_file" >&2
+      rm -f "$pip_error_file"
+      return 1
+    fi
+  fi
+  rm -f "$pip_error_file"
 
-  log "Verifying Camoufox installation via $python_bin"
-  "$python_bin" -m camoufox version
+  log "Fetching Camoufox browser via $install_python_bin"
+  "$install_python_bin" -m camoufox fetch
+
+  log "Verifying Camoufox installation via $install_python_bin"
+  "$install_python_bin" -m camoufox version
 }
 
 canonicalize_repo_url() {

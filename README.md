@@ -124,6 +124,7 @@ INSTALL_CAMOUFOX=1 ./install.sh
 ```
 
 Текущая реализация runtime ищет `python`, затем `python3`; при необходимости можно явно задать интерпретатор через `CAMOUFOX_PYTHON_BIN`.
+Если Python на хосте помечен как externally managed (PEP 668), installer автоматически создаёт отдельный venv в `~/.openclaw/venvs/camoufox` и использует его.
 
 Exact step-by-step instructions live here:
 

@@ -60,6 +60,18 @@ export function resolveCamoufoxPythonCommand(env: NodeJS.ProcessEnv = process.en
     return explicit;
   }
 
+  const openclawHome = env.OPENCLAW_HOME?.trim() || (env.HOME ? `${env.HOME}/.openclaw` : '');
+  const defaultVenvPython = openclawHome ? `${openclawHome}/venvs/camoufox/bin/python` : '';
+  if (defaultVenvPython && existsSync(defaultVenvPython)) {
+    return defaultVenvPython;
+  }
+
+  const explicitVenvDir = env.CAMOUFOX_VENV_DIR?.trim();
+  const explicitVenvPython = explicitVenvDir ? `${explicitVenvDir}/bin/python` : '';
+  if (explicitVenvPython && existsSync(explicitVenvPython)) {
+    return explicitVenvPython;
+  }
+
   const pathValue = env.PATH ?? '';
   const pathEntries = pathValue.split(':').filter((entry) => entry.length > 0);
   const hasPython = pathEntries.some((entry) => existsSync(`${entry}/python`));

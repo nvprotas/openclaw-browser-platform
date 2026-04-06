@@ -59,6 +59,7 @@ INSTALL_CAMOUFOX=1 ./install.sh
 - проверяет, что `python -m camoufox version` или `python3 -m camoufox version` отрабатывает без ошибки
 
 Важно: текущий runtime сначала ищет `python`, затем `python3`. Если нужен конкретный интерпретатор, задайте `CAMOUFOX_PYTHON_BIN`.
+Если системный Python запрещает установку пакетов по PEP 668 (`externally-managed-environment`), installer автоматически создаёт отдельный venv в `~/.openclaw/venvs/camoufox`.
 
 ## 3. Manual path (same steps as the installer)
 

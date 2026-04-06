@@ -264,4 +264,83 @@ printf 'python3 cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
     expect(log).toContain(`python3 cwd=${repoRoot} args=-m camoufox fetch`);
     expect(log).toContain(`python3 cwd=${repoRoot} args=-m camoufox version`);
   });
+
+  it('creates a dedicated camoufox venv for externally managed python', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-install-test-'));
+    tempDirs.push(tempRoot);
+
+    const openclawHome = path.join(tempRoot, '.openclaw');
+    const workspace = path.join(openclawHome, 'workspace');
+    const binDir = path.join(tempRoot, 'bin');
+    const logPath = path.join(tempRoot, 'tool-log.txt');
+    const venvPython = path.join(openclawHome, 'venvs', 'camoufox', 'bin', 'python');
+
+    await mkdir(binDir, { recursive: true });
+    await mkdir(workspace, { recursive: true });
+
+    await makeStub(
+      binDir,
+      'npm',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'npm cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
+`
+    );
+
+    await makeStub(
+      binDir,
+      'npx',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'npx cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
+`
+    );
+
+    await makeStub(
+      binDir,
+      'python3',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'python3 cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
+if [ "$1" = "-m" ] && [ "$2" = "pip" ]; then
+  printf 'error: externally-managed-environment\n' >&2
+  exit 1
+fi
+if [ "$1" = "-m" ] && [ "$2" = "venv" ]; then
+  mkdir -p "$3/bin"
+  cat > "$3/bin/python" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'venv-python cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
+EOF
+  chmod +x "$3/bin/python"
+  exit 0
+fi
+`
+    );
+
+    await execFileAsync('bash', [installScriptPath], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH ?? ''}`,
+        HOME: tempRoot,
+        OPENCLAW_HOME: openclawHome,
+        OPENCLAW_WORKSPACE: workspace,
+        RUN_TESTS: '0',
+        RESTART_GATEWAY: '0',
+        RUN_SMOKE_TEST: '0',
+        SKILL_MODE: 'workspace',
+        INSTALL_CAMOUFOX: '1'
+      }
+    });
+
+    const log = await readFile(logPath, 'utf8');
+    expect(log).toContain(`python3 cwd=${repoRoot} args=-m pip install --user -U camoufox[geoip]`);
+    expect(log).toContain(`python3 cwd=${repoRoot} args=-m venv ${path.join(openclawHome, 'venvs', 'camoufox')}`);
+    expect(log).toContain(`venv-python cwd=${repoRoot} args=-m pip install -U camoufox[geoip]`);
+    expect(log).toContain(`venv-python cwd=${repoRoot} args=-m camoufox fetch`);
+    expect(log).toContain(`venv-python cwd=${repoRoot} args=-m camoufox version`);
+    expect(await readFile(venvPython, 'utf8')).toContain('venv-python');
+  });
 });
