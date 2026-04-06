@@ -5,7 +5,13 @@ import type { SessionBackend, SessionRecord } from './types.js';
 export class SessionRegistry {
   private readonly sessions = new Map<string, SessionRecord>();
 
-  open(input: { url: string; title?: string | null; backend?: SessionBackend }): SessionRecord {
+  open(input: {
+    url: string;
+    title?: string | null;
+    backend?: SessionBackend;
+    scenarioId?: string | null;
+    profileContext?: SessionRecord['profileContext'];
+  }): SessionRecord {
     const now = new Date().toISOString();
     const session: SessionRecord = {
       sessionId: randomUUID(),
@@ -15,6 +21,17 @@ export class SessionRegistry {
       createdAt: now,
       updatedAt: now,
       status: 'open',
+      scenarioContext: {
+        scenarioId: input.scenarioId ?? null,
+        reusePolicy: 'open_fresh_session'
+      },
+      profileContext: input.profileContext ?? {
+        profileId: null,
+        persistent: false,
+        source: null,
+        storageStatePath: null,
+        storageStateExists: false
+      },
       packContext: {
         matchedPack: false,
         siteId: null,
@@ -57,7 +74,7 @@ export class SessionRegistry {
 
   touch(
     sessionId: string,
-    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'packContext' | 'authContext' | 'paymentContext'>>
+    patch: Partial<Pick<SessionRecord, 'url' | 'title' | 'status' | 'scenarioContext' | 'profileContext' | 'packContext' | 'authContext' | 'paymentContext'>>
   ): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
     if (!existing) {

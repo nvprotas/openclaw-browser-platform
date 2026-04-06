@@ -14,7 +14,7 @@ export interface SessionAuthContext {
   state: 'authenticated' | 'anonymous' | 'login_gate_detected';
   loginGateDetected: boolean;
   bootstrapAttempted: boolean;
-  bootstrapSource: 'explicit' | 'auto_litres' | null;
+  bootstrapSource: 'explicit' | 'named' | 'auto_litres' | null;
   storageStatePath: string | null;
   storageStateExists: boolean;
   authenticatedSignals: string[];
@@ -36,6 +36,19 @@ export interface SessionAuthContext {
   bootstrapOutDir: string | null;
   bootstrapFinalUrl: string | null;
   bootstrapError: string | null;
+}
+
+export interface SessionProfileContext {
+  profileId: string | null;
+  persistent: boolean;
+  source: 'explicit' | 'named' | 'auto_litres' | null;
+  storageStatePath: string | null;
+  storageStateExists: boolean;
+}
+
+export interface SessionScenarioContext {
+  scenarioId: string | null;
+  reusePolicy: 'reuse_live_session' | 'open_fresh_session';
 }
 
 export interface PaymentIntentSummary {
@@ -91,6 +104,8 @@ export interface SessionRecord {
   updatedAt: string;
   status: 'open' | 'closed';
   title: string | null;
+  scenarioContext: SessionScenarioContext;
+  profileContext: SessionProfileContext;
   packContext: SessionPackContext;
   authContext: SessionAuthContext;
   paymentContext: SessionPaymentContext;

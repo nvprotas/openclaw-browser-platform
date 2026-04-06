@@ -10,8 +10,15 @@ export async function handleSessionOpen(args: string[]): Promise<unknown> {
   const storageStateIndex = args.indexOf('--storage-state');
   const storageStatePath =
     storageStateIndex !== -1 && storageStateIndex < args.length - 1 ? args[storageStateIndex + 1] : undefined;
+  const profileId = optionalFlag(args, '--profile');
+  const scenarioId = optionalFlag(args, '--scenario');
   const backend = resolveBackend(args);
-  return openSession(url, { storageStatePath, backend });
+  return openSession(url, { storageStatePath, backend, profileId, scenarioId });
+}
+
+function optionalFlag(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  return index !== -1 && index < args.length - 1 ? args[index + 1] : undefined;
 }
 
 export function resolveBackend(args: string[]): SessionBackend {

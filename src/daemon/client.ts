@@ -51,12 +51,14 @@ export async function getDaemonStatus(): Promise<DaemonStatusResponse> {
 
 export async function openSession(
   url: string,
-  options?: { storageStatePath?: string; backend?: SessionBackend }
+  options?: { storageStatePath?: string; backend?: SessionBackend; profileId?: string; scenarioId?: string }
 ): Promise<SessionOpenResponse> {
   return request<SessionOpenResponse>(await readRunningDaemonInfo(), '/v1/session/open', {
     url,
     storageStatePath: options?.storageStatePath ?? null,
-    backend: options?.backend ?? 'chromium'
+    backend: options?.backend ?? 'chromium',
+    profileId: options?.profileId ?? null,
+    scenarioId: options?.scenarioId ?? null
   });
 }
 

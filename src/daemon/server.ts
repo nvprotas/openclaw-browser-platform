@@ -5,11 +5,8 @@ import { PlaywrightController } from '../playwright/controller.js';
 import { matchSitePackByUrl } from '../packs/loader.js';
 import { detectLoginGate } from '../helpers/login-gates.js';
 import { getDefaultStateStore } from './state-store.js';
-import {
-  resolveStorageStateForSession,
-  runIntegratedLitresBootstrap,
-  type LitresBootstrapAttemptResult
-} from './litres-auth.js';
+import { runIntegratedLitresBootstrap, type LitresBootstrapAttemptResult } from './litres-auth.js';
+import { resolveProfileForSession } from './profile-state.js';
 import { SessionRegistry } from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import type {
@@ -105,7 +102,13 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
       }
 
       if (request.method === 'POST' && request.url === '/v1/session/open') {
-        const body = (await readJsonBody(request)) as { url?: string; storageStatePath?: string; backend?: SessionBackend };
+        const body = (await readJsonBody(request)) as {
+          url?: string;
+          storageStatePath?: string;
+          backend?: SessionBackend;
+          profileId?: string;
+          scenarioId?: string;
+        };
         if (!body?.url) {
           sendJson(response, 400, { ok: false, error: { message: 'Missing url' } });
           return;
@@ -118,15 +121,29 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         const backend: SessionBackend = body.backend === 'camoufox' ? 'camoufox' : 'chromium';
 
         const preMatchedPack = await matchSitePackByUrl(body.url);
-        const bootstrap = await resolveStorageStateForSession({
+        const profile = await resolveProfileForSession({
+          stateRootDir: stateStore.root,
+          backend,
           requestedUrl: body.url,
           explicitStorageStatePath: body.storageStatePath,
+          profileId: body.profileId,
           matchedPack: preMatchedPack
         });
 
-        const record = registry.open({ url: body.url, backend });
+        const record = registry.open({
+          url: body.url,
+          backend,
+          scenarioId: body.scenarioId ?? null,
+          profileContext: {
+            profileId: profile.profileId,
+            persistent: profile.persistent,
+            source: profile.source,
+            storageStatePath: profile.storageStatePath,
+            storageStateExists: profile.storageStateExists
+          }
+        });
         try {
-          const openWithStatePath = bootstrap.storageStateExists ? bootstrap.storageStatePath ?? undefined : undefined;
+          const openWithStatePath = profile.storageStateExists ? profile.storageStatePath ?? undefined : undefined;
           let opened = await controller.openSession(record.sessionId, body.url, {
             storageStatePath: openWithStatePath,
             backend
@@ -135,28 +152,28 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           let observed = await controller.observeSession(record.sessionId);
           let auth = detectLoginGate(opened.url, observed);
           const bootstrapResult: LitresBootstrapAttemptResult =
-            matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated' && !bootstrap.storageStateExists
+            matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated' && !profile.storageStateExists
               ? await runIntegratedLitresBootstrap({
                   matchedPack,
-                  storageStatePath: bootstrap.storageStatePath
+                  storageStatePath: profile.storageStatePath
                 })
               : {
                   attempted: false,
                   ok: false,
-                  status: bootstrap.storageStateExists ? 'reused_existing_state' : 'not_attempted',
+                  status: profile.storageStateExists ? 'reused_existing_state' : 'not_attempted',
                   handoffRequired: false,
                   redirectedToSberId: false,
                   bootstrapFailed: false,
                   scriptPath: null,
-                  statePath: bootstrap.storageStatePath,
+                  statePath: profile.storageStatePath,
                   outDir: null,
                   finalUrl: null,
                   rawStatus: null,
                   errorMessage: null
                 };
 
-          const refreshedStatePath = bootstrapResult.statePath ?? bootstrap.storageStatePath;
-          const refreshedStateExists = bootstrap.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));
+          const refreshedStatePath = bootstrapResult.statePath ?? profile.storageStatePath;
+          const refreshedStateExists = profile.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));
 
           if (bootstrapResult.attempted && refreshedStatePath && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
             await controller.closeSession(record.sessionId);
@@ -173,6 +190,11 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
             registry.touch(record.sessionId, {
               url: opened.url,
               title: opened.title,
+              profileContext: {
+                ...record.profileContext,
+                storageStatePath: refreshedStatePath,
+                storageStateExists: refreshedStateExists
+              },
               packContext: matchedPack
                 ? {
                     matchedPack: true,
@@ -189,8 +211,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
               authContext: {
                 state: auth.state,
                 loginGateDetected: auth.loginGateDetected,
-                bootstrapAttempted: bootstrap.bootstrapAttempted || bootstrapResult.attempted,
-                bootstrapSource: bootstrap.bootstrapSource,
+                bootstrapAttempted: Boolean(profile.source) || bootstrapResult.attempted,
+                bootstrapSource: profile.source,
                 storageStatePath: refreshedStatePath,
                 storageStateExists: refreshedStateExists,
                 authenticatedSignals: auth.authenticatedSignals,
