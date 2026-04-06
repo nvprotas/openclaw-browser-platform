@@ -58,10 +58,6 @@ camoufox_runtime_present() {
   [ -x "$CAMOUFOX_CACHE_DIR/camoufox-bin" ] || [ -d "$CAMOUFOX_CACHE_DIR/browser" ]
 }
 
-camoufox_geoip_present() {
-  find "$CAMOUFOX_CACHE_DIR" -type f \( -name '*.mmdb' -o -name 'GeoLite2-*.db' \) -print -quit 2>/dev/null | grep -q .
-}
-
 should_fetch_camoufox() {
   case "$CAMOUFOX_FETCH" in
     always)
@@ -74,14 +70,6 @@ should_fetch_camoufox() {
       if ! camoufox_runtime_present; then
         return 0
       fi
-
-      case "$CAMOUFOX_PACKAGE_SPEC" in
-        *geoip*)
-          if ! camoufox_geoip_present; then
-            return 0
-          fi
-          ;;
-      esac
 
       return 1
       ;;
