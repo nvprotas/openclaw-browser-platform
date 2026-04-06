@@ -3,6 +3,7 @@ export interface VisibleButtonSummary {
   role: string;
   type: string | null;
   ariaLabel: string | null;
+  selector?: string | null;
 }
 
 export interface FormSummary {

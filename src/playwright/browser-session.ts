@@ -559,7 +559,18 @@ export class BrowserSession {
     const page = this.requirePage();
     const summary = (await page.evaluate(() => {
       const normalizeText = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim();
-      const selectors = 'h1, h2, h3, main p, article p, [role="heading"], button, a, label';
+      const selectors = [
+        'h1, h2, h3, h4',
+        'main p, article p',
+        '[role="heading"]',
+        'button, a, label',
+        '[class*="title"]:not(head *)',
+        '[class*="author"]:not(head *)',
+        '[class*="price"]:not(head *)',
+        '[data-testid*="title"]',
+        '[data-testid*="price"]',
+        '[data-testid*="author"]'
+      ].join(', ');
       const textCandidates = Array.from(document.querySelectorAll<HTMLElement>(selectors))
         .filter((element) => {
           const style = window.getComputedStyle(element);
@@ -582,11 +593,24 @@ export class BrowserSession {
           element instanceof HTMLInputElement ? element.value : element.innerText || element.textContent
         );
         const ariaLabel = normalizeText(element.getAttribute('aria-label')) || null;
+        const selector = (() => {
+          const testId = element.getAttribute('data-testid');
+          if (testId) return `[data-testid="${testId}"]`;
+          const id = element.id;
+          if (id) return `#${id}`;
+          const tag = element.tagName.toLowerCase();
+          const label = element.getAttribute('aria-label');
+          if (label) return `${tag}[aria-label="${label}"]`;
+          const name = element.getAttribute('name');
+          if (name) return `${tag}[name="${name}"]`;
+          return null;
+        })();
         return {
           text,
           role: element.getAttribute('role') ?? element.tagName.toLowerCase(),
           type: inputType,
-          ariaLabel
+          ariaLabel,
+          selector
         };
       };
 
@@ -700,14 +724,25 @@ export class BrowserSession {
       const hasSearchForm = forms.some((form) => (form.action ?? '').toLowerCase().includes('/search'));
       const hasLikelyAuthForm = forms.some((form) => form.inputCount >= 2 && !((form.action ?? '').toLowerCase().includes('/search')));
 
+      const currentUrl = window.location.href;
+      const urlHasSearch = /[?&]q=|\/search/i.test(currentUrl);
+      const urlHasCart = /\/cart|\/basket|\/my-books\/cart/i.test(currentUrl);
+      const urlHasProduct = /\/book\/|\/audiobook\/|\/product\//i.test(currentUrl);
+
+      const hasBuyButtons = /buy|add to cart|purchase|купить|в корзину/.test(buttonTexts);
+      // Strong cart signals: confirmation text or navigational cue to cart — not just nav badge
+      const hasCartConfirmation = /added to cart|go to cart|перейти в корзину|товар добавлен|добавлено в корзину/i.test(lowerTexts + ' ' + buttonTexts);
+
       let pageSignatureGuess = 'unknown';
       if (hasLikelyAuthForm || (hasAuthWords && !hasSearchSignals)) {
         pageSignatureGuess = 'auth_form';
-      } else if (/buy|add to cart|purchase|купить|в корзину/.test(buttonTexts)) {
-        pageSignatureGuess = 'product_page';
-      } else if (/cart|basket|checkout|корзин/.test(lowerTexts)) {
+      } else if (urlHasCart || hasCartConfirmation) {
         pageSignatureGuess = 'cart';
-      } else if (/search|results|найден|результат/.test(lowerTexts)) {
+      } else if (urlHasProduct || hasBuyButtons) {
+        pageSignatureGuess = 'product_page';
+      } else if (!hasBuyButtons && /cart|basket|checkout|корзин/.test(lowerTexts) && !urlHasSearch) {
+        pageSignatureGuess = 'cart';
+      } else if (urlHasSearch || /search|results|найден|результат/.test(lowerTexts)) {
         pageSignatureGuess = 'search_results';
       } else if (hasSearchSignals || hasSearchForm) {
         pageSignatureGuess = 'home';
@@ -742,6 +777,7 @@ export class BrowserSession {
 
   async snapshot(): Promise<BrowserSessionSnapshotResult> {
     const page = this.requirePage();
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     const paths = await capturePageSnapshot(page, this.options.snapshotRootDir, this.options.sessionId);
     await this.persistStorageState();
     return {
