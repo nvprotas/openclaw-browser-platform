@@ -135,7 +135,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           let observed = await controller.observeSession(record.sessionId);
           let auth = detectLoginGate(opened.url, observed);
           const bootstrapResult: LitresBootstrapAttemptResult =
-            matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated'
+            matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated' && !bootstrap.storageStateExists
               ? await runIntegratedLitresBootstrap({
                   matchedPack,
                   storageStatePath: bootstrap.storageStatePath
