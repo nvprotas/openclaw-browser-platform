@@ -1,0 +1,55 @@
+{
+  "button_texts": {
+    "search_submit": ["Найти", "Поиск"],
+    "add_to_cart": ["Добавить в корзину", "В корзину", "Добавить"],
+    "open_cart": ["Корзина", "Перейти в корзину"],
+    "confirm_address": ["Подтвердить", "Выбрать адрес", "Продолжить"]
+  },
+  "selectors": {
+    "search_input": [
+      "input[placeholder*='Найти']",
+      "input[placeholder*='Поиск']",
+      "input[placeholder*='поиск']",
+      "header input[type='text']",
+      "header input[type='search']",
+      "[data-testid='search-input']"
+    ],
+    "search_submit": [
+      "button[type='submit']",
+      "button[aria-label*='Найти']",
+      "button[aria-label*='поиск']",
+      "[data-testid='search-button']"
+    ],
+    "search_result_link": [
+      "a[href*='/product/']",
+      "a[href*='/p/']",
+      "main a[href*='/product']"
+    ],
+    "add_to_cart": [
+      "[data-testid='add-to-cart']",
+      "button:has-text('Добавить в корзину')",
+      "button:has-text('В корзину')",
+      "text=Добавить в корзину"
+    ],
+    "cart_link": [
+      "a[href='/cart']",
+      "a[href*='/cart']",
+      "[data-testid='cart-button']",
+      "[aria-label*='Корзин']"
+    ],
+    "address_input": [
+      "input[placeholder*='адрес']",
+      "input[placeholder*='Адрес']",
+      "input[placeholder*='улица']",
+      "[data-testid='address-input']"
+    ]
+  },
+  "page_signatures": {
+    "home": ["Каталог", "Корзина", "kuper", "Поиск"],
+    "address_gate": ["Укажите адрес", "адрес доставки", "Выберите адрес", "Подтвердить адрес"],
+    "search_results": ["/multisearch/", "/search?", "Результаты поиска", "Найдено"],
+    "product_page": ["Добавить в корзину", "В корзину", "Описание товара", "Состав"],
+    "cart": ["Корзина", "Оформить заказ", "Перейти к оплате", "Ваша корзина"],
+    "store_selection": ["Выберите магазин", "Доступные магазины"]
+  }
+}

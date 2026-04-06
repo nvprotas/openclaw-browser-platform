@@ -87,6 +87,17 @@ install_camoufox() {
   fi
   rm -f "$pip_error_file"
 
+  log "Installing Camoufox system dependencies (Firefox/GTK)"
+  if command -v apt-get >/dev/null 2>&1; then
+    if ! apt-get install -y --no-install-recommends libgtk-3-0 libdbus-glib-1-2 libxt6 2>/dev/null; then
+      "$install_python_bin" -m playwright install-deps firefox \
+        || log "Warning: could not install Firefox system dependencies; install libgtk-3-0 manually if camoufox fails"
+    fi
+  else
+    "$install_python_bin" -m playwright install-deps firefox 2>/dev/null \
+      || log "Warning: could not install Firefox system dependencies; install libgtk-3-0 manually if camoufox fails"
+  fi
+
   log "Fetching Camoufox browser via $install_python_bin"
   "$install_python_bin" -m camoufox fetch
 

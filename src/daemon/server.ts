@@ -7,6 +7,7 @@ import { detectLoginGate } from '../helpers/login-gates.js';
 import { getDefaultStateStore } from './state-store.js';
 import { runIntegratedLitresBootstrap, type LitresBootstrapAttemptResult } from './litres-auth.js';
 import { resolveProfileForSession } from './profile-state.js';
+import { runIntegratedKuperBootstrap } from './kuper-auth.js';
 import { SessionRegistry } from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import type {
@@ -114,13 +115,12 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           return;
         }
 
-        if (body.backend !== undefined && body.backend !== 'chromium' && body.backend !== 'camoufox') {
-          sendJson(response, 400, { ok: false, error: { message: 'Invalid backend. Allowed values: chromium, camoufox', code: 'INVALID_BACKEND' } });
+        if (body.backend !== undefined && body.backend !== null && body.backend !== 'camoufox') {
+          sendJson(response, 400, { ok: false, error: { message: 'Invalid backend. Allowed values: camoufox', code: 'INVALID_BACKEND' } });
           return;
         }
-        const backend: SessionBackend = body.backend === 'camoufox' ? 'camoufox' : 'chromium';
-
         const preMatchedPack = await matchSitePackByUrl(body.url);
+        const backend: SessionBackend = 'camoufox';
         const profile = await resolveProfileForSession({
           stateRootDir: stateStore.root,
           backend,
@@ -157,20 +157,24 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                   matchedPack,
                   storageStatePath: profile.storageStatePath
                 })
-              : {
-                  attempted: false,
-                  ok: false,
-                  status: profile.storageStateExists ? 'reused_existing_state' : 'not_attempted',
-                  handoffRequired: false,
-                  redirectedToSberId: false,
-                  bootstrapFailed: false,
-                  scriptPath: null,
-                  statePath: profile.storageStatePath,
-                  outDir: null,
-                  finalUrl: null,
-                  rawStatus: null,
-                  errorMessage: null
-                };
+              : matchedPack?.summary.siteId === 'kuper' && auth.state !== 'authenticated' && !profile.storageStateExists
+                ? await runIntegratedKuperBootstrap({
+                    storageStatePath: profile.storageStatePath
+                  })
+                : {
+                    attempted: false,
+                    ok: false,
+                    status: profile.storageStateExists ? 'reused_existing_state' : 'not_attempted',
+                    handoffRequired: false,
+                    redirectedToSberId: false,
+                    bootstrapFailed: false,
+                    scriptPath: null,
+                    statePath: profile.storageStatePath,
+                    outDir: null,
+                    finalUrl: null,
+                    rawStatus: null,
+                    errorMessage: null
+                  };
 
           const refreshedStatePath = bootstrapResult.statePath ?? profile.storageStatePath;
           const refreshedStateExists = profile.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));

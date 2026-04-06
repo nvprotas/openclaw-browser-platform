@@ -56,7 +56,7 @@ export async function openSession(
   return request<SessionOpenResponse>(await readRunningDaemonInfo(), '/v1/session/open', {
     url,
     storageStatePath: options?.storageStatePath ?? null,
-    backend: options?.backend ?? 'chromium',
+    backend: options?.backend ?? null,
     profileId: options?.profileId ?? null,
     scenarioId: options?.scenarioId ?? null
   });

@@ -15,7 +15,7 @@ export class SessionRegistry {
     const now = new Date().toISOString();
     const session: SessionRecord = {
       sessionId: randomUUID(),
-      backend: input.backend ?? 'chromium',
+      backend: input.backend ?? 'camoufox',
       url: input.url,
       title: input.title ?? null,
       createdAt: now,

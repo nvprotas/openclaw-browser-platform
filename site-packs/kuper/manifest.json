@@ -1,0 +1,16 @@
+{
+  "site_id": "kuper",
+  "domains": ["kuper.ru", "www.kuper.ru"],
+  "start_url": "https://kuper.ru/",
+  "site_type": "grocery_store",
+  "support_level": "assisted",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "address_selection_required": true,
+    "store_selection_required": true,
+    "availability_depends_on_address": true,
+    "anti_bot_challenge_possible": true,
+    "final_checkout_not_in_scope": true,
+    "login_may_require_human_handoff": true
+  }
+}

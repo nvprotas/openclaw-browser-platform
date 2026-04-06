@@ -3,6 +3,7 @@ import path from 'node:path';
 import { chromium } from 'playwright';
 import type { Page } from 'playwright';
 import type { LoadedSitePack } from '../packs/loader.js';
+import { DEFAULT_KUPER_STORAGE_STATE } from './kuper-auth.js';
 
 export const DEFAULT_LITRES_STORAGE_STATE = '/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json';
 export const DEFAULT_SBER_COOKIES_PATH = '/root/.openclaw/workspace/sber-cookies.json';
@@ -85,6 +86,15 @@ export async function resolveStorageStateForSession(input: {
     return {
       storageStatePath: DEFAULT_LITRES_STORAGE_STATE,
       storageStateExists: await fileExists(DEFAULT_LITRES_STORAGE_STATE),
+      bootstrapAttempted: true,
+      bootstrapSource: 'auto_litres'
+    };
+  }
+
+  if (input.matchedPack?.summary.siteId === 'kuper') {
+    return {
+      storageStatePath: DEFAULT_KUPER_STORAGE_STATE,
+      storageStateExists: await fileExists(DEFAULT_KUPER_STORAGE_STATE),
       bootstrapAttempted: true,
       bootstrapSource: 'auto_litres'
     };

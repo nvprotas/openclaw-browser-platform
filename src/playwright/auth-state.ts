@@ -31,6 +31,7 @@ export function inferAuthState(url: string, observation: PageStateSummary): Auth
     /мои книги/.test(combined) ? 'visible_my_books' : null,
     /выйти/.test(combined) ? 'visible_logout' : null,
     /профил/.test(combined) ? 'visible_profile' : null,
+    /личный кабинет|мой кабинет/.test(combined) ? 'visible_cabinet' : null,
     /account|profile/.test(lowerUrl) ? 'account_like_url' : null
   ].filter((value): value is string => Boolean(value));
 
