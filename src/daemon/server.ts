@@ -331,6 +331,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
               stages: timing.stages
             },
             opened,
+            openTiming: opened.timing ?? null,
             packContext: session.packContext,
             authContext: session.authContext,
             paymentContext: session.paymentContext,

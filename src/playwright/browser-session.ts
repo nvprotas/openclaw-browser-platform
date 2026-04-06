@@ -31,7 +31,29 @@ export interface PageStateSummary extends ObserveSummary {
 export interface BrowserSessionOpenResult {
   url: string;
   title: string;
+  timing?: {
+    startedAt: string;
+    finishedAt: string;
+    durationMs: number;
+    stages: Array<{
+      step: string;
+      startedAt: string;
+      finishedAt: string;
+      durationMs: number;
+      status: 'ok' | 'error';
+      detail: string | null;
+    }>;
+  };
 }
+
+type BrowserSessionOpenTimingStage = {
+  step: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  status: 'ok' | 'error';
+  detail: string | null;
+};
 
 export interface BrowserSessionSnapshotResult extends SnapshotPaths {
   state: PageStateSummary;
@@ -143,6 +165,45 @@ export function buildCamoufoxServerArgs(): string[] {
 
 function isProcessRunning(proc: ChildProcess): boolean {
   return proc.exitCode === null && proc.signalCode === null;
+}
+
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+function createOpenTimingCollector() {
+  const stages: BrowserSessionOpenTimingStage[] = [];
+
+  return {
+    stages,
+    async run<T>(step: string, fn: () => Promise<T>, detail: string | null = null): Promise<T> {
+      const startedAt = isoNow();
+      const startedMs = Date.now();
+
+      try {
+        const result = await fn();
+        stages.push({
+          step,
+          startedAt,
+          finishedAt: isoNow(),
+          durationMs: Date.now() - startedMs,
+          status: 'ok',
+          detail
+        });
+        return result;
+      } catch (error) {
+        stages.push({
+          step,
+          startedAt,
+          finishedAt: isoNow(),
+          durationMs: Date.now() - startedMs,
+          status: 'error',
+          detail: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
+    }
+  };
 }
 
 function stopCamoufoxProcess(proc: ChildProcess): void {
@@ -266,22 +327,33 @@ export class BrowserSession {
 
   async open(url: string): Promise<BrowserSessionOpenResult> {
     const backend = this.options.backend ?? 'camoufox';
+    const openStartedAt = isoNow();
+    const openStartedMs = Date.now();
+    const timing = createOpenTimingCollector();
 
     let browser: Browser | null = null;
     let context: BrowserContext | null = null;
     let page: Page | null = null;
 
     try {
-      browser = await this.openCamoufoxBrowser();
+      browser = await timing.run('launch_camoufox_browser', () => this.openCamoufoxBrowser());
+      const readyBrowser = browser;
 
-      context = await browser.newContext({
-        viewport: { width: 1440, height: 900 },
-        storageState: this.options.storageStatePath
-      });
+      context = await timing.run(
+        'new_context',
+        () =>
+          readyBrowser.newContext({
+            viewport: { width: 1440, height: 900 },
+            storageState: this.options.storageStatePath
+          }),
+        this.options.storageStatePath ?? null
+      );
+      const readyContext = context;
 
-      page = await context.newPage();
-      await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await waitForInitialLoad(page);
+      page = await timing.run('new_page', () => readyContext.newPage());
+      const readyPage = page;
+      await timing.run('goto_domcontentloaded', () => readyPage.goto(url, { waitUntil: 'domcontentloaded' }), url);
+      await timing.run('wait_for_initial_load', () => waitForInitialLoad(readyPage));
     } catch (error) {
       await context?.close().catch(() => undefined);
       await browser?.close().catch(() => undefined);
@@ -297,14 +369,32 @@ export class BrowserSession {
       });
     }
 
+    if (!browser || !context || !page) {
+      throw new BrowserPlatformError(`Failed to open browser session (${backend})`, {
+        code: 'SESSION_OPEN_FAILED',
+        details: {
+          backend,
+          url,
+          cause: 'Browser session was not initialized'
+        }
+      });
+    }
+
     this.browser = browser;
     this.context = context;
     this.pageInstance = page;
-    await this.persistStorageState();
+    await timing.run('persist_storage_state', () => this.persistStorageState(), this.options.storageStatePath ?? null);
+    const readyPage = page;
 
     return {
-      url: page.url(),
-      title: await page.title()
+      url: readyPage.url(),
+      title: await timing.run('read_page_title', () => readyPage.title()),
+      timing: {
+        startedAt: openStartedAt,
+        finishedAt: isoNow(),
+        durationMs: Date.now() - openStartedMs,
+        stages: timing.stages
+      }
     };
   }
 

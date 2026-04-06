@@ -2,7 +2,12 @@ import path from 'node:path';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionActionPayload } from '../daemon/types.js';
 import { TraceWriter } from '../traces/writer.js';
-import { BrowserSession, type BrowserSessionSnapshotResult, type PageStateSummary } from './browser-session.js';
+import {
+  BrowserSession,
+  type BrowserSessionOpenResult,
+  type BrowserSessionSnapshotResult,
+  type PageStateSummary
+} from './browser-session.js';
 import { buildActionResult, runStep } from '../runtime/run-step.js';
 import type { SessionBackend } from '../daemon/types.js';
 
@@ -21,7 +26,7 @@ export class PlaywrightController {
       storageStatePath?: string;
       backend?: SessionBackend;
     }
-  ): Promise<{ url: string; title: string }> {
+  ): Promise<BrowserSessionOpenResult> {
     const session = new BrowserSession({
       sessionId,
       snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots'),
