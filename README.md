@@ -6,10 +6,10 @@
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
-**One-line install/update with Camoufox:**
+**One-line install/update:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
 Stateful browser automation runtime for OpenClaw.
@@ -47,7 +47,7 @@ This repository currently contains:
 
 - Node.js **22+**
 - npm **10+**
-- a Linux/macOS host where Playwright Chromium can run
+- a Linux/macOS host where Camoufox can run
 - OpenClaw installed separately if you want agent integration
 
 ## Quick local setup
@@ -56,7 +56,6 @@ This repository currently contains:
 git clone https://github.com/nvprotas/openclaw-browser-platform.git
 cd openclaw-browser-platform
 npm ci
-npx playwright install chromium
 npm run build
 npm run test
 ```
@@ -68,15 +67,15 @@ node dist/bin/browser-platform.js --help
 node dist/bin/browser-platform.js daemon ensure --json
 ```
 
-### Optional backend: Camoufox (MVP)
+### Backend: Camoufox
 
-`session open` uses `chromium` by default. The canonical flow is to open a fresh scenario session against a named profile, and you can opt into Camoufox per session:
+`session open` always uses `camoufox`. The canonical flow is to open a fresh scenario session against a named profile:
 
 ```bash
 node dist/bin/browser-platform.js session open --url https://example.com --profile demo --scenario smoke --backend camoufox --json
 ```
 
-Camoufox mode expects `python -m camoufox server` or `python3 -m camoufox server` to be available in `PATH` and connectable by Playwright Firefox. You can also override the interpreter explicitly with `CAMOUFOX_PYTHON_BIN`.
+Runtime expects a working `camoufox` Python installation and can use `CAMOUFOX_PYTHON_BIN` to select a specific interpreter explicitly.
 
 ## Recommended install mode for a clean OpenClaw host
 
@@ -84,7 +83,7 @@ For now, the simplest and most reliable installation path is:
 
 1. clone the repo onto the host
 2. install dependencies
-3. install Playwright Chromium
+3. install Camoufox
 4. build the project
 5. expose the CLI with `npm link`
 6. copy the bundled OpenClaw skill template into the workspace
@@ -102,25 +101,12 @@ One-liner bootstrap mode from GitHub raw:
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
-Camoufox one-liner bootstrap mode:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
-```
-
 Useful overrides:
 
 ```bash
 RUN_TESTS=0 ./install.sh
 SKILL_MODE=shared ./install.sh
 LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
-INSTALL_CAMOUFOX=1 ./install.sh
-```
-
-Если нужен backend `camoufox`, installer может поставить Python-пакет и скачать сам браузер:
-
-```bash
-INSTALL_CAMOUFOX=1 ./install.sh
 ```
 
 Текущая реализация runtime ищет `python`, затем `python3`; при необходимости можно явно задать интерпретатор через `CAMOUFOX_PYTHON_BIN`.
@@ -143,7 +129,7 @@ All implemented commands return JSON when called with `--json`.
 
 - `browser-platform daemon ensure --json`
 - `browser-platform daemon status --json`
-- `browser-platform session open --url <url> [--profile <id>] [--scenario <id>] [--backend chromium|camoufox] [--storage-state <path>] --json`
+- `browser-platform session open --url <url> [--profile <id>] [--scenario <id>] [--backend camoufox] [--storage-state <path>] --json`
 - `browser-platform session context --session <id> --json`
 - `browser-platform session observe --session <id> --json`
 - `browser-platform session act --session <id> --json '<payload>'`

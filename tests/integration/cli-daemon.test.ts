@@ -3,9 +3,8 @@ import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
-import { chromium } from 'playwright';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionObservation } from '../../src/daemon/types.js';
 import { findAddToCartTargets, findOpenCartTargets, isAddToCartConfirmed, isCartVisible } from '../../src/helpers/cart.js';
@@ -16,7 +15,17 @@ const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
 const cliPath = path.join(repoRoot, 'dist/bin/browser-platform.js');
 const tempDirs: string[] = [];
-const browserRuntimeAvailable = existsSync(chromium.executablePath());
+const defaultCamoufoxVenvPython = process.env.HOME ? path.join(process.env.HOME, '.openclaw', 'venvs', 'camoufox', 'bin', 'python') : '';
+const camoufoxPythonCandidates = [
+  process.env.CAMOUFOX_PYTHON_BIN,
+  existsSync(defaultCamoufoxVenvPython) ? defaultCamoufoxVenvPython : undefined,
+  'python',
+  'python3'
+].filter((value): value is string => Boolean(value));
+const browserRuntimeAvailable = camoufoxPythonCandidates.some((pythonBin) => {
+  const result = spawnSync(pythonBin, ['-m', 'camoufox', 'version'], { stdio: 'ignore' });
+  return result.status === 0;
+});
 let server: http.Server;
 let serverUrl = '';
 

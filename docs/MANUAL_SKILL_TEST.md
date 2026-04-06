@@ -16,11 +16,7 @@
 - скопировали `openclaw/skill-template/SKILL.md` в OpenClaw skills
 - перезапустили gateway или открыли новую сессию OpenClaw
 
-Если хотите использовать backend `camoufox`, installer теперь умеет подготовить его автоматически:
-
-```bash
-INSTALL_CAMOUFOX=1 ./install.sh
-```
+Installer теперь по умолчанию подготавливает backend `camoufox`.
 
 Если нужна полная установка с нуля, сначала пройдите шаги из [OPENCLAW_SETUP.md](./OPENCLAW_SETUP.md).
 
@@ -80,7 +76,7 @@ browser-platform session observe --session <SESSION_ID> --json
 - `browser-platform: command not found`:
   скорее всего, не выполнен `npm link` или текущий shell не видит глобальный bin-path.
 - браузер не стартует:
-  проверьте `npx playwright install chromium`.
+  проверьте `python -m camoufox version` или `python3 -m camoufox version`.
 - `packContext` пустой или сайт не матчится:
   убедитесь, что открывается именно `https://www.litres.ru/` и используется свежая сборка.
 - сессия всегда анонимная:

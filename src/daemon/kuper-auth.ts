@@ -1,14 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { firefox } from 'playwright';
 import type { Browser, Page } from 'playwright';
 import { fileExists } from './litres-auth.js';
-import {
-  resolveCamoufoxPythonCommand,
-  buildCamoufoxServerArgs,
-  extractWebsocketEndpoint
-} from '../playwright/browser-session.js';
+import { launchCamoufoxBrowser } from '../playwright/browser-session.js';
 
 export const DEFAULT_KUPER_STORAGE_STATE = '/root/.openclaw/workspace/tmp/sberid-login/kuper/storage-state.json';
 export const DEFAULT_KUPER_BOOTSTRAP_OUT_DIR = '/root/.openclaw/workspace/tmp/sberid-login/kuper';
@@ -54,38 +48,6 @@ async function maybeScreenshot(page: Page, file: string, enabled: boolean, scree
   if (!enabled) return;
   await page.screenshot({ path: file, fullPage: true });
   screenshots.push(file);
-}
-
-async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ browser: Browser; stop: () => void }> {
-  const pythonBin = resolveCamoufoxPythonCommand();
-  const proc = spawn(pythonBin, buildCamoufoxServerArgs(), { stdio: ['ignore', 'pipe', 'pipe'] });
-
-  const wsEndpoint = await new Promise<string>((resolve, reject) => {
-    let lineBuffer = '';
-    let settled = false;
-    const timeout = setTimeout(() => {
-      if (!settled) { settled = true; proc.kill(); reject(new Error('Camoufox startup timeout')); }
-    }, timeoutMs);
-
-    const onData = (chunk: Buffer) => {
-      lineBuffer += chunk.toString('utf8');
-      const lines = lineBuffer.split('\n');
-      lineBuffer = lines.pop() ?? '';
-      for (const line of lines) {
-        const ws = extractWebsocketEndpoint(line);
-        if (ws && !settled) { settled = true; clearTimeout(timeout); resolve(ws); }
-      }
-    };
-
-    proc.stdout?.on('data', onData);
-    proc.stderr?.on('data', onData);
-    proc.on('exit', () => { if (!settled) { settled = true; clearTimeout(timeout); reject(new Error('Camoufox process exited before WS endpoint')); } });
-    proc.on('error', (err) => { if (!settled) { settled = true; clearTimeout(timeout); reject(err); } });
-  });
-
-  const browser = await firefox.connect(wsEndpoint, { timeout: timeoutMs });
-  const stop = () => { proc.kill(); };
-  return { browser, stop };
 }
 
 export async function runIntegratedKuperBootstrap(input: {

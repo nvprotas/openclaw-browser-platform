@@ -8,7 +8,7 @@ RUN_TESTS="${RUN_TESTS:-1}"
 RESTART_GATEWAY="${RESTART_GATEWAY:-1}"
 RUN_SMOKE_TEST="${RUN_SMOKE_TEST:-1}"
 LIVE_SMOKE_URL="${LIVE_SMOKE_URL:-}"
-INSTALL_CAMOUFOX="${INSTALL_CAMOUFOX:-0}"
+INSTALL_CAMOUFOX="${INSTALL_CAMOUFOX:-1}"
 CAMOUFOX_PYTHON_BIN="${CAMOUFOX_PYTHON_BIN:-}"
 CAMOUFOX_PACKAGE_SPEC="${CAMOUFOX_PACKAGE_SPEC:-camoufox[geoip]}"
 CAMOUFOX_PIP_USER="${CAMOUFOX_PIP_USER:-1}"
@@ -208,9 +208,6 @@ run_local_install() {
   log "Installing npm dependencies"
   npm ci
 
-  log "Installing Playwright Chromium"
-  npx playwright install chromium
-
   install_camoufox
 
   log "Building project"
@@ -272,10 +269,8 @@ run_local_install() {
   if [ -n "$skill_dir" ]; then
     printf 'Skill: %s/SKILL.md\n' "$skill_dir"
   fi
-  printf 'One-liner mode: curl -fsSL https://openclaw.ai/install.sh | bash\n'
-  printf 'Camoufox one-liner: curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash\n'
+  printf 'One-liner mode: curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash\n'
   printf 'Tip: LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh\n'
-  printf 'Tip: INSTALL_CAMOUFOX=1 ./install.sh\n'
 }
 
 main() {

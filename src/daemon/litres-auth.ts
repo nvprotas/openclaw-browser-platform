@@ -1,9 +1,9 @@
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { chromium } from 'playwright';
-import type { Page } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
 import type { LoadedSitePack } from '../packs/loader.js';
 import { DEFAULT_KUPER_STORAGE_STATE } from './kuper-auth.js';
+import { launchCamoufoxBrowser } from '../playwright/browser-session.js';
 
 export const DEFAULT_LITRES_STORAGE_STATE = '/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json';
 export const DEFAULT_SBER_COOKIES_PATH = '/root/.openclaw/workspace/sber-cookies.json';
@@ -168,14 +168,22 @@ export async function runIntegratedLitresBootstrap(input: {
     sameSite?: 'Strict' | 'Lax' | 'None';
   }>;
 
-  const browser = await chromium.launch({ headless: !input.headed });
-  const reusedSavedState = await fileExists(statePath);
-  const context = reusedSavedState
-    ? await browser.newContext({ viewport: { width: 1440, height: 1200 }, storageState: statePath })
-    : await browser.newContext({ viewport: { width: 1440, height: 1200 } });
-  const page = await context.newPage();
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
+  let page: Page | null = null;
+  let stopCamoufox: (() => void) | null = null;
 
   try {
+    const launched = await launchCamoufoxBrowser();
+    browser = launched.browser;
+    stopCamoufox = launched.stop;
+
+    const reusedSavedState = await fileExists(statePath);
+    context = reusedSavedState
+      ? await browser.newContext({ viewport: { width: 1440, height: 1200 }, storageState: statePath })
+      : await browser.newContext({ viewport: { width: 1440, height: 1200 } });
+    page = await context.newPage();
+
     await context.addCookies(cookies as Parameters<typeof context.addCookies>[0]);
     await context.storageState({ path: statePath });
 
@@ -279,6 +287,9 @@ export async function runIntegratedLitresBootstrap(input: {
       errorMessage: error instanceof Error ? error.message : String(error)
     };
   } finally {
-    await browser.close();
+    await page?.close().catch(() => undefined);
+    await context?.close().catch(() => undefined);
+    stopCamoufox?.();
+    await browser?.close().catch(() => undefined);
   }
 }

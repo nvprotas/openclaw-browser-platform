@@ -31,28 +31,14 @@ Bootstrap one-liner from GitHub raw:
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
-Camoufox one-liner from GitHub raw:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
-```
-
 Useful variants:
 
 ```bash
 RUN_TESTS=0 ./install.sh
 SKILL_MODE=shared ./install.sh
 LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
-INSTALL_CAMOUFOX=1 ./install.sh
 ```
-
-Если хотите сразу подготовить backend `camoufox`, запустите installer так:
-
-```bash
-INSTALL_CAMOUFOX=1 ./install.sh
-```
-
-В этом режиме installer:
+Installer по умолчанию подготавливает `camoufox`. Он:
 
 - ставит Python-пакет `camoufox[geoip]`
 - скачивает браузер через `python -m camoufox fetch` или `python3 -m camoufox fetch`
@@ -65,7 +51,6 @@ INSTALL_CAMOUFOX=1 ./install.sh
 
 ```bash
 npm ci
-npx playwright install chromium
 npm run build
 npm run test
 ```
@@ -133,7 +118,7 @@ Run from the OpenClaw workspace so daemon state lands in the expected `.tmp/` pa
 ```bash
 cd ~/.openclaw/workspace
 browser-platform daemon ensure --json
-browser-platform session open --url https://www.litres.ru/ --profile litres --scenario smoke [--backend chromium|camoufox] --json
+browser-platform session open --url https://www.litres.ru/ --profile litres --scenario smoke [--backend camoufox] --json
 ```
 
 Expected behavior:

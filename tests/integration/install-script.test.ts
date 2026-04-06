@@ -89,7 +89,8 @@ printf '{"ok":true}'
         RUN_TESTS: '0',
         RESTART_GATEWAY: '1',
         RUN_SMOKE_TEST: '1',
-        SKILL_MODE: 'workspace'
+        SKILL_MODE: 'workspace',
+        INSTALL_CAMOUFOX: '0'
       }
     });
 
@@ -101,7 +102,6 @@ printf '{"ok":true}'
     expect(log).toContain(`npm cwd=${repoRoot} args=ci`);
     expect(log).toContain(`npm cwd=${repoRoot} args=run build`);
     expect(log).toContain(`npm cwd=${repoRoot} args=link`);
-    expect(log).toContain(`npx cwd=${repoRoot} args=playwright install chromium`);
     expect(log).toContain(`openclaw cwd=${repoRoot} args=gateway restart`);
     expect(log).toContain(`browser-platform cwd=${workspace} args=daemon ensure --json`);
     expect(log).toContain(`browser-platform cwd=${workspace} args=daemon status --json`);
@@ -132,7 +132,8 @@ printf '{"ok":true}'
         RUN_TESTS: '0',
         RESTART_GATEWAY: '0',
         RUN_SMOKE_TEST: '0',
-        SKILL_MODE: 'shared'
+        SKILL_MODE: 'shared',
+        INSTALL_CAMOUFOX: '0'
       }
     });
 
@@ -143,7 +144,7 @@ printf '{"ok":true}'
     await expect(readFile(path.join(workspace, 'skills/browser-platform/SKILL.md'), 'utf8')).rejects.toThrow();
   });
 
-  it('optionally installs and verifies camoufox when requested', async () => {
+  it('installs and verifies camoufox by default', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-install-test-'));
     tempDirs.push(tempRoot);
 
@@ -193,8 +194,7 @@ printf 'python cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
         RUN_TESTS: '0',
         RESTART_GATEWAY: '0',
         RUN_SMOKE_TEST: '0',
-        SKILL_MODE: 'workspace',
-        INSTALL_CAMOUFOX: '1'
+        SKILL_MODE: 'workspace'
       }
     });
 
@@ -254,8 +254,7 @@ printf 'python3 cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
         RUN_TESTS: '0',
         RESTART_GATEWAY: '0',
         RUN_SMOKE_TEST: '0',
-        SKILL_MODE: 'workspace',
-        INSTALL_CAMOUFOX: '1'
+        SKILL_MODE: 'workspace'
       }
     });
 
@@ -330,8 +329,7 @@ fi
         RUN_TESTS: '0',
         RESTART_GATEWAY: '0',
         RUN_SMOKE_TEST: '0',
-        SKILL_MODE: 'workspace',
-        INSTALL_CAMOUFOX: '1'
+        SKILL_MODE: 'workspace'
       }
     });
 

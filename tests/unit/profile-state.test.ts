@@ -32,7 +32,7 @@ describe('profile-state resolution', () => {
 
     const resolved = await resolveProfileForSession({
       stateRootDir: root,
-      backend: 'chromium',
+      backend: 'camoufox',
       requestedUrl: 'https://example.com',
       explicitStorageStatePath: explicitPath,
       profileId: 'ignored-name',

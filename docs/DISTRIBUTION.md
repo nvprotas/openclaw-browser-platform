@@ -24,26 +24,18 @@ One-liner bootstrap mode from GitHub raw:
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
-Camoufox one-liner bootstrap mode:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
-```
-
 Useful variants:
 
 ```bash
 RUN_TESTS=0 ./install.sh
 SKILL_MODE=shared ./install.sh
 LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
-INSTALL_CAMOUFOX=1 ./install.sh
 ```
 
 Manual equivalent:
 
 ```bash
 npm ci
-npx playwright install chromium
 npm run lint
 npm run test
 npm run build
@@ -83,11 +75,7 @@ openclaw-browser-platform-0.1.0.tgz
 npm install -g ./openclaw-browser-platform-0.1.0.tgz
 ```
 
-If Chromium is not installed for Playwright yet, install it using the Playwright CLI shipped inside the package:
-
-```bash
-node "$(npm root -g)/openclaw-browser-platform/node_modules/playwright/cli.js" install chromium
-```
+If Camoufox is not installed yet, rerun `install.sh` or provision it manually through a Python environment that can execute `python -m camoufox fetch`.
 
 Verify:
 

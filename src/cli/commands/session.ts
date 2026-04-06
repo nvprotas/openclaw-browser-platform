@@ -24,21 +24,21 @@ function optionalFlag(args: string[], name: string): string | undefined {
 export function resolveBackend(args: string[]): SessionBackend {
   const backendIndex = args.indexOf('--backend');
   if (backendIndex === -1) {
-    return 'chromium';
+    return 'camoufox';
   }
 
   if (backendIndex >= args.length - 1) {
-    throw new BrowserPlatformError('--backend requires a value. Allowed values: chromium, camoufox', {
+    throw new BrowserPlatformError('--backend requires a value. Allowed values: camoufox', {
       code: 'INVALID_BACKEND'
     });
   }
 
   const backendRaw = args[backendIndex + 1]?.toLowerCase();
-  if (backendRaw === 'chromium' || backendRaw === 'camoufox') {
+  if (backendRaw === 'camoufox') {
     return backendRaw;
   }
 
-  throw new BrowserPlatformError('Unsupported backend. Allowed values: chromium, camoufox', {
+  throw new BrowserPlatformError('Unsupported backend. Allowed values: camoufox', {
     code: 'INVALID_BACKEND'
   });
 }

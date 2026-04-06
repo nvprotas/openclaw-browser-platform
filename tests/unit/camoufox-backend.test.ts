@@ -61,7 +61,6 @@ const browser = {
   close: vi.fn(async () => undefined)
 };
 
-const chromiumLaunchMock = vi.fn(async () => browser);
 const firefoxConnectMock = vi.fn(async () => browser);
 
 vi.mock('node:child_process', () => ({
@@ -73,7 +72,6 @@ vi.mock('node:fs', () => ({
 }));
 
 vi.mock('playwright', () => ({
-  chromium: { launch: chromiumLaunchMock },
   firefox: { connect: firefoxConnectMock }
 }));
 
@@ -88,17 +86,21 @@ afterEach(() => {
 });
 
 describe('camoufox backend', () => {
-  it('uses chromium launch by default', async () => {
+  it('uses camoufox by default', async () => {
     const mod = await import('../../src/playwright/browser-session.js');
     const session = new mod.BrowserSession({
       sessionId: 's1',
       snapshotRootDir: '/tmp/snapshots'
     });
 
-    const opened = await session.open('https://example.com');
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    const opened = await openPromise;
+
     expect(opened).toMatchObject({ url: 'https://example.com/', title: 'Example' });
-    expect(chromiumLaunchMock).toHaveBeenCalledTimes(1);
-    expect(firefoxConnectMock).not.toHaveBeenCalled();
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(firefoxConnectMock).toHaveBeenCalledTimes(1);
   });
 
   it('starts camoufox server and connects via firefox websocket', async () => {
@@ -133,7 +135,6 @@ describe('camoufox backend', () => {
     expect(firstSpawnCall[1]).toMatchObject(['-c', expect.stringContaining('config.pop("proxy", None)')]);
     expect(firstSpawnCall[2]).toEqual({ stdio: ['ignore', 'pipe', 'pipe'] });
     expect(firefoxConnectMock).toHaveBeenCalledWith('ws://127.0.0.1:9222', expect.any(Object));
-    expect(chromiumLaunchMock).not.toHaveBeenCalled();
   });
 
   it('uses python3 when python is missing from PATH', async () => {
@@ -148,7 +149,7 @@ describe('camoufox backend', () => {
     process.env.PATH = '/tmp/without-python:/tmp/with-python3';
 
     const fsMod = await import('node:fs');
-    vi.mocked(fsMod.existsSync).mockImplementation((path: any) => String(path).endsWith('/python3'));
+    vi.mocked(fsMod.existsSync).mockImplementation((path: string) => String(path).endsWith('/python3'));
 
     try {
       const openPromise = session.open('https://example.com');
@@ -298,10 +299,10 @@ describe('camoufox backend', () => {
 });
 
 describe('resolveBackend (CLI)', () => {
-  it('returns chromium by default', async () => {
+  it('returns camoufox by default', async () => {
     const mod = await import('../../src/cli/commands/session.js');
-    expect(mod.resolveBackend([])).toBe('chromium');
-    expect(mod.resolveBackend(['--url', 'https://x.com'])).toBe('chromium');
+    expect(mod.resolveBackend([])).toBe('camoufox');
+    expect(mod.resolveBackend(['--url', 'https://x.com'])).toBe('camoufox');
   });
 
   it('returns camoufox when specified', async () => {
@@ -329,7 +330,7 @@ describe('resolveCamoufoxPythonCommand', () => {
   it('uses the default openclaw camoufox venv when present', async () => {
     const mod = await import('../../src/playwright/browser-session.js');
     const fsMod = await import('node:fs');
-    vi.mocked(fsMod.existsSync).mockImplementation((path: any) =>
+    vi.mocked(fsMod.existsSync).mockImplementation((path: string) =>
       String(path).endsWith('/.openclaw/venvs/camoufox/bin/python')
     );
     expect(mod.resolveCamoufoxPythonCommand({ HOME: '/tmp/user', PATH: '' } as NodeJS.ProcessEnv)).toBe(

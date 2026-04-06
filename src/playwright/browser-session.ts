@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { chromium, firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
+import { firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionBackend, SessionPaymentContext } from '../daemon/types.js';
 import { extractPaymentContext } from '../helpers/payment-context.js';
@@ -141,6 +141,121 @@ export function buildCamoufoxServerArgs(): string[] {
   return ['-c', CAMOUFOX_SERVER_WRAPPER];
 }
 
+function isProcessRunning(proc: ChildProcess): boolean {
+  return proc.exitCode === null && proc.signalCode === null;
+}
+
+function stopCamoufoxProcess(proc: ChildProcess): void {
+  if (!isProcessRunning(proc)) {
+    return;
+  }
+
+  proc.kill('SIGTERM');
+  const killTimer = setTimeout(() => {
+    if (isProcessRunning(proc)) {
+      proc.kill('SIGKILL');
+    }
+  }, 3_000);
+  killTimer.unref();
+}
+
+async function waitForCamoufoxEndpointFromProcess(
+  proc: ChildProcess,
+  timeoutMs: number,
+  onFailure?: () => void
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const recentLogs: string[] = [];
+    let settled = false;
+    let lineBuffer = '';
+
+    const cleanup = () => {
+      settled = true;
+      clearTimeout(timeout);
+      proc.stdout?.off('data', onData);
+      proc.stderr?.off('data', onData);
+      proc.off('exit', onExit);
+      proc.off('error', onError);
+      proc.stdout?.resume();
+      proc.stderr?.resume();
+    };
+
+    const finishWithError = (message: string): void => {
+      if (settled) {
+        return;
+      }
+      cleanup();
+      onFailure?.();
+      reject(new BrowserPlatformError(message, {
+        code: 'SESSION_OPEN_FAILED',
+        details: {
+          recentLogs: recentLogs.slice(-10)
+        }
+      }));
+    };
+
+    const onData = (chunk: Buffer) => {
+      lineBuffer += chunk.toString('utf8');
+      const parts = lineBuffer.split(/\r?\n/);
+      lineBuffer = parts.pop() ?? '';
+      for (const rawLine of parts) {
+        const line = rawLine.trim();
+        if (!line) {
+          continue;
+        }
+        recentLogs.push(line);
+        const wsEndpoint = extractWebsocketEndpoint(line);
+        if (!wsEndpoint || settled) {
+          continue;
+        }
+        cleanup();
+        resolve(wsEndpoint);
+        return;
+      }
+    };
+
+    const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+      finishWithError(`Camoufox server exited before publishing ws endpoint (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
+    };
+
+    const onError = (error: Error) => {
+      finishWithError(`Failed to start Camoufox server: ${error.message}`);
+    };
+
+    const timeout = setTimeout(() => {
+      finishWithError(`Timed out waiting for Camoufox ws endpoint after ${timeoutMs}ms`);
+    }, timeoutMs);
+
+    proc.stdout?.on('data', onData);
+    proc.stderr?.on('data', onData);
+    proc.once('exit', onExit);
+    proc.once('error', onError);
+  });
+}
+
+export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ browser: Browser; stop: () => void }> {
+  const pythonBin = resolveCamoufoxPythonCommand();
+  const proc = spawn(pythonBin, buildCamoufoxServerArgs(), { stdio: ['ignore', 'pipe', 'pipe'] });
+  const wsEndpoint = await waitForCamoufoxEndpointFromProcess(proc, timeoutMs, () => stopCamoufoxProcess(proc));
+
+  try {
+    const browser = await firefox.connect(wsEndpoint, { timeout: timeoutMs });
+    return {
+      browser,
+      stop: () => stopCamoufoxProcess(proc)
+    };
+  } catch (error) {
+    stopCamoufoxProcess(proc);
+    throw new BrowserPlatformError('Camoufox started but Playwright Firefox failed to connect', {
+      code: 'SESSION_OPEN_FAILED',
+      details: {
+        wsEndpoint,
+        cause: error instanceof Error ? error.message : String(error)
+      }
+    });
+  }
+}
+
 export class BrowserSession {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
@@ -150,17 +265,14 @@ export class BrowserSession {
   constructor(private readonly options: BrowserSessionOptions) {}
 
   async open(url: string): Promise<BrowserSessionOpenResult> {
-    const backend = this.options.backend ?? 'chromium';
+    const backend = this.options.backend ?? 'camoufox';
 
     let browser: Browser | null = null;
     let context: BrowserContext | null = null;
     let page: Page | null = null;
 
     try {
-      browser = backend === 'camoufox' ? await this.openCamoufoxBrowser() : await chromium.launch({
-        headless: true,
-        ...this.options.launchOptions
-      });
+      browser = await this.openCamoufoxBrowser();
 
       context = await browser.newContext({
         viewport: { width: 1440, height: 900 },
@@ -202,7 +314,7 @@ export class BrowserSession {
     this.camoufoxProcess = proc;
 
     const timeoutMs = this.options.camoufoxStartupTimeoutMs ?? 60_000;
-    const wsEndpoint = await this.waitForCamoufoxEndpoint(proc, timeoutMs);
+    const wsEndpoint = await waitForCamoufoxEndpointFromProcess(proc, timeoutMs, () => this.stopCamoufoxProcess());
 
     try {
       return await firefox.connect(wsEndpoint, { timeout: timeoutMs });
@@ -218,77 +330,6 @@ export class BrowserSession {
     }
   }
 
-  private async waitForCamoufoxEndpoint(proc: ChildProcess, timeoutMs: number): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const recentLogs: string[] = [];
-      let settled = false;
-      let lineBuffer = '';
-
-      const cleanup = () => {
-        settled = true;
-        clearTimeout(timeout);
-        proc.stdout?.off('data', onData);
-        proc.stderr?.off('data', onData);
-        proc.off('exit', onExit);
-        proc.off('error', onError);
-        // drain to avoid pipe backpressure
-        proc.stdout?.resume();
-        proc.stderr?.resume();
-      };
-
-      const finishWithError = (message: string): void => {
-        if (settled) {
-          return;
-        }
-        cleanup();
-        this.stopCamoufoxProcess();
-        reject(new BrowserPlatformError(message, {
-          code: 'SESSION_OPEN_FAILED',
-          details: {
-            recentLogs: recentLogs.slice(-10)
-          }
-        }));
-      };
-
-      const onData = (chunk: Buffer) => {
-        lineBuffer += chunk.toString('utf8');
-        const parts = lineBuffer.split(/\r?\n/);
-        lineBuffer = parts.pop() ?? '';
-        for (const rawLine of parts) {
-          const line = rawLine.trim();
-          if (!line) {
-            continue;
-          }
-          recentLogs.push(line);
-          const wsEndpoint = extractWebsocketEndpoint(line);
-          if (!wsEndpoint || settled) {
-            continue;
-          }
-          cleanup();
-          resolve(wsEndpoint);
-          return;
-        }
-      };
-
-      const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-        finishWithError(`Camoufox server exited before publishing ws endpoint (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
-      };
-
-      const onError = (error: Error) => {
-        finishWithError(`Failed to start Camoufox server: ${error.message}`);
-      };
-
-      const timeout = setTimeout(() => {
-        finishWithError(`Timed out waiting for Camoufox ws endpoint after ${timeoutMs}ms`);
-      }, timeoutMs);
-
-      proc.stdout?.on('data', onData);
-      proc.stderr?.on('data', onData);
-      proc.once('exit', onExit);
-      proc.once('error', onError);
-    });
-  }
-
   private stopCamoufoxProcess(): void {
     if (!this.camoufoxProcess) {
       return;
@@ -296,20 +337,7 @@ export class BrowserSession {
 
     const proc = this.camoufoxProcess;
     this.camoufoxProcess = null;
-
-    if (this.isProcessRunning(proc)) {
-      proc.kill('SIGTERM');
-      const killTimer = setTimeout(() => {
-        if (this.isProcessRunning(proc)) {
-          proc.kill('SIGKILL');
-        }
-      }, 3_000);
-      killTimer.unref();
-    }
-  }
-
-  private isProcessRunning(proc: ChildProcess): boolean {
-    return proc.exitCode === null && proc.signalCode === null;
+    stopCamoufoxProcess(proc);
   }
 
   page(): Page {
