@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { chromium, firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionBackend, SessionPaymentContext } from '../daemon/types.js';
@@ -51,6 +52,27 @@ export function extractWebsocketEndpoint(logLine: string): string | null {
 
   const candidate = matched[0].replace(/[\])},;]+$/, '');
   return candidate.startsWith('ws://') || candidate.startsWith('wss://') ? candidate : null;
+}
+
+export function resolveCamoufoxPythonCommand(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env.CAMOUFOX_PYTHON_BIN?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const pathValue = env.PATH ?? '';
+  const pathEntries = pathValue.split(':').filter((entry) => entry.length > 0);
+  const hasPython = pathEntries.some((entry) => existsSync(`${entry}/python`));
+  if (hasPython) {
+    return 'python';
+  }
+
+  const hasPython3 = pathEntries.some((entry) => existsSync(`${entry}/python3`));
+  if (hasPython3) {
+    return 'python3';
+  }
+
+  return 'python';
 }
 
 export class BrowserSession {
@@ -109,7 +131,8 @@ export class BrowserSession {
   }
 
   private async openCamoufoxBrowser(): Promise<Browser> {
-    const proc = spawn('python', ['-m', 'camoufox', 'server'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const pythonBin = resolveCamoufoxPythonCommand();
+    const proc = spawn(pythonBin, ['-m', 'camoufox', 'server'], { stdio: ['ignore', 'pipe', 'pipe'] });
     this.camoufoxProcess = proc;
 
     const timeoutMs = this.options.camoufoxStartupTimeoutMs ?? 15_000;

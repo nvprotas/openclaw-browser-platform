@@ -55,10 +55,10 @@ INSTALL_CAMOUFOX=1 ./install.sh
 В этом режиме installer:
 
 - ставит Python-пакет `camoufox[geoip]`
-- скачивает браузер через `python -m camoufox fetch`
-- проверяет, что `python -m camoufox version` отрабатывает без ошибки
+- скачивает браузер через `python -m camoufox fetch` или `python3 -m camoufox fetch`
+- проверяет, что `python -m camoufox version` или `python3 -m camoufox version` отрабатывает без ошибки
 
-Важно: текущий runtime запускает Camoufox именно через `python -m camoufox server`, поэтому на хосте должен быть доступен именно `python`.
+Важно: текущий runtime сначала ищет `python`, затем `python3`. Если нужен конкретный интерпретатор, задайте `CAMOUFOX_PYTHON_BIN`.
 
 ## 3. Manual path (same steps as the installer)
 

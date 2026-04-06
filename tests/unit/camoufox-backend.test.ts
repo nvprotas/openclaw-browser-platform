@@ -68,6 +68,10 @@ vi.mock('node:child_process', () => ({
   spawn: spawnMock
 }));
 
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn((path: string) => path.endsWith('/python'))
+}));
+
 vi.mock('playwright', () => ({
   chromium: { launch: chromiumLaunchMock },
   firefox: { connect: firefoxConnectMock }
@@ -116,6 +120,59 @@ describe('camoufox backend', () => {
     });
     expect(firefoxConnectMock).toHaveBeenCalledWith('ws://127.0.0.1:9222', expect.any(Object));
     expect(chromiumLaunchMock).not.toHaveBeenCalled();
+  });
+
+  it('uses python3 when python is missing from PATH', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's2b',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const originalPath = process.env.PATH;
+    process.env.PATH = '/tmp/without-python:/tmp/with-python3';
+
+    const fsMod = await import('node:fs');
+    vi.mocked(fsMod.existsSync).mockImplementation((path: any) => String(path).endsWith('/python3'));
+
+    try {
+      const openPromise = session.open('https://example.com');
+      await Promise.resolve();
+      latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+      await openPromise;
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    expect(spawnMock).toHaveBeenCalledWith('python3', ['-m', 'camoufox', 'server'], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+  });
+
+  it('uses CAMOUFOX_PYTHON_BIN when provided', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's2c',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const originalBin = process.env.CAMOUFOX_PYTHON_BIN;
+    process.env.CAMOUFOX_PYTHON_BIN = 'python3.12';
+
+    try {
+      const openPromise = session.open('https://example.com');
+      await Promise.resolve();
+      latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+      await openPromise;
+    } finally {
+      process.env.CAMOUFOX_PYTHON_BIN = originalBin;
+    }
+
+    expect(spawnMock).toHaveBeenCalledWith('python3.12', ['-m', 'camoufox', 'server'], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
   });
 
   it('drains stdout/stderr after endpoint is found', async () => {
@@ -240,5 +297,12 @@ describe('resolveBackend (CLI)', () => {
   it('throws INVALID_BACKEND when --backend has no value', async () => {
     const mod = await import('../../src/cli/commands/session.js');
     expect(() => mod.resolveBackend(['--url', 'https://x.com', '--backend'])).toThrow('--backend requires a value');
+  });
+});
+
+describe('resolveCamoufoxPythonCommand', () => {
+  it('returns explicit command from env first', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    expect(mod.resolveCamoufoxPythonCommand({ CAMOUFOX_PYTHON_BIN: 'python3.12', PATH: '' } as NodeJS.ProcessEnv)).toBe('python3.12');
   });
 });

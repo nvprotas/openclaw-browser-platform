@@ -76,7 +76,7 @@ node dist/bin/browser-platform.js daemon ensure --json
 node dist/bin/browser-platform.js session open --url https://example.com --backend camoufox --json
 ```
 
-Camoufox mode expects `python -m camoufox server` to be available in PATH and connectable by Playwright Firefox.
+Camoufox mode expects `python -m camoufox server` or `python3 -m camoufox server` to be available in `PATH` and connectable by Playwright Firefox. You can also override the interpreter explicitly with `CAMOUFOX_PYTHON_BIN`.
 
 ## Recommended install mode for a clean OpenClaw host
 
@@ -123,7 +123,7 @@ INSTALL_CAMOUFOX=1 ./install.sh
 INSTALL_CAMOUFOX=1 ./install.sh
 ```
 
-Текущая реализация runtime по-прежнему ожидает, что `python -m camoufox server` доступен в `PATH`.
+Текущая реализация runtime ищет `python`, затем `python3`; при необходимости можно явно задать интерпретатор через `CAMOUFOX_PYTHON_BIN`.
 
 Exact step-by-step instructions live here:
 

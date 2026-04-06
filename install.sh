@@ -9,6 +9,7 @@ RESTART_GATEWAY="${RESTART_GATEWAY:-1}"
 RUN_SMOKE_TEST="${RUN_SMOKE_TEST:-1}"
 LIVE_SMOKE_URL="${LIVE_SMOKE_URL:-}"
 INSTALL_CAMOUFOX="${INSTALL_CAMOUFOX:-0}"
+CAMOUFOX_PYTHON_BIN="${CAMOUFOX_PYTHON_BIN:-}"
 CAMOUFOX_PACKAGE_SPEC="${CAMOUFOX_PACKAGE_SPEC:-camoufox[geoip]}"
 CAMOUFOX_PIP_USER="${CAMOUFOX_PIP_USER:-1}"
 
@@ -30,27 +31,48 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
 }
 
+resolve_camoufox_python_bin() {
+  if [ -n "$CAMOUFOX_PYTHON_BIN" ]; then
+    need_cmd "$CAMOUFOX_PYTHON_BIN"
+    printf '%s\n' "$CAMOUFOX_PYTHON_BIN"
+    return
+  fi
+
+  if command -v python >/dev/null 2>&1; then
+    printf 'python\n'
+    return
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    printf 'python3\n'
+    return
+  fi
+
+  fail "Missing required command: python or python3"
+}
+
 install_camoufox() {
   local pip_args=()
+  local python_bin=""
 
   if [ "$INSTALL_CAMOUFOX" != "1" ]; then
     return
   fi
 
-  need_cmd python
+  python_bin="$(resolve_camoufox_python_bin)"
 
   if [ "$CAMOUFOX_PIP_USER" = "1" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
     pip_args=(--user)
   fi
 
-  log "Installing Camoufox Python package"
-  python -m pip install "${pip_args[@]}" -U "$CAMOUFOX_PACKAGE_SPEC"
+  log "Installing Camoufox Python package via $python_bin"
+  "$python_bin" -m pip install "${pip_args[@]}" -U "$CAMOUFOX_PACKAGE_SPEC"
 
-  log "Fetching Camoufox browser"
-  python -m camoufox fetch
+  log "Fetching Camoufox browser via $python_bin"
+  "$python_bin" -m camoufox fetch
 
-  log "Verifying Camoufox installation"
-  python -m camoufox version
+  log "Verifying Camoufox installation via $python_bin"
+  "$python_bin" -m camoufox version
 }
 
 canonicalize_repo_url() {
