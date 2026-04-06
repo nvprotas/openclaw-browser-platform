@@ -26,6 +26,10 @@ export function inferAuthState(url: string, observation: PageStateSummary): Auth
     .join(' ');
   const combined = `${joinedTexts} ${buttonTexts}`;
   const lowerUrl = url.toLowerCase();
+  const isIntermediateAuthUrl =
+    /id\.sber\.ru/.test(lowerUrl) ||
+    /litres\.ru\/auth_proxy\//.test(lowerUrl) ||
+    /litres\.ru\/callbacks\/social-auth/.test(lowerUrl);
 
   const authenticatedSignals = [
     /мои книги/.test(combined) ? 'visible_my_books' : null,
@@ -42,6 +46,7 @@ export function inferAuthState(url: string, observation: PageStateSummary): Auth
 
   const loginGateDetected =
     observation.pageSignatureGuess === 'auth_form' ||
+    isIntermediateAuthUrl ||
     /\/auth\//.test(lowerUrl) ||
     /sberid|login|sign in|log in|войти|пароль/.test(combined);
 

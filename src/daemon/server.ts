@@ -290,6 +290,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
             timing.skip('reopen_after_bootstrap', 'not_needed');
           }
 
+          const effectivePack = matchedPack ?? preMatchedPack;
           const session =
             registry.touch(record.sessionId, {
               url: opened.url,
@@ -299,17 +300,17 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                 storageStatePath: refreshedStatePath,
                 storageStateExists: refreshedStateExists
               },
-              packContext: matchedPack
+              packContext: effectivePack
                 ? {
                     matchedPack: true,
-                    siteId: matchedPack.summary.siteId,
-                    supportLevel: matchedPack.summary.supportLevel,
-                    matchedDomain: matchedPack.summary.matchedDomain,
-                    startUrl: matchedPack.summary.startUrl,
-                    flows: matchedPack.summary.flows,
-                    knownRisks: matchedPack.summary.riskFlags,
-                    instructionsSummary: matchedPack.instructionsSummary,
-                    knownSignals: matchedPack.knownSignals
+                    siteId: effectivePack.summary.siteId,
+                    supportLevel: effectivePack.summary.supportLevel,
+                    matchedDomain: effectivePack.summary.matchedDomain,
+                    startUrl: effectivePack.summary.startUrl,
+                    flows: effectivePack.summary.flows,
+                    knownRisks: effectivePack.summary.riskFlags,
+                    instructionsSummary: effectivePack.instructionsSummary,
+                    knownSignals: effectivePack.knownSignals
                   }
                 : record.packContext,
               authContext: {

@@ -2,7 +2,11 @@ import { mkdtemp, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { resolveStorageStateForSession, runIntegratedLitresBootstrap } from '../../src/daemon/litres-auth.js';
+import {
+  classifyLitresBootstrapPage,
+  resolveStorageStateForSession,
+  runIntegratedLitresBootstrap
+} from '../../src/daemon/litres-auth.js';
 import { createEmptyPaymentContext } from '../../src/helpers/payment-context.js';
 import { matchSitePackByUrl } from '../../src/packs/loader.js';
 import { inferAuthState } from '../../src/playwright/auth-state.js';
@@ -42,6 +46,60 @@ describe('auth state inference', () => {
 
     expect(state.state).toBe('login_gate_detected');
     expect(state.loginGateDetected).toBe(true);
+  });
+
+  it('treats Sber ID handoff page as login gate', () => {
+    const state = inferAuthState('https://id.sber.ru/auth/realms/root', {
+      url: 'https://id.sber.ru/auth/realms/root',
+      title: 'Sber ID',
+      readyState: 'complete',
+      viewport: { width: 1440, height: 900 },
+      visibleTexts: ['Сбер ID', 'Продолжить'],
+      visibleButtons: [{ text: 'Продолжить', role: 'button', type: 'button', ariaLabel: null }],
+      forms: [],
+      urlHints: [],
+      pageSignatureGuess: 'content_page',
+      paymentContext: createEmptyPaymentContext()
+    });
+
+    expect(state.state).toBe('login_gate_detected');
+    expect(state.loginGateDetected).toBe(true);
+  });
+
+  it('treats LitRes auth_proxy as intermediate login gate even with account hints', () => {
+    const state = inferAuthState('https://www.litres.ru/auth_proxy/?origin=https%3A%2F%2Fwww.litres.ru', {
+      url: 'https://www.litres.ru/auth_proxy/?origin=https%3A%2F%2Fwww.litres.ru',
+      title: 'Auth proxy',
+      readyState: 'complete',
+      viewport: { width: 1440, height: 900 },
+      visibleTexts: ['Мои книги', 'Переход выполняется'],
+      visibleButtons: [{ text: 'Войти', role: 'button', type: 'button', ariaLabel: null }],
+      forms: [],
+      urlHints: [],
+      pageSignatureGuess: 'content_page',
+      paymentContext: createEmptyPaymentContext()
+    });
+
+    expect(state.state).toBe('login_gate_detected');
+    expect(state.authenticatedSignals).toContain('visible_my_books');
+    expect(state.anonymousSignals).toContain('visible_login');
+  });
+
+  it('treats LitRes callback page as intermediate login gate', () => {
+    const state = inferAuthState('https://www.litres.ru/callbacks/social-auth?provider=sb', {
+      url: 'https://www.litres.ru/callbacks/social-auth?provider=sb',
+      title: 'Callback',
+      readyState: 'complete',
+      viewport: { width: 1440, height: 900 },
+      visibleTexts: ['Подождите, выполняется вход'],
+      visibleButtons: [],
+      forms: [],
+      urlHints: [],
+      pageSignatureGuess: 'content_page',
+      paymentContext: createEmptyPaymentContext()
+    });
+
+    expect(state.state).toBe('login_gate_detected');
   });
 });
 
@@ -99,5 +157,37 @@ describe('integrated LitRes bootstrap', () => {
         })
       ])
     );
+  });
+
+  it('classifies intermediate LitRes auth pages as non-final', () => {
+    expect(
+      classifyLitresBootstrapPage({
+        url: 'https://www.litres.ru/auth_proxy/?origin=https%3A%2F%2Fwww.litres.ru&network=sb',
+        bodyText: 'Мои книги Войти'
+      })
+    ).toBe('intermediate_auth');
+
+    expect(
+      classifyLitresBootstrapPage({
+        url: 'https://www.litres.ru/callbacks/social-auth?provider=sb',
+        bodyText: 'Переадресация после входа'
+      })
+    ).toBe('intermediate_auth');
+  });
+
+  it('classifies handoff and authenticated LitRes pages separately', () => {
+    expect(
+      classifyLitresBootstrapPage({
+        url: 'https://id.sber.ru/auth/realms/root',
+        bodyText: 'Сбер ID'
+      })
+    ).toBe('handoff_sberid');
+
+    expect(
+      classifyLitresBootstrapPage({
+        url: 'https://www.litres.ru/pages/biblio_book/?art=123',
+        bodyText: 'Мои книги Профиль Выйти'
+      })
+    ).toBe('authenticated_litres');
   });
 });

@@ -5,6 +5,8 @@ import type { LoadedSitePack } from '../packs/loader.js';
 import type { TimingEntry } from './types.js';
 import { DEFAULT_KUPER_STORAGE_STATE } from './kuper-auth.js';
 import { launchCamoufoxBrowser, type AdoptedBrowserSession } from '../playwright/browser-session.js';
+import { inferAuthState } from '../playwright/auth-state.js';
+import { createEmptyPaymentContext } from '../helpers/payment-context.js';
 
 export const DEFAULT_LITRES_STORAGE_STATE = '/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json';
 export const DEFAULT_SBER_COOKIES_PATH = '/root/.openclaw/workspace/sber-cookies.json';
@@ -46,6 +48,14 @@ export interface LitresBootstrapAttemptResult {
   adoptedSession?: AdoptedBrowserSession | null;
 }
 
+export type LitresBootstrapPageState =
+  | 'handoff_sberid'
+  | 'intermediate_auth'
+  | 'authenticated_litres'
+  | 'login_gate_litres'
+  | 'anonymous_litres'
+  | 'external_other';
+
 export async function fileExists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -59,10 +69,109 @@ async function ensureDir(dir: string): Promise<void> {
   await mkdir(dir, { recursive: true });
 }
 
-async function saveBodyText(page: Page, file: string): Promise<string> {
-  const text = await page.locator('body').innerText().catch(() => '');
-  await writeFile(file, text || '', 'utf8');
-  return text || '';
+export function classifyLitresBootstrapPage(input: { url: string; bodyText: string }): LitresBootstrapPageState {
+  const lowerUrl = input.url.toLowerCase();
+  const lowerText = input.bodyText.toLowerCase();
+
+  if (/id\.sber\.ru/.test(lowerUrl)) {
+    return 'handoff_sberid';
+  }
+
+  if (/litres\.ru\/auth_proxy\//.test(lowerUrl) || /litres\.ru\/callbacks\/social-auth/.test(lowerUrl)) {
+    return 'intermediate_auth';
+  }
+
+  if (/litres\.ru/.test(lowerUrl)) {
+    const inferred = inferAuthState(input.url, {
+      url: input.url,
+      title: '',
+      readyState: 'complete',
+      viewport: { width: 0, height: 0 },
+      visibleTexts: [input.bodyText],
+      visibleButtons: [],
+      forms: [],
+      urlHints: [],
+      pageSignatureGuess: /войти|пароль|sign in|log in/.test(lowerText) ? 'auth_form' : 'content_page',
+      paymentContext: createEmptyPaymentContext()
+    });
+
+    if (inferred.state === 'authenticated') {
+      return 'authenticated_litres';
+    }
+
+    if (inferred.state === 'login_gate_detected') {
+      return 'login_gate_litres';
+    }
+
+    return 'anonymous_litres';
+  }
+
+  return 'external_other';
+}
+
+async function waitForLitresBootstrapOutcome(
+  page: Page,
+  timeline: TimingEntry[],
+  options: {
+    outDir: string;
+    debugScreenshots: boolean;
+    screenshots: string[];
+  }
+): Promise<{
+  finalUrl: string;
+  bodyText: string;
+  pageState: LitresBootstrapPageState;
+  rawStatus: string;
+}> {
+  const startedAt = isoNow();
+  const startedMs = Date.now();
+  let lastUrl = page.url();
+  let lastText = '';
+  let lastState: LitresBootstrapPageState = 'external_other';
+
+  while (Date.now() - startedMs < 45_000) {
+    await page.waitForLoadState('domcontentloaded', { timeout: 5_000 }).catch(() => undefined);
+    await page.waitForTimeout(1_000);
+
+    lastUrl = page.url();
+    lastText = await page.locator('body').innerText().catch(() => '');
+    lastState = classifyLitresBootstrapPage({ url: lastUrl, bodyText: lastText });
+
+    if (lastState === 'handoff_sberid' || lastState === 'authenticated_litres') {
+      break;
+    }
+  }
+
+  await maybeScreenshot(page, path.join(options.outDir, '03-after-sber-click.png'), options.debugScreenshots, options.screenshots);
+
+  const rawStatus =
+    lastState === 'handoff_sberid'
+      ? 'redirected-to-sberid'
+      : lastState === 'authenticated_litres'
+        ? 'authenticated-on-litres'
+        : lastState === 'intermediate_auth'
+          ? 'auth-proxy-timeout'
+          : lastState === 'login_gate_litres'
+            ? 'returned-to-login-gate'
+            : lastState === 'anonymous_litres'
+              ? 'returned-anonymous'
+              : 'external-other';
+
+  timeline.push({
+    step: 'wait_auth_flow_outcome',
+    startedAt,
+    finishedAt: isoNow(),
+    durationMs: Date.now() - startedMs,
+    status: 'ok',
+    detail: `${lastState}:${lastUrl}`
+  });
+
+  return {
+    finalUrl: lastUrl,
+    bodyText: lastText,
+    pageState: lastState,
+    rawStatus
+  };
 }
 
 async function maybeScreenshot(page: Page, file: string, enabled: boolean, screenshots: string[]): Promise<void> {
@@ -280,7 +389,6 @@ export async function runIntegratedLitresBootstrap(input: {
     const sberIcon = livePage.locator('img[alt="sb"]').first();
     await timedStep(timeline, 'wait_sber_icon', () => sberIcon.waitFor({ state: 'visible', timeout: 30000 }));
 
-    const beforeClickUrl = livePage.url();
     await timedStep(timeline, 'click_sber_login', async () => {
       await Promise.allSettled([
         livePage.waitForURL(/id\.sber\.ru|callbacks\/social-auth|litres\.ru/i, { timeout: 20000 }),
@@ -288,25 +396,18 @@ export async function runIntegratedLitresBootstrap(input: {
       ]);
     });
 
-    await timedStep(
-      timeline,
-      'wait_post_click_load',
-      () => livePage.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {}),
-      'domcontentloaded_or_timeout'
-    );
-    await timedStep(timeline, 'stabilize_post_click', () => livePage.waitForTimeout(3000));
-
-    const finalUrl = livePage.url();
-    const text = await timedStep(timeline, 'capture_page_text', () => saveBodyText(livePage, path.join(outDir, 'page.txt')));
-    await maybeScreenshot(livePage, path.join(outDir, '03-after-sber-click.png'), Boolean(input.debugScreenshots), screenshots);
+    const authFlow = await waitForLitresBootstrapOutcome(livePage, timeline, {
+      outDir,
+      debugScreenshots: Boolean(input.debugScreenshots),
+      screenshots
+    });
     await timedStep(timeline, 'persist_final_state', () => liveContext.storageState({ path: statePath }), statePath);
+    await timedStep(timeline, 'capture_page_text', () => writeFile(path.join(outDir, 'page.txt'), authFlow.bodyText || '', 'utf8'));
 
-    const lowered = text.toLowerCase();
-    const redirectedToSberId = /id\.sber\.ru/i.test(finalUrl);
-    const maybeAuthenticated = /callbacks\/social-auth/i.test(finalUrl) || /выйти|профиль|аккаунт|мой кабинет/i.test(lowered);
-    const stateExists = await timedStep(timeline, 'check_final_state', () => fileExists(statePath), statePath);
+    const finalUrl = authFlow.finalUrl;
+    await timedStep(timeline, 'check_final_state', () => fileExists(statePath), statePath);
 
-    if (redirectedToSberId) {
+    if (authFlow.pageState === 'handoff_sberid') {
       adoptedSession = {
         browser: liveBrowser,
         context: liveContext,
@@ -325,17 +426,24 @@ export async function runIntegratedLitresBootstrap(input: {
         statePath,
         outDir,
         finalUrl,
-        rawStatus: 'redirected-to-sberid',
+        rawStatus: authFlow.rawStatus,
         errorMessage: null,
         adoptedSession
       });
     }
 
-    if (maybeAuthenticated) {
+    if (authFlow.pageState === 'authenticated_litres') {
+      adoptedSession = {
+        browser: liveBrowser,
+        context: liveContext,
+        page: livePage,
+        stop: stopCamoufox ?? (() => undefined)
+      };
+
       return finishedResult(startedMs, timeline, {
         attempted: true,
         ok: true,
-        status: stateExists ? 'state_refreshed' : 'completed_without_auth',
+        status: 'state_refreshed',
         handoffRequired: false,
         redirectedToSberId: false,
         bootstrapFailed: false,
@@ -343,25 +451,32 @@ export async function runIntegratedLitresBootstrap(input: {
         statePath,
         outDir,
         finalUrl,
-        rawStatus: finalUrl.includes('/callbacks/social-auth') ? 'litres-callback' : 'maybe-authenticated',
+        rawStatus: authFlow.rawStatus,
         errorMessage: null,
-        adoptedSession: null
+        adoptedSession
       });
     }
 
     return finishedResult(startedMs, timeline, {
       attempted: true,
-      ok: stateExists,
-      status: stateExists ? 'state_refreshed' : 'completed_without_auth',
+      ok: false,
+      status: 'failed',
       handoffRequired: false,
       redirectedToSberId: false,
-      bootstrapFailed: !stateExists,
+      bootstrapFailed: true,
       scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath,
       outDir,
-      finalUrl: finalUrl === beforeClickUrl ? finalUrl : finalUrl,
-      rawStatus: finalUrl === beforeClickUrl ? 'loaded' : 'navigated',
-      errorMessage: stateExists ? null : 'Bootstrap finished without producing a reusable state file',
+      finalUrl,
+      rawStatus: authFlow.rawStatus,
+      errorMessage:
+        authFlow.pageState === 'intermediate_auth'
+          ? 'Bootstrap stopped on an intermediate LitRes auth page without reaching Sber ID or authenticated LitRes'
+          : authFlow.pageState === 'login_gate_litres'
+            ? 'Bootstrap returned to LitRes login gate without finishing authentication'
+            : authFlow.pageState === 'anonymous_litres'
+              ? 'Bootstrap returned to LitRes without authenticated signals'
+              : `Bootstrap finished on an unsupported page: ${finalUrl}`,
       adoptedSession: null
     });
   } catch (error) {
