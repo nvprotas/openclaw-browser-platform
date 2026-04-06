@@ -37,6 +37,8 @@ export interface LitresBootstrapAttemptResult {
   handoffRequired: boolean;
   redirectedToSberId: boolean;
   bootstrapFailed: boolean;
+  /** True when bootstrap ran on an existing session page (no new browser launched). */
+  usedExistingPage?: boolean;
   scriptPath: string | null;
   statePath: string | null;
   outDir: string | null;
@@ -291,6 +293,7 @@ export async function runIntegratedLitresBootstrap(input: {
       handoffRequired: false,
       redirectedToSberId: false,
       bootstrapFailed: false,
+      usedExistingPage: false,
       scriptPath: null,
       statePath: input.storageStatePath,
       outDir: null,
@@ -312,6 +315,7 @@ export async function runIntegratedLitresBootstrap(input: {
       handoffRequired: false,
       redirectedToSberId: false,
       bootstrapFailed: true,
+      usedExistingPage: false,
       scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath: input.storageStatePath,
       outDir,
@@ -478,6 +482,7 @@ export async function runIntegratedLitresBootstrap(input: {
         handoffRequired: true,
         redirectedToSberId: true,
         bootstrapFailed: false,
+        usedExistingPage: usingExistingPage,
         scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
         statePath,
         outDir,
@@ -505,6 +510,7 @@ export async function runIntegratedLitresBootstrap(input: {
         handoffRequired: false,
         redirectedToSberId: false,
         bootstrapFailed: false,
+        usedExistingPage: usingExistingPage,
         scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
         statePath,
         outDir,
@@ -522,6 +528,7 @@ export async function runIntegratedLitresBootstrap(input: {
       handoffRequired: false,
       redirectedToSberId: false,
       bootstrapFailed: true,
+      usedExistingPage: usingExistingPage,
       scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath,
       outDir,
@@ -549,6 +556,7 @@ export async function runIntegratedLitresBootstrap(input: {
       handoffRequired: false,
       redirectedToSberId: false,
       bootstrapFailed: true,
+      usedExistingPage: usingExistingPage,
       scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath,
       outDir,

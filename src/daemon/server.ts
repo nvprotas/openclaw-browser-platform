@@ -247,6 +247,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                     handoffRequired: false,
                     redirectedToSberId: false,
                     bootstrapFailed: false,
+                    usedExistingPage: false,
                     scriptPath: null,
                     statePath: profile.storageStatePath,
                     outDir: null,
@@ -263,7 +264,14 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           const refreshedStatePath = bootstrapResult.statePath ?? profile.storageStatePath;
           const refreshedStateExists = profile.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));
 
-          if (bootstrapResult.attempted && bootstrapResult.adoptedSession) {
+          if (bootstrapResult.attempted && bootstrapResult.usedExistingPage && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
+            // Bootstrap ran on the existing session page. The session browser already navigated
+            // through the auth flow. Re-observe the current page state without closing/reopening.
+            observed = await timing.run('observe_session_after_bootstrap', () => controller.observeSession(record.sessionId));
+            opened = { url: observed.url, title: observed.title };
+            matchedPack = await timing.run('match_site_pack_after_bootstrap', () => matchSitePackByUrl(opened.url), opened.url);
+            auth = detectLoginGate(opened.url, observed);
+          } else if (bootstrapResult.attempted && bootstrapResult.adoptedSession) {
             opened = await timing.run(
               'adopt_bootstrap_session',
               () =>

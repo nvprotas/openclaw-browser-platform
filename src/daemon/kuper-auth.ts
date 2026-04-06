@@ -26,6 +26,7 @@ export interface KuperBootstrapAttemptResult {
   handoffRequired: boolean;
   redirectedToSberId: boolean;
   bootstrapFailed: boolean;
+  usedExistingPage?: boolean;
   scriptPath: string | null;
   statePath: string | null;
   outDir: string | null;
