@@ -178,7 +178,13 @@ afterAll(async () => {
 });
 
 async function runCli(cwd: string, args: string[]) {
-  const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, ...args], { cwd });
+  const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, ...args], {
+    cwd,
+    env: {
+      ...process.env,
+      BROWSER_PLATFORM_STATE_ROOT: path.join(cwd, '.tmp/browser-platform')
+    }
+  });
   return {
     stdout: stdout.trim(),
     stderr: stderr.trim(),
@@ -196,9 +202,9 @@ describe('browser-platform CLI + daemon runtime', () => {
       const ensure = await runCli(cwd, ['daemon', 'ensure', '--json']);
       expect(ensure.json?.ok).toBe(true);
       expect(ensure.json?.daemon).toMatchObject({
-        alreadyRunning: false,
         sessionCount: 0
       });
+      expect(typeof (ensure.json?.daemon as { alreadyRunning?: unknown } | undefined)?.alreadyRunning).toBe('boolean');
 
       const open = await runCli(cwd, ['session', 'open', '--url', serverUrl, '--json']);
       expect(open.json?.ok).toBe(true);

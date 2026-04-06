@@ -15,9 +15,15 @@ function resolvePackageRoot(): string {
 
 const DEFAULT_ROOT = path.resolve(resolvePackageRoot(), '.tmp/browser-platform');
 const DAEMON_INFO_FILENAME = 'daemon.json';
+const ENV_STATE_ROOT = 'BROWSER_PLATFORM_STATE_ROOT';
+
+function resolveDefaultRoot(): string {
+  const override = process.env[ENV_STATE_ROOT]?.trim();
+  return override ? path.resolve(override) : DEFAULT_ROOT;
+}
 
 export class StateStore {
-  constructor(private readonly rootDir = DEFAULT_ROOT) {}
+  constructor(private readonly rootDir = resolveDefaultRoot()) {}
 
   get root(): string {
     return this.rootDir;
