@@ -330,31 +330,9 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
   const paymentIntents = buildPaymentIntents([...acc.orderIds, ...acc.mdOrders]);
 
   const sberIdHandoffVisible = Boolean(href) || urlHints.some((hint) => /id\.sber\.ru\/.+authorize/i.test(hint));
-
-  let phase: SessionPaymentContext['phase'] = null;
-  if (/platiecom\.ru\/deeplink/i.test(input.url) || rawDeeplink) {
-    phase = 'platiecom_deeplink';
-  } else if (/payecom\.ru\/pay(?:_ru)?/i.test(input.url)) {
-    phase = 'payecom_boundary';
-  } else if (/\/purchase\/ppd\b/i.test(input.url) || paymentUrl || rawDeeplink || sberIdHandoffVisible) {
-    phase = 'litres_checkout';
-  }
-
-  let provider: SessionPaymentContext['provider'] = null;
-  if (
-    /войти по сбер id|sberpay|сбер id|сберпей/.test(combinedText) ||
-    Boolean(paymentUrl) ||
-    Boolean(rawDeeplink) ||
-    (href ? /id\.sber\.ru\/.+authorize/i.test(href) : false)
-  ) {
-    provider = 'sberpay';
-  } else if (paymentMethod === 'sbp' || paymentSystem === 'sbersbp') {
-    provider = 'sbp';
-  }
-
-  const detected = Boolean(
-    phase ||
-      paymentUrl ||
+  const checkoutUrlVisible = /\/purchase\/ppd\b/i.test(input.url);
+  const hasStructuredPaymentEvidence = Boolean(
+    paymentUrl ||
       paymentOrderId ||
       litresOrder ||
       traceId ||
@@ -363,9 +341,32 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
       merchantOrderId ||
       mdOrder ||
       formUrl ||
-      rawDeeplink ||
-      href
+      rawDeeplink
   );
+  const allowSberIdOnlySignals = checkoutUrlVisible || hasStructuredPaymentEvidence;
+
+  let phase: SessionPaymentContext['phase'] = null;
+  if (/platiecom\.ru\/deeplink/i.test(input.url) || rawDeeplink) {
+    phase = 'platiecom_deeplink';
+  } else if (/payecom\.ru\/pay(?:_ru)?/i.test(input.url)) {
+    phase = 'payecom_boundary';
+  } else if (checkoutUrlVisible || paymentUrl || rawDeeplink || (allowSberIdOnlySignals && sberIdHandoffVisible)) {
+    phase = 'litres_checkout';
+  }
+
+  let provider: SessionPaymentContext['provider'] = null;
+  if (
+    /войти по сбер id|сбер id|сберпей/.test(combinedText) ||
+    Boolean(paymentUrl) ||
+    Boolean(rawDeeplink) ||
+    (allowSberIdOnlySignals && (href ? /id\.sber\.ru\/.+authorize/i.test(href) : false))
+  ) {
+    provider = 'sberpay';
+  } else if (paymentMethod === 'sbp' || paymentSystem === 'sbersbp') {
+    provider = 'sbp';
+  }
+
+  const detected = Boolean(phase || hasStructuredPaymentEvidence || (allowSberIdOnlySignals && href));
 
   const extractionJson = buildExtractionJson({
     provider,

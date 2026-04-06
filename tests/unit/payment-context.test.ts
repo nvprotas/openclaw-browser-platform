@@ -29,6 +29,30 @@ function buildState(input: Partial<PageStateSummary>): PageStateSummary {
 }
 
 describe('payment context extraction', () => {
+  it('does not flag non-payment pages from noisy SSR feature-flag hints alone', () => {
+    const state = buildState({
+      url: 'https://www.kuper.ru/',
+      title: 'Купер',
+      visibleTexts: ['Доставка продуктов', 'Каталог', 'Корзина'],
+      urlHints: [
+        'featureFlags={"sberpay_app2app":true,"sberpay_web":false}',
+        'https://id.sber.ru/CSAFront/oidc/authorize.do?client_id=noisy-feature-flag'
+      ],
+      pageSignatureGuess: 'home'
+    });
+
+    expect(state.paymentContext).toMatchObject({
+      detected: false,
+      shouldReportImmediately: false,
+      provider: null,
+      phase: null,
+      paymentUrl: null,
+      rawDeeplink: null,
+      href: expect.stringContaining('id.sber.ru/CSAFront/oidc/authorize.do'),
+      extractionJson: null
+    });
+  });
+
   it('extracts LitRes checkout ids and payecom order id from iframe hint', () => {
     const state = buildState({
       url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
