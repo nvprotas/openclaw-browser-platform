@@ -371,13 +371,15 @@ export async function runIntegratedLitresBootstrap(input: {
     await timedStep(timeline, 'inject_cookies', () => liveContext.addCookies(cookies as Parameters<typeof liveContext.addCookies>[0]));
     await timedStep(timeline, 'persist_initial_state', () => liveContext.storageState({ path: statePath }), statePath);
 
+    // Navigate to login page. Use 'commit' (first byte received) to avoid hanging on
+    // slow JS-heavy redirects, then wait for the page to stabilize.
     await timedStep(
       timeline,
       'goto_litres_login',
-      () => livePage.goto(DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL, { waitUntil: 'domcontentloaded', timeout: 120000 }),
+      () => livePage.goto(DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL, { waitUntil: 'commit', timeout: 60000 }),
       DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL
     );
-    await timedStep(timeline, 'stabilize_login_page', () => livePage.waitForTimeout(1500));
+    await timedStep(timeline, 'stabilize_login_page', () => livePage.waitForTimeout(3000));
     await maybeScreenshot(livePage, path.join(outDir, '01-login-page.png'), Boolean(input.debugScreenshots), screenshots);
 
     // New login UI shows social icons directly; old UI had "Другие способы" button first.
