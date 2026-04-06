@@ -41,11 +41,12 @@ LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
 Installer по умолчанию подготавливает `camoufox`. Он:
 
 - ставит Python-пакет `camoufox[geoip]`
-- скачивает браузер через `python -m camoufox fetch` или `python3 -m camoufox fetch`
+- скачивает браузер и GeoIP-базу через `python -m camoufox fetch` только если локальный cache ещё не найден
 - проверяет, что `python -m camoufox version` или `python3 -m camoufox version` отрабатывает без ошибки
 
 Важно: текущий runtime сначала ищет `python`, затем `python3`. Если нужен конкретный интерпретатор, задайте `CAMOUFOX_PYTHON_BIN`.
 Если системный Python запрещает установку пакетов по PEP 668 (`externally-managed-environment`), installer автоматически создаёт отдельный venv в `~/.openclaw/venvs/camoufox`.
+Поведение fetch можно переопределить через `CAMOUFOX_FETCH=auto|always|never`.
 
 ## 3. Manual path (same steps as the installer)
 

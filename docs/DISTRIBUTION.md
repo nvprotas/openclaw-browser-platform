@@ -75,7 +75,7 @@ openclaw-browser-platform-0.1.0.tgz
 npm install -g ./openclaw-browser-platform-0.1.0.tgz
 ```
 
-If Camoufox is not installed yet, rerun `install.sh` or provision it manually through a Python environment that can execute `python -m camoufox fetch`.
+If Camoufox is not installed yet, rerun `install.sh` or provision it manually through a Python environment that can execute `python -m camoufox fetch`. The installer now uses `CAMOUFOX_FETCH=auto` by default and only fetches when the local Camoufox cache is missing.
 
 Verify:
 

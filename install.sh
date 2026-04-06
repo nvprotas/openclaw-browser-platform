@@ -13,6 +13,8 @@ CAMOUFOX_PYTHON_BIN="${CAMOUFOX_PYTHON_BIN:-}"
 CAMOUFOX_PACKAGE_SPEC="${CAMOUFOX_PACKAGE_SPEC:-camoufox[geoip]}"
 CAMOUFOX_PIP_USER="${CAMOUFOX_PIP_USER:-1}"
 CAMOUFOX_VENV_DIR="${CAMOUFOX_VENV_DIR:-$OPENCLAW_HOME/venvs/camoufox}"
+CAMOUFOX_FETCH="${CAMOUFOX_FETCH:-auto}"  # auto | always | never
+CAMOUFOX_CACHE_DIR="${CAMOUFOX_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/camoufox}"
 
 REPO_URL="${REPO_URL:-https://github.com/nvprotas/openclaw-browser-platform.git}"
 BRANCH="${BRANCH:-master}"
@@ -50,6 +52,43 @@ resolve_camoufox_python_bin() {
   fi
 
   fail "Missing required command: python or python3"
+}
+
+camoufox_runtime_present() {
+  [ -x "$CAMOUFOX_CACHE_DIR/camoufox-bin" ] || [ -d "$CAMOUFOX_CACHE_DIR/browser" ]
+}
+
+camoufox_geoip_present() {
+  find "$CAMOUFOX_CACHE_DIR" -type f \( -name '*.mmdb' -o -name 'GeoLite2-*.db' \) -print -quit 2>/dev/null | grep -q .
+}
+
+should_fetch_camoufox() {
+  case "$CAMOUFOX_FETCH" in
+    always)
+      return 0
+      ;;
+    never)
+      return 1
+      ;;
+    auto)
+      if ! camoufox_runtime_present; then
+        return 0
+      fi
+
+      case "$CAMOUFOX_PACKAGE_SPEC" in
+        *geoip*)
+          if ! camoufox_geoip_present; then
+            return 0
+          fi
+          ;;
+      esac
+
+      return 1
+      ;;
+    *)
+      fail "Unsupported CAMOUFOX_FETCH: $CAMOUFOX_FETCH (expected: auto|always|never)"
+      ;;
+  esac
 }
 
 install_camoufox() {
@@ -98,8 +137,12 @@ install_camoufox() {
       || log "Warning: could not install Firefox system dependencies; install libgtk-3-0 manually if camoufox fails"
   fi
 
-  log "Fetching Camoufox browser via $install_python_bin"
-  "$install_python_bin" -m camoufox fetch
+  if should_fetch_camoufox; then
+    log "Fetching Camoufox browser via $install_python_bin"
+    "$install_python_bin" -m camoufox fetch
+  else
+    log "Skipping Camoufox fetch (mode=$CAMOUFOX_FETCH, cache=$CAMOUFOX_CACHE_DIR)"
+  fi
 
   log "Verifying Camoufox installation via $install_python_bin"
   "$install_python_bin" -m camoufox version
