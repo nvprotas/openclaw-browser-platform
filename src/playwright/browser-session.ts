@@ -559,28 +559,31 @@ export class BrowserSession {
     const page = this.requirePage();
     const summary = (await page.evaluate(() => {
       const normalizeText = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim();
-      const selectors = [
-        'h1, h2, h3, h4',
-        'main p, article p',
-        '[role="heading"]',
-        'button, a, label',
-        '[class*="title"]:not(head *)',
-        '[class*="author"]:not(head *)',
-        '[class*="price"]:not(head *)',
-        '[data-testid*="title"]',
-        '[data-testid*="price"]',
-        '[data-testid*="author"]'
-      ].join(', ');
-      const textCandidates = Array.from(document.querySelectorAll<HTMLElement>(selectors))
-        .filter((element) => {
-          const style = window.getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
-        })
-        .map((element) => normalizeText(element.innerText || element.textContent))
-        .filter((text) => text.length >= 3);
 
-      const visibleTexts = Array.from(new Set(textCandidates)).slice(0, 30);
+      // Use TreeWalker to collect visible text nodes — works on CSS-modules/React sites
+      // where class names are hashed and semantic selectors don't match.
+      const mainEl = document.querySelector('main, [role="main"]') ?? document.body;
+      const seenTexts = new Set<string>();
+      const visibleTexts: string[] = [];
+      const walker = document.createTreeWalker(mainEl, NodeFilter.SHOW_TEXT);
+      let textNode = walker.nextNode();
+      while (textNode && visibleTexts.length < 30) {
+        const raw = normalizeText(textNode.textContent);
+        if (raw.length >= 3) {
+          const parent = textNode.parentElement;
+          if (parent) {
+            const style = window.getComputedStyle(parent);
+            const rect = parent.getBoundingClientRect();
+            if (style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0) {
+              if (!seenTexts.has(raw)) {
+                seenTexts.add(raw);
+                visibleTexts.push(raw);
+              }
+            }
+          }
+        }
+        textNode = walker.nextNode();
+      }
 
       const isVisible = (element: HTMLElement) => {
         const style = window.getComputedStyle(element);

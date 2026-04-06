@@ -390,7 +390,15 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
-        const observed = await controller.observeSession(session.sessionId);
+        let observed;
+        try {
+          observed = await controller.observeSession(session.sessionId);
+        } catch (err) {
+          if (err instanceof BrowserPlatformError && (err as BrowserPlatformError & { details?: { code?: string } }).details?.code === 'SESSION_NOT_FOUND') {
+            registry.close(session.sessionId);
+          }
+          throw err;
+        }
         const auth = detectLoginGate(observed.url, observed);
         registry.touch(session.sessionId, {
           url: observed.url,
@@ -425,7 +433,15 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Missing action payload', { code: 'INVALID_ACTION_PAYLOAD' });
         }
 
-        const action = await controller.actInSession(session.sessionId, body.payload);
+        let action;
+        try {
+          action = await controller.actInSession(session.sessionId, body.payload);
+        } catch (err) {
+          if (err instanceof BrowserPlatformError && (err as BrowserPlatformError & { details?: { code?: string } }).details?.code === 'SESSION_NOT_FOUND') {
+            registry.close(session.sessionId);
+          }
+          throw err;
+        }
         const auth = detectLoginGate(action.after.url, action.after);
         registry.touch(session.sessionId, {
           url: action.after.url,
