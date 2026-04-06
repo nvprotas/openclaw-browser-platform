@@ -111,7 +111,7 @@ Run from the OpenClaw workspace so daemon state lands in the expected `.tmp/` pa
 ```bash
 cd ~/.openclaw/workspace
 browser-platform daemon ensure --json
-browser-platform session open --url https://www.litres.ru/ --json
+browser-platform session open --url https://www.litres.ru/ [--backend chromium|camoufox] --json
 ```
 
 Expected behavior:

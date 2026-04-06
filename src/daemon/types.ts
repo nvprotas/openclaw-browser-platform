@@ -81,8 +81,11 @@ export interface SessionPaymentContext {
   extractionJson: SberPayExtractionJson | null;
 }
 
+export type SessionBackend = 'chromium' | 'camoufox';
+
 export interface SessionRecord {
   sessionId: string;
+  backend: SessionBackend;
   url: string;
   createdAt: string;
   updatedAt: string;

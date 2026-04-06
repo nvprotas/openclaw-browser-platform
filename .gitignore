@@ -5,3 +5,4 @@ playwright-report/
 test-results/
 .tmp/
 *.tsbuildinfo
+.DS_Store

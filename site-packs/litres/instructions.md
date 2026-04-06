@@ -14,6 +14,8 @@
 - At checkout entry, LitRes can show a login gate instead of the payment chooser. In live flow, `Другие способы -> Sber` was able to return in the same session to the LitRes purchase page (`Оформление покупки`).
 - Stop before any final payment submission or any sensitive authentication step that requires fresh human involvement.
 - On LitRes checkout, `СБП` and `SberPay` are different payment branches; do not treat them as synonyms.
+- Terminology is strict: `СБП`/`SBP` = `Система быстрых платежей`; `SberPay`/`СберПей` = `SberPay`.
+- In most tasks, prioritize the `SberPay` branch unless the user explicitly asks for `СБП`.
 - Choosing `Российская карта` and pressing `Продолжить` can open a `payecom.ru` payment boundary. Inside that payecom page, a separate SberPay branch is exposed as `Войти по Сбер ID`.
 - Runtime auto-detect already watches for `payecom` iframe/src, payecom/platiecom handoff URLs, encoded `formUrl` / `href`, and related payment params; do not rely on manual HTML snapshots when `paymentContext` is enough.
 - As soon as any payment identifiers appear (`paymentOrderId`, LitRes `order`, `trace-id`, `bankInvoiceId`, `mdOrder`, `formUrl`, `merchantOrderId`, `merchantOrderNumber`), return the structured extractor JSON immediately before continuing deeper into checkout.

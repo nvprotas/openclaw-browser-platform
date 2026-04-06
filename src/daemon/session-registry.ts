@@ -1,14 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { createEmptyPaymentContext } from '../helpers/payment-context.js';
-import type { SessionRecord } from './types.js';
+import type { SessionBackend, SessionRecord } from './types.js';
 
 export class SessionRegistry {
   private readonly sessions = new Map<string, SessionRecord>();
 
-  open(input: { url: string; title?: string | null }): SessionRecord {
+  open(input: { url: string; title?: string | null; backend?: SessionBackend }): SessionRecord {
     const now = new Date().toISOString();
     const session: SessionRecord = {
       sessionId: randomUUID(),
+      backend: input.backend ?? 'chromium',
       url: input.url,
       title: input.title ?? null,
       createdAt: now,

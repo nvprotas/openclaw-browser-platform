@@ -6,6 +6,7 @@ import type {
   DaemonStatusResponse,
   SessionActResponse,
   SessionActionPayload,
+  SessionBackend,
   SessionCloseResponse,
   SessionContextResponse,
   SessionObserveResponse,
@@ -47,10 +48,14 @@ export async function getDaemonStatus(): Promise<DaemonStatusResponse> {
   return request<DaemonStatusResponse>(await readRunningDaemonInfo(), '/v1/daemon/status');
 }
 
-export async function openSession(url: string, options?: { storageStatePath?: string }): Promise<SessionOpenResponse> {
+export async function openSession(
+  url: string,
+  options?: { storageStatePath?: string; backend?: SessionBackend }
+): Promise<SessionOpenResponse> {
   return request<SessionOpenResponse>(await readRunningDaemonInfo(), '/v1/session/open', {
     url,
-    storageStatePath: options?.storageStatePath ?? null
+    storageStatePath: options?.storageStatePath ?? null,
+    backend: options?.backend ?? 'chromium'
   });
 }
 
