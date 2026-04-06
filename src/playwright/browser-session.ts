@@ -569,31 +569,60 @@ export class BrowserSession {
         .map((element) => normalizeText(element.innerText || element.textContent))
         .filter((text) => text.length >= 3);
 
-      const visibleTexts = Array.from(new Set(textCandidates)).slice(0, 12);
+      const visibleTexts = Array.from(new Set(textCandidates)).slice(0, 30);
 
-      const visibleButtons = Array.from(
+      const isVisible = (element: HTMLElement) => {
+        const style = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+      };
+      const toButtonSummary = (element: HTMLElement) => {
+        const inputType = element instanceof HTMLInputElement ? element.type : null;
+        const text = normalizeText(
+          element instanceof HTMLInputElement ? element.value : element.innerText || element.textContent
+        );
+        const ariaLabel = normalizeText(element.getAttribute('aria-label')) || null;
+        return {
+          text,
+          role: element.getAttribute('role') ?? element.tagName.toLowerCase(),
+          type: inputType,
+          ariaLabel
+        };
+      };
+
+      // Priority: buy/cart buttons first, then the rest
+      const prioritySelectors = [
+        "button:not([disabled])[class*='buy']",
+        "button:not([disabled])[class*='cart']",
+        "button:not([disabled])[class*='purchase']",
+        "[role='button'][class*='buy']",
+        "[role='button'][class*='cart']",
+        "[data-testid*='buy']",
+        "[data-testid*='cart']",
+        "[data-testid*='purchase']"
+      ];
+      const priorityButtons = prioritySelectors
+        .flatMap((sel) => Array.from(document.querySelectorAll<HTMLElement>(sel)))
+        .filter(isVisible)
+        .map(toButtonSummary)
+        .filter((button) => button.text.length > 0 || button.ariaLabel);
+
+      const allButtons = Array.from(
         document.querySelectorAll<HTMLElement>('button, input[type="button"], input[type="submit"], [role="button"]')
       )
-        .filter((element) => {
-          const style = window.getComputedStyle(element);
-          const rect = element.getBoundingClientRect();
-          return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+        .filter(isVisible)
+        .map(toButtonSummary)
+        .filter((button) => button.text.length > 0 || button.ariaLabel);
+
+      const seen = new Set<string>();
+      const visibleButtons = [...priorityButtons, ...allButtons]
+        .filter((button) => {
+          const key = `${button.text}|${button.ariaLabel ?? ''}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
         })
-        .map((element) => {
-          const inputType = element instanceof HTMLInputElement ? element.type : null;
-          const text = normalizeText(
-            element instanceof HTMLInputElement ? element.value : element.innerText || element.textContent
-          );
-          const ariaLabel = normalizeText(element.getAttribute('aria-label')) || null;
-          return {
-            text,
-            role: element.getAttribute('role') ?? element.tagName.toLowerCase(),
-            type: inputType,
-            ariaLabel
-          };
-        })
-        .filter((button) => button.text.length > 0 || button.ariaLabel)
-        .slice(0, 8);
+        .slice(0, 20);
 
       const forms = Array.from(document.forms).map((form) => {
         const submitLabels = Array.from(
