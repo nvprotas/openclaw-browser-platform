@@ -45,7 +45,7 @@ from pathlib import Path
 
 import camoufox.server as server
 
-config = server.launch_options()
+config = server.launch_options(headless=True)
 if config.get("proxy") is None:
     config.pop("proxy", None)
 
