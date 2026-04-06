@@ -1,0 +1,14 @@
+{
+  "site_id": "mirkrasok",
+  "domains": ["mirkrasok.ru", "www.mirkrasok.ru"],
+  "start_url": "https://www.mirkrasok.ru/",
+  "site_type": "store",
+  "support_level": "assisted",
+  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "risk_flags": {
+    "checkout_requires_human": true,
+    "final_checkout_not_in_scope": true,
+    "dynamic_dom_selectors_possible": true,
+    "login_or_antibot_gate_possible": true
+  }
+}
