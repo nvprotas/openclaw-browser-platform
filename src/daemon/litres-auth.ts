@@ -269,7 +269,7 @@ export async function runIntegratedLitresBootstrap(input: {
     };
   } catch (error) {
     const errorShot = path.join(outDir, 'error.png');
-    await page.screenshot({ path: errorShot, fullPage: true }).catch(() => {});
+    await page?.screenshot({ path: errorShot, fullPage: true }).catch(() => {});
     if (!screenshots.includes(errorShot)) screenshots.push(errorShot);
 
     return {
@@ -282,7 +282,7 @@ export async function runIntegratedLitresBootstrap(input: {
       scriptPath: REPO_OWNED_LITRES_BOOTSTRAP,
       statePath,
       outDir,
-      finalUrl: page.url(),
+      finalUrl: page?.url() ?? null,
       rawStatus: null,
       errorMessage: error instanceof Error ? error.message : String(error)
     };

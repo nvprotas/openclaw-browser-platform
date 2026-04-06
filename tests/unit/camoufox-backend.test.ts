@@ -149,7 +149,7 @@ describe('camoufox backend', () => {
     process.env.PATH = '/tmp/without-python:/tmp/with-python3';
 
     const fsMod = await import('node:fs');
-    vi.mocked(fsMod.existsSync).mockImplementation((path: string) => String(path).endsWith('/python3'));
+    vi.mocked(fsMod.existsSync).mockImplementation((path) => String(path).endsWith('/python3'));
 
     try {
       const openPromise = session.open('https://example.com');
@@ -330,7 +330,7 @@ describe('resolveCamoufoxPythonCommand', () => {
   it('uses the default openclaw camoufox venv when present', async () => {
     const mod = await import('../../src/playwright/browser-session.js');
     const fsMod = await import('node:fs');
-    vi.mocked(fsMod.existsSync).mockImplementation((path: string) =>
+    vi.mocked(fsMod.existsSync).mockImplementation((path) =>
       String(path).endsWith('/.openclaw/venvs/camoufox/bin/python')
     );
     expect(mod.resolveCamoufoxPythonCommand({ HOME: '/tmp/user', PATH: '' } as NodeJS.ProcessEnv)).toBe(
