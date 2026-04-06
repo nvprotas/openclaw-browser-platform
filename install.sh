@@ -242,6 +242,9 @@ run_local_install() {
   install_camoufox
 
   log "Building project"
+  log "Stopping browser-platform daemon (if running)"
+  pkill -f "$repo_dir/dist/src/daemon/entry.js" 2>/dev/null || true
+
   npm run build
 
   if [ "$RUN_TESTS" = "1" ]; then
