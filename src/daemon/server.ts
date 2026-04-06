@@ -217,11 +217,6 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           let observed = await timing.run('observe_session_initial', () => controller.observeSession(record.sessionId));
           let auth = detectLoginGate(opened.url, observed);
           const needsLitresBootstrap = matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated';
-          if (needsLitresBootstrap) {
-            // Close the initial session before bootstrap to avoid two concurrent Camoufox instances
-            // (which causes the login page to timeout due to resource contention or bot detection).
-            await timing.run('close_session_before_bootstrap', () => controller.closeSession(record.sessionId));
-          }
           const bootstrapResult: LitresBootstrapAttemptResult =
             needsLitresBootstrap
               ? await timing.run(
@@ -229,7 +224,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                   () =>
                     runIntegratedLitresBootstrap({
                       matchedPack: matchedPack!,
-                      storageStatePath: profile.storageStatePath
+                      storageStatePath: profile.storageStatePath,
+                      // Reuse the existing session page to avoid launching a fresh Camoufox that
+                      // gets blocked by DDoS Guard on litres.ru.
+                      existingPage: controller.getSessionPage(record.sessionId)
                     }),
                   profile.storageStatePath ?? null
                 )

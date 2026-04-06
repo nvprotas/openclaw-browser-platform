@@ -277,6 +277,8 @@ export async function runIntegratedLitresBootstrap(input: {
   outDir?: string;
   headed?: boolean;
   debugScreenshots?: boolean;
+  /** If provided, reuse this existing page instead of launching a new Camoufox browser. */
+  existingPage?: Page | null;
 }): Promise<LitresBootstrapAttemptResult> {
   const startedMs = Date.now();
   const timeline: TimingEntry[] = [];
@@ -347,26 +349,36 @@ export async function runIntegratedLitresBootstrap(input: {
   let page: Page | null = null;
   let stopCamoufox: (() => void) | null = null;
   let adoptedSession: AdoptedBrowserSession | null = null;
+  const usingExistingPage = Boolean(input.existingPage);
 
   try {
-    const launched = await timedStep(timeline, 'launch_camoufox', () => launchCamoufoxBrowser());
-    browser = launched.browser;
-    stopCamoufox = launched.stop;
-    const liveBrowser = browser;
+    if (input.existingPage) {
+      // Reuse the existing session page to avoid launching a fresh Camoufox that gets blocked by DDoS Guard.
+      page = input.existingPage;
+      context = page.context();
+      browser = null;
+      stopCamoufox = null;
+      // No new browser launched; skipping browser setup steps.
+    } else {
+      const launched = await timedStep(timeline, 'launch_camoufox', () => launchCamoufoxBrowser());
+      browser = launched.browser;
+      stopCamoufox = launched.stop;
+      const liveBrowser = browser;
 
-    const reusedSavedState = await timedStep(timeline, 'check_existing_state', () => fileExists(statePath), statePath);
-    context = await timedStep(
-      timeline,
-      'create_context',
-      () =>
-        reusedSavedState
-          ? liveBrowser.newContext({ viewport: { width: 1440, height: 1200 }, storageState: statePath })
-          : liveBrowser.newContext({ viewport: { width: 1440, height: 1200 } }),
-      reusedSavedState ? 'reuse_saved_state' : 'fresh_context'
-    );
-    const liveContext = context;
-    page = await timedStep(timeline, 'create_page', () => liveContext.newPage());
+      const reusedSavedState = await timedStep(timeline, 'check_existing_state', () => fileExists(statePath), statePath);
+      context = await timedStep(
+        timeline,
+        'create_context',
+        () =>
+          reusedSavedState
+            ? liveBrowser.newContext({ viewport: { width: 1440, height: 1200 }, storageState: statePath })
+            : liveBrowser.newContext({ viewport: { width: 1440, height: 1200 } }),
+        reusedSavedState ? 'reuse_saved_state' : 'fresh_context'
+      );
+      page = await timedStep(timeline, 'create_page', () => context!.newPage());
+    }
     const livePage = page;
+    const liveContext = context!;
 
     await timedStep(timeline, 'inject_cookies', () => liveContext.addCookies(cookies as Parameters<typeof liveContext.addCookies>[0]));
     await timedStep(timeline, 'persist_initial_state', () => liveContext.storageState({ path: statePath }), statePath);
@@ -450,12 +462,14 @@ export async function runIntegratedLitresBootstrap(input: {
     await timedStep(timeline, 'check_final_state', () => fileExists(statePath), statePath);
 
     if (authFlow.pageState === 'handoff_sberid') {
-      adoptedSession = {
-        browser: liveBrowser,
-        context: liveContext,
-        page: livePage,
-        stop: stopCamoufox ?? (() => undefined)
-      };
+      if (!usingExistingPage) {
+        adoptedSession = {
+          browser: browser!,
+          context: liveContext,
+          page: livePage,
+          stop: stopCamoufox ?? (() => undefined)
+        };
+      }
 
       return finishedResult(startedMs, timeline, {
         attempted: true,
@@ -475,12 +489,14 @@ export async function runIntegratedLitresBootstrap(input: {
     }
 
     if (authFlow.pageState === 'authenticated_litres') {
-      adoptedSession = {
-        browser: liveBrowser,
-        context: liveContext,
-        page: livePage,
-        stop: stopCamoufox ?? (() => undefined)
-      };
+      if (!usingExistingPage) {
+        adoptedSession = {
+          browser: browser!,
+          context: liveContext,
+          page: livePage,
+          stop: stopCamoufox ?? (() => undefined)
+        };
+      }
 
       return finishedResult(startedMs, timeline, {
         attempted: true,
@@ -542,7 +558,8 @@ export async function runIntegratedLitresBootstrap(input: {
       adoptedSession: null
     });
   } finally {
-    if (!adoptedSession) {
+    // If we launched our own browser (not reusing existing page), clean it up unless adopted.
+    if (!usingExistingPage && !adoptedSession) {
       await page?.close().catch(() => undefined);
       await context?.close().catch(() => undefined);
       stopCamoufox?.();

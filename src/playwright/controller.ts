@@ -106,6 +106,10 @@ export class PlaywrightController {
     await this.contextPool.closeAll();
   }
 
+  getSessionPage(sessionId: string): import('playwright').Page | null {
+    return this.sessions.get(sessionId)?.page() ?? null;
+  }
+
   private requireSession(sessionId: string): BrowserSession {
     const session = this.sessions.get(sessionId);
     if (!session) {
