@@ -39,8 +39,11 @@ export interface BrowserSessionSnapshotResult extends SnapshotPaths {
 
 const CAMOUFOX_WS_REGEX = /wss?:\/\/[^\s"'<>]+/i;
 const CAMOUFOX_SERVER_WRAPPER = `
+import atexit
 import base64
+import signal
 import subprocess
+import sys
 from pathlib import Path
 
 import camoufox.server as server
@@ -58,6 +61,25 @@ process = subprocess.Popen(
     stdin=subprocess.PIPE,
     text=True,
 )
+
+def terminate_child() -> None:
+    if process.poll() is not None:
+        return
+
+    process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+def handle_signal(_signum, _frame) -> None:
+    terminate_child()
+    sys.exit(0)
+
+atexit.register(terminate_child)
+signal.signal(signal.SIGTERM, handle_signal)
+signal.signal(signal.SIGINT, handle_signal)
 
 if process.stdin:
     process.stdin.write(base64.b64encode(data).decode())
@@ -179,7 +201,7 @@ export class BrowserSession {
     const proc = spawn(pythonBin, buildCamoufoxServerArgs(), { stdio: ['ignore', 'pipe', 'pipe'] });
     this.camoufoxProcess = proc;
 
-    const timeoutMs = this.options.camoufoxStartupTimeoutMs ?? 15_000;
+    const timeoutMs = this.options.camoufoxStartupTimeoutMs ?? 60_000;
     const wsEndpoint = await this.waitForCamoufoxEndpoint(proc, timeoutMs);
 
     try {
