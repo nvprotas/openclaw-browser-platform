@@ -380,13 +380,53 @@ export async function runIntegratedLitresBootstrap(input: {
     await timedStep(timeline, 'stabilize_login_page', () => livePage.waitForTimeout(1500));
     await maybeScreenshot(livePage, path.join(outDir, '01-login-page.png'), Boolean(input.debugScreenshots), screenshots);
 
-    const otherWays = livePage.locator('text=Другие способы').first();
-    await timedStep(timeline, 'wait_other_ways', () => otherWays.waitFor({ state: 'visible', timeout: 30000 }));
-    await timedStep(timeline, 'click_other_ways', () => otherWays.click({ timeout: 30000 }));
-    await timedStep(timeline, 'stabilize_other_ways', () => livePage.waitForTimeout(1500));
-    await maybeScreenshot(livePage, path.join(outDir, '02-other-ways.png'), Boolean(input.debugScreenshots), screenshots);
-
+    // New login UI shows social icons directly; old UI had "Другие способы" button first.
+    // Try to find Sber icon directly; if not visible, click the "..." (more) button first.
     const sberIcon = livePage.locator('img[alt="sb"]').first();
+    const hasSberDirectly = await timedStep(timeline, 'check_sber_icon_direct', async () => {
+      try {
+        await sberIcon.waitFor({ state: 'visible', timeout: 3000 });
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!hasSberDirectly) {
+      // Try legacy "Другие способы" flow
+      const otherWays = livePage.locator('text=Другие способы').first();
+      const hasOtherWays = await timedStep(timeline, 'check_other_ways', async () => {
+        try {
+          await otherWays.waitFor({ state: 'visible', timeout: 3000 });
+          return true;
+        } catch {
+          return false;
+        }
+      });
+
+      if (hasOtherWays) {
+        await timedStep(timeline, 'click_other_ways', () => otherWays.click({ timeout: 10000 }));
+        await timedStep(timeline, 'stabilize_other_ways', () => livePage.waitForTimeout(1500));
+        await maybeScreenshot(livePage, path.join(outDir, '02-other-ways.png'), Boolean(input.debugScreenshots), screenshots);
+      } else {
+        // New UI: click "..." to expand more social options
+        const moreButton = livePage.locator('button:has-text("...")').first();
+        const hasMore = await timedStep(timeline, 'check_more_button', async () => {
+          try {
+            await moreButton.waitFor({ state: 'visible', timeout: 3000 });
+            return true;
+          } catch {
+            return false;
+          }
+        });
+        if (hasMore) {
+          await timedStep(timeline, 'click_more_socials', () => moreButton.click({ timeout: 10000 }));
+          await timedStep(timeline, 'stabilize_more_socials', () => livePage.waitForTimeout(1500));
+          await maybeScreenshot(livePage, path.join(outDir, '02-more-socials.png'), Boolean(input.debugScreenshots), screenshots);
+        }
+      }
+    }
+
     await timedStep(timeline, 'wait_sber_icon', () => sberIcon.waitFor({ state: 'visible', timeout: 30000 }));
 
     await timedStep(timeline, 'click_sber_login', async () => {
