@@ -47,6 +47,13 @@ export interface BrowserSessionOpenResult {
   };
 }
 
+export interface AdoptedBrowserSession {
+  browser: Browser;
+  context: BrowserContext;
+  page: Page;
+  stop: () => void;
+}
+
 type BrowserSessionOpenTimingStage = {
   step: string;
   startedAt: string;
@@ -414,6 +421,14 @@ export class BrowserSession {
   private contextLease: BrowserContextLease | null = null;
 
   constructor(private readonly options: BrowserSessionOptions) {}
+
+  adoptExisting(session: AdoptedBrowserSession): void {
+    this.browser = session.browser;
+    this.context = session.context;
+    this.pageInstance = session.page;
+    this.stopCamoufoxBrowser = session.stop;
+    this.contextLease = null;
+  }
 
   async open(url: string): Promise<BrowserSessionOpenResult> {
     const backend = this.options.backend ?? 'camoufox';

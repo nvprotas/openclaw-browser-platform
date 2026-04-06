@@ -259,7 +259,20 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           const refreshedStatePath = bootstrapResult.statePath ?? profile.storageStatePath;
           const refreshedStateExists = profile.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));
 
-          if (bootstrapResult.attempted && refreshedStatePath && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
+          if (bootstrapResult.attempted && bootstrapResult.adoptedSession) {
+            opened = await timing.run(
+              'adopt_bootstrap_session',
+              () =>
+                controller.adoptSession(record.sessionId, bootstrapResult.adoptedSession!, {
+                  storageStatePath: refreshedStatePath ?? undefined,
+                  backend
+                }),
+              refreshedStatePath ?? null
+            );
+            matchedPack = await timing.run('match_site_pack_adopted', () => matchSitePackByUrl(opened.url), opened.url);
+            observed = await timing.run('observe_session_adopted', () => controller.observeSession(record.sessionId));
+            auth = detectLoginGate(opened.url, observed);
+          } else if (bootstrapResult.attempted && refreshedStatePath && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
             await timing.run('close_session_before_reopen', () => controller.closeSession(record.sessionId));
             opened = await timing.run(
               'open_session_rehydrated',

@@ -4,7 +4,7 @@ import type { Browser, BrowserContext, Page } from 'playwright';
 import type { LoadedSitePack } from '../packs/loader.js';
 import type { TimingEntry } from './types.js';
 import { DEFAULT_KUPER_STORAGE_STATE } from './kuper-auth.js';
-import { launchCamoufoxBrowser } from '../playwright/browser-session.js';
+import { launchCamoufoxBrowser, type AdoptedBrowserSession } from '../playwright/browser-session.js';
 
 export const DEFAULT_LITRES_STORAGE_STATE = '/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json';
 export const DEFAULT_SBER_COOKIES_PATH = '/root/.openclaw/workspace/sber-cookies.json';
@@ -43,6 +43,7 @@ export interface LitresBootstrapAttemptResult {
   errorMessage: string | null;
   durationMs?: number;
   timeline?: TimingEntry[];
+  adoptedSession?: AdoptedBrowserSession | null;
 }
 
 export async function fileExists(path: string): Promise<boolean> {
@@ -184,7 +185,8 @@ export async function runIntegratedLitresBootstrap(input: {
       outDir: null,
       finalUrl: null,
       rawStatus: null,
-      errorMessage: null
+      errorMessage: null,
+      adoptedSession: null
     });
   }
 
@@ -204,7 +206,8 @@ export async function runIntegratedLitresBootstrap(input: {
       outDir,
       finalUrl: null,
       rawStatus: null,
-      errorMessage: 'Sber cookies file is missing'
+      errorMessage: 'Sber cookies file is missing',
+      adoptedSession: null
     });
   }
 
@@ -234,6 +237,7 @@ export async function runIntegratedLitresBootstrap(input: {
   let context: BrowserContext | null = null;
   let page: Page | null = null;
   let stopCamoufox: (() => void) | null = null;
+  let adoptedSession: AdoptedBrowserSession | null = null;
 
   try {
     const launched = await timedStep(timeline, 'launch_camoufox', () => launchCamoufoxBrowser());
@@ -303,6 +307,13 @@ export async function runIntegratedLitresBootstrap(input: {
     const stateExists = await timedStep(timeline, 'check_final_state', () => fileExists(statePath), statePath);
 
     if (redirectedToSberId) {
+      adoptedSession = {
+        browser: liveBrowser,
+        context: liveContext,
+        page: livePage,
+        stop: stopCamoufox ?? (() => undefined)
+      };
+
       return finishedResult(startedMs, timeline, {
         attempted: true,
         ok: true,
@@ -315,7 +326,8 @@ export async function runIntegratedLitresBootstrap(input: {
         outDir,
         finalUrl,
         rawStatus: 'redirected-to-sberid',
-        errorMessage: null
+        errorMessage: null,
+        adoptedSession
       });
     }
 
@@ -332,7 +344,8 @@ export async function runIntegratedLitresBootstrap(input: {
         outDir,
         finalUrl,
         rawStatus: finalUrl.includes('/callbacks/social-auth') ? 'litres-callback' : 'maybe-authenticated',
-        errorMessage: null
+        errorMessage: null,
+        adoptedSession: null
       });
     }
 
@@ -348,7 +361,8 @@ export async function runIntegratedLitresBootstrap(input: {
       outDir,
       finalUrl: finalUrl === beforeClickUrl ? finalUrl : finalUrl,
       rawStatus: finalUrl === beforeClickUrl ? 'loaded' : 'navigated',
-      errorMessage: stateExists ? null : 'Bootstrap finished without producing a reusable state file'
+      errorMessage: stateExists ? null : 'Bootstrap finished without producing a reusable state file',
+      adoptedSession: null
     });
   } catch (error) {
     const errorShot = path.join(outDir, 'error.png');
@@ -367,12 +381,15 @@ export async function runIntegratedLitresBootstrap(input: {
       outDir,
       finalUrl: page?.url() ?? null,
       rawStatus: null,
-      errorMessage: error instanceof Error ? error.message : String(error)
+      errorMessage: error instanceof Error ? error.message : String(error),
+      adoptedSession: null
     });
   } finally {
-    await page?.close().catch(() => undefined);
-    await context?.close().catch(() => undefined);
-    stopCamoufox?.();
-    await browser?.close().catch(() => undefined);
+    if (!adoptedSession) {
+      await page?.close().catch(() => undefined);
+      await context?.close().catch(() => undefined);
+      stopCamoufox?.();
+      await browser?.close().catch(() => undefined);
+    }
   }
 }

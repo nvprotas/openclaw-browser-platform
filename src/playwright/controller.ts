@@ -5,6 +5,7 @@ import { TraceWriter } from '../traces/writer.js';
 import {
   BrowserContextPool,
   BrowserSession,
+  type AdoptedBrowserSession,
   type BrowserSessionOpenResult,
   type BrowserSessionSnapshotResult,
   type PageStateSummary
@@ -44,6 +45,34 @@ export class PlaywrightController {
 
   async observeSession(sessionId: string): Promise<PageStateSummary> {
     return this.requireSession(sessionId).observe();
+  }
+
+  async adoptSession(
+    sessionId: string,
+    adopted: AdoptedBrowserSession,
+    options?: {
+      storageStatePath?: string;
+      backend?: SessionBackend;
+    }
+  ): Promise<BrowserSessionOpenResult> {
+    await this.closeSession(sessionId);
+
+    const session = new BrowserSession({
+      sessionId,
+      snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots'),
+      storageStatePath: options?.storageStatePath,
+      backend: options?.backend
+    });
+
+    session.adoptExisting(adopted);
+    await session.persistStorageState();
+    const page = session.page();
+    this.sessions.set(sessionId, session);
+
+    return {
+      url: page.url(),
+      title: await page.title()
+    };
   }
 
   async writeTrace(sessionId: string, stepType: string, payload: unknown) {
