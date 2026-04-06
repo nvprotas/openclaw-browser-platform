@@ -70,10 +70,10 @@ node dist/bin/browser-platform.js daemon ensure --json
 
 ### Optional backend: Camoufox (MVP)
 
-`session open` uses `chromium` by default. You can opt into Camoufox per session:
+`session open` uses `chromium` by default. The canonical flow is to open a fresh scenario session against a named profile, and you can opt into Camoufox per session:
 
 ```bash
-node dist/bin/browser-platform.js session open --url https://example.com --backend camoufox --json
+node dist/bin/browser-platform.js session open --url https://example.com --profile demo --scenario smoke --backend camoufox --json
 ```
 
 Camoufox mode expects `python -m camoufox server` or `python3 -m camoufox server` to be available in `PATH` and connectable by Playwright Firefox. You can also override the interpreter explicitly with `CAMOUFOX_PYTHON_BIN`.
@@ -143,7 +143,7 @@ All implemented commands return JSON when called with `--json`.
 
 - `browser-platform daemon ensure --json`
 - `browser-platform daemon status --json`
-- `browser-platform session open --url <url> [--storage-state <path>] [--backend chromium|camoufox] --json`
+- `browser-platform session open --url <url> [--profile <id>] [--scenario <id>] [--backend chromium|camoufox] [--storage-state <path>] --json`
 - `browser-platform session context --session <id> --json`
 - `browser-platform session observe --session <id> --json`
 - `browser-platform session act --session <id> --json '<payload>'`
@@ -151,6 +151,25 @@ All implemented commands return JSON when called with `--json`.
 - `browser-platform session close --session <id> --json`
 
 ## Examples
+
+Canonical CLI session-open example:
+
+```bash
+node dist/bin/browser-platform.js session open \
+  --url https://www.litres.ru/ \
+  --profile litres \
+  --scenario search-1984 \
+  --json
+```
+
+Legacy/debug/import override when you must bring your own state file:
+
+```bash
+node dist/bin/browser-platform.js session open \
+  --url https://www.litres.ru/ \
+  --storage-state /absolute/path/to/storage-state.json \
+  --json
+```
 
 - LitRes search MVP0 demo script: `node --import tsx examples/demo-litres-search.ts 1984`
 - LitRes cart MVP0 demo script: `node --import tsx examples/demo-litres-cart.ts 1984`
@@ -161,22 +180,22 @@ All implemented commands return JSON when called with `--json`.
 
 ### 1. Run from a stable working directory
 
-The daemon state store currently lives under:
+The daemon state store currently lives under the installed package/repo root:
 
 ```text
-<cwd>/.tmp/browser-platform/
+<package-root>/.tmp/browser-platform/
 ```
 
-So when OpenClaw calls the CLI, use a stable workspace directory as `cwd`.
-For a normal OpenClaw deployment, the workspace root is the right place.
-Do **not** launch browser-platform from arbitrary repo subdirectories or transient temp folders if you want the daemon, session registry, and artifacts to remain reusable across separate `exec` calls.
+So when OpenClaw calls the CLI, use a stable workspace directory as `cwd` for your own relative paths and reproducible `exec` calls.
+The daemon state itself is package-root-local, which avoids splitting state across unrelated working directories.
+Do **not** assume changing `cwd` will create a separate daemon state store.
 
 ### 2. Trace artifacts are written per step
 
 For MVP0 acceptance, the runtime now writes JSON trace artifacts under:
 
 ```text
-<cwd>/.tmp/browser-platform/artifacts/traces/<sessionId>/
+<package-root>/.tmp/browser-platform/artifacts/traces/<sessionId>/
 ```
 
 Current trace coverage:
@@ -193,7 +212,7 @@ Hard-stop contract for payment extraction:
 The heavier screenshot/HTML artifacts still live under:
 
 ```text
-<cwd>/.tmp/browser-platform/artifacts/snapshots/
+<package-root>/.tmp/browser-platform/artifacts/snapshots/
 ```
 
 This is enough to diagnose both a successful LitRes pilot flow and a representative failure without adding risky external automation steps.
@@ -207,17 +226,45 @@ That means:
 - `npm link` runs work
 - packed distribution artifacts can also ship the same `site-packs/`
 
-### 3. LitRes auth paths currently reused by default
+### 3. Persistent profile vs scenario session
+
+`session open` now models a **fresh scenario session** that may reuse a **long-lived profile**. This is the main intended contract for both CLI and OpenClaw skill usage:
+
+- `--profile <id>` stores persistent state under `<state-root>/profiles/<backend>/<profileId>/storage-state.json`
+- `--scenario <id>` labels the current live task/session so agents can treat it as disposable runtime state
+- the daemon stays long-lived and can host many scenario sessions over time
+- when a scenario finishes or looks suspicious, close that session and open a new one against the same `--profile`
+- `--storage-state <path>` still works, but only as a legacy/debug/import override when you need to reuse or inspect an external state file directly
+
+Canonical example:
+
+```bash
+node dist/bin/browser-platform.js session open \
+  --url https://www.litres.ru/ \
+  --profile litres \
+  --scenario search-1984 \
+  --json
+```
+
+Current JSON responses expose both:
+
+- `session.profileContext` — durable profile/storage-state identity
+- `session.scenarioContext` — live scenario identity and reuse policy hint
+
+### 4. LitRes auth paths currently reused by default
 
 For the LitRes pilot, the runtime still reuses these practical artifact paths by default:
 
 - `/root/.openclaw/workspace/sber-cookies.json`
 - `/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json`
 
+That default auto-pick is compatible with the new model: the recommended call shape is still `--profile litres --scenario <task>`, while the runtime may seed that profile from the existing LitRes artifact path when present.
+
 On a different host, you can either:
 
 - provide equivalent files at the same paths, or
-- pass an explicit `--storage-state` when opening a session, or
+- use a named `--profile` and let it build its own persistent state over time, or
+- pass an explicit `--storage-state` only as a legacy/debug/import override, or
 - adapt the flow as the LitRes auth layer evolves
 
 ## Distribution status

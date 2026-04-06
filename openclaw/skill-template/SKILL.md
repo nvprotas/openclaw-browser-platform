@@ -29,7 +29,7 @@ daemon ensure
 ```
 
 Always request `--json` output.
-When using OpenClaw `exec`, set `workdir` / `cwd` to the workspace root so the daemon state stays stable.
+When using OpenClaw `exec`, set `workdir` / `cwd` to the workspace root for reproducible relative paths and stable execution.
 When calling `exec` for `browser-platform` commands, keep `yieldMs` short: use `yieldMs: 7000` (or less) by default, and never exceed 7000. If an operation may take longer, run with short `yieldMs` and continue via `process(action=poll, timeout=...)` instead of a large single `yieldMs`.
 
 ## Recommended command order
@@ -42,11 +42,17 @@ browser-platform daemon ensure --json
 
 ### 2. Open a session
 
+Canonical profile/scenario flow:
+
 ```bash
-browser-platform session open --url https://www.litres.ru/ --json
+browser-platform session open \
+  --url https://www.litres.ru/ \
+  --profile litres \
+  --scenario open-home \
+  --json
 ```
 
-Optional explicit storage state:
+Legacy/debug/import override for an external state file:
 
 ```bash
 browser-platform session open \
@@ -197,7 +203,7 @@ Run commands from a stable workspace directory.
 The daemon state store currently lives under:
 
 ```text
-<cwd>/.tmp/browser-platform/
+<package-root>/.tmp/browser-platform/
 ```
 
-For OpenClaw, the workspace root is the preferred `cwd`.
+For OpenClaw, the workspace root is still the preferred `cwd` for reproducible relative paths and stable execution.

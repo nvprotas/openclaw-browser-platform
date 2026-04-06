@@ -31,7 +31,7 @@ INSTALL_CAMOUFOX=1 ./install.sh
 ```bash
 cd ~/.openclaw/workspace
 browser-platform daemon ensure --json
-browser-platform session open --url https://www.litres.ru/ --json
+browser-platform session open --url https://www.litres.ru/ --profile litres --scenario manual-smoke --json
 ```
 
 Сохраните `session` из ответа и выполните:
@@ -84,7 +84,7 @@ browser-platform session observe --session <SESSION_ID> --json
 - `packContext` пустой или сайт не матчится:
   убедитесь, что открывается именно `https://www.litres.ru/` и используется свежая сборка.
 - сессия всегда анонимная:
-  проверьте наличие `storage-state` или артефактов авторизации, если вы ожидаете reuse логина.
+  проверьте профиль, сценарий и наличие артефактов авторизации. `--storage-state` используйте только как legacy/debug/import override, если нужно явно подложить внешний state-файл.
 
 ## Минимальный критерий приёмки
 

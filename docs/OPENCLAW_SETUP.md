@@ -133,7 +133,7 @@ Run from the OpenClaw workspace so daemon state lands in the expected `.tmp/` pa
 ```bash
 cd ~/.openclaw/workspace
 browser-platform daemon ensure --json
-browser-platform session open --url https://www.litres.ru/ [--backend chromium|camoufox] --json
+browser-platform session open --url https://www.litres.ru/ --profile litres --scenario smoke [--backend chromium|camoufox] --json
 ```
 
 Expected behavior:
@@ -156,7 +156,7 @@ daemon ensure
 -> session close
 ```
 
-In practice that means the skill should call `browser-platform` via OpenClaw `exec`, always request `--json`, and keep `cwd` pinned to the OpenClaw workspace root so `.tmp/browser-platform/` stays stable across separate invocations.
+In practice that means the skill should call `browser-platform` via OpenClaw `exec`, always request `--json`, and keep `cwd` pinned to the OpenClaw workspace root for reproducible relative paths and stable execution. The daemon state store itself is package-root-local rather than `cwd`-local.
 
 ## 9. LitRes-specific note
 
@@ -165,7 +165,7 @@ The current LitRes pilot may reuse these paths by default:
 - `/root/.openclaw/workspace/sber-cookies.json`
 - `/root/.openclaw/workspace/tmp/sberid-login/litres/storage-state.json`
 
-If you are bringing this onto a fresh host and want LitRes auth reuse to work immediately, make sure those artifacts exist or pass `--storage-state` explicitly.
+If you are bringing this onto a fresh host and want LitRes auth reuse to work immediately, make sure those artifacts exist. The preferred call shape remains `--profile litres --scenario <task>`; pass `--storage-state` explicitly only as a legacy/debug/import override.
 
 ## 10. Recommended first live test in OpenClaw chat
 
