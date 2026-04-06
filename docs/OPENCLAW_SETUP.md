@@ -31,13 +31,34 @@ Bootstrap one-liner from GitHub raw:
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
+Camoufox one-liner from GitHub raw:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
+```
+
 Useful variants:
 
 ```bash
 RUN_TESTS=0 ./install.sh
 SKILL_MODE=shared ./install.sh
 LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
+INSTALL_CAMOUFOX=1 ./install.sh
 ```
+
+Если хотите сразу подготовить backend `camoufox`, запустите installer так:
+
+```bash
+INSTALL_CAMOUFOX=1 ./install.sh
+```
+
+В этом режиме installer:
+
+- ставит Python-пакет `camoufox[geoip]`
+- скачивает браузер через `python -m camoufox fetch`
+- проверяет, что `python -m camoufox version` отрабатывает без ошибки
+
+Важно: текущий runtime запускает Camoufox именно через `python -m camoufox server`, поэтому на хосте должен быть доступен именно `python`.
 
 ## 3. Manual path (same steps as the installer)
 
@@ -158,3 +179,9 @@ That is enough to verify:
 - `exec` can call `browser-platform`
 - the daemon/session lifecycle works
 - the LitRes pack is being attached correctly
+
+## 11. Подробный чек-лист для ручной проверки
+
+Если нужен отдельный пошаговый сценарий именно для ручной проверки скилла, используйте:
+
+- [MANUAL_SKILL_TEST.md](./MANUAL_SKILL_TEST.md)

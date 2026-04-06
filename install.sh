@@ -8,6 +8,9 @@ RUN_TESTS="${RUN_TESTS:-1}"
 RESTART_GATEWAY="${RESTART_GATEWAY:-1}"
 RUN_SMOKE_TEST="${RUN_SMOKE_TEST:-1}"
 LIVE_SMOKE_URL="${LIVE_SMOKE_URL:-}"
+INSTALL_CAMOUFOX="${INSTALL_CAMOUFOX:-0}"
+CAMOUFOX_PACKAGE_SPEC="${CAMOUFOX_PACKAGE_SPEC:-camoufox[geoip]}"
+CAMOUFOX_PIP_USER="${CAMOUFOX_PIP_USER:-1}"
 
 REPO_URL="${REPO_URL:-https://github.com/nvprotas/openclaw-browser-platform.git}"
 BRANCH="${BRANCH:-master}"
@@ -25,6 +28,29 @@ fail() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
+
+install_camoufox() {
+  local pip_args=()
+
+  if [ "$INSTALL_CAMOUFOX" != "1" ]; then
+    return
+  fi
+
+  need_cmd python
+
+  if [ "$CAMOUFOX_PIP_USER" = "1" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
+    pip_args=(--user)
+  fi
+
+  log "Installing Camoufox Python package"
+  python -m pip install "${pip_args[@]}" -U "$CAMOUFOX_PACKAGE_SPEC"
+
+  log "Fetching Camoufox browser"
+  python -m camoufox fetch
+
+  log "Verifying Camoufox installation"
+  python -m camoufox version
 }
 
 canonicalize_repo_url() {
@@ -133,6 +159,8 @@ run_local_install() {
   log "Installing Playwright Chromium"
   npx playwright install chromium
 
+  install_camoufox
+
   log "Building project"
   npm run build
 
@@ -193,7 +221,9 @@ run_local_install() {
     printf 'Skill: %s/SKILL.md\n' "$skill_dir"
   fi
   printf 'One-liner mode: curl -fsSL https://openclaw.ai/install.sh | bash\n'
+  printf 'Camoufox one-liner: curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash\n'
   printf 'Tip: LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh\n'
+  printf 'Tip: INSTALL_CAMOUFOX=1 ./install.sh\n'
 }
 
 main() {

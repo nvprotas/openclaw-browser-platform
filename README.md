@@ -6,6 +6,12 @@
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
+**One-line install/update with Camoufox:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
+```
+
 Stateful browser automation runtime for OpenClaw.
 
 Поддерживаемые сайты:
@@ -96,17 +102,33 @@ One-liner bootstrap mode from GitHub raw:
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
+Camoufox one-liner bootstrap mode:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
+```
+
 Useful overrides:
 
 ```bash
 RUN_TESTS=0 ./install.sh
 SKILL_MODE=shared ./install.sh
 LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
+INSTALL_CAMOUFOX=1 ./install.sh
 ```
+
+Если нужен backend `camoufox`, installer может поставить Python-пакет и скачать сам браузер:
+
+```bash
+INSTALL_CAMOUFOX=1 ./install.sh
+```
+
+Текущая реализация runtime по-прежнему ожидает, что `python -m camoufox server` доступен в `PATH`.
 
 Exact step-by-step instructions live here:
 
 - [`docs/OPENCLAW_SETUP.md`](docs/OPENCLAW_SETUP.md)
+- [`docs/MANUAL_SKILL_TEST.md`](docs/MANUAL_SKILL_TEST.md)
 - [`docs/DISTRIBUTION.md`](docs/DISTRIBUTION.md)
 - [`docs/ADDING_SITES.md`](docs/ADDING_SITES.md)
 - OpenClaw skill template: [`openclaw/skill-template/SKILL.md`](openclaw/skill-template/SKILL.md)
