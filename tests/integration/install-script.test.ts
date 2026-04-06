@@ -142,4 +142,65 @@ printf '{"ok":true}'
 
     await expect(readFile(path.join(workspace, 'skills/browser-platform/SKILL.md'), 'utf8')).rejects.toThrow();
   });
+
+  it('optionally installs and verifies camoufox when requested', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-install-test-'));
+    tempDirs.push(tempRoot);
+
+    const openclawHome = path.join(tempRoot, '.openclaw');
+    const workspace = path.join(openclawHome, 'workspace');
+    const binDir = path.join(tempRoot, 'bin');
+    const logPath = path.join(tempRoot, 'tool-log.txt');
+
+    await mkdir(binDir, { recursive: true });
+    await mkdir(workspace, { recursive: true });
+
+    await makeStub(
+      binDir,
+      'npm',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'npm cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
+`
+    );
+
+    await makeStub(
+      binDir,
+      'npx',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'npx cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
+`
+    );
+
+    await makeStub(
+      binDir,
+      'python',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'python cwd=%s args=%s\n' "$PWD" "$*" >> ${JSON.stringify(logPath)}
+`
+    );
+
+    await execFileAsync('bash', [installScriptPath], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH ?? ''}`,
+        HOME: tempRoot,
+        OPENCLAW_HOME: openclawHome,
+        OPENCLAW_WORKSPACE: workspace,
+        RUN_TESTS: '0',
+        RESTART_GATEWAY: '0',
+        RUN_SMOKE_TEST: '0',
+        SKILL_MODE: 'workspace',
+        INSTALL_CAMOUFOX: '1'
+      }
+    });
+
+    const log = await readFile(logPath, 'utf8');
+    expect(log).toContain(`python cwd=${repoRoot} args=-m pip install --user -U camoufox[geoip]`);
+    expect(log).toContain(`python cwd=${repoRoot} args=-m camoufox fetch`);
+    expect(log).toContain(`python cwd=${repoRoot} args=-m camoufox version`);
+  });
 });

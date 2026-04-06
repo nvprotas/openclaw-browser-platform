@@ -24,12 +24,19 @@ One-liner bootstrap mode from GitHub raw:
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
+Camoufox one-liner bootstrap mode:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 INSTALL_CAMOUFOX=1 bash
+```
+
 Useful variants:
 
 ```bash
 RUN_TESTS=0 ./install.sh
 SKILL_MODE=shared ./install.sh
 LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
+INSTALL_CAMOUFOX=1 ./install.sh
 ```
 
 Manual equivalent:
