@@ -1,8 +1,19 @@
+import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { DaemonInfo } from './types.js';
 
-const DEFAULT_ROOT = path.resolve(process.cwd(), '.tmp/browser-platform');
+function resolvePackageRoot(): string {
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+  if (moduleDir.includes(`${path.sep}dist${path.sep}`)) {
+    return path.resolve(moduleDir, '..', '..', '..');
+  }
+
+  return path.resolve(moduleDir, '..', '..');
+}
+
+const DEFAULT_ROOT = path.resolve(resolvePackageRoot(), '.tmp/browser-platform');
 const DAEMON_INFO_FILENAME = 'daemon.json';
 
 export class StateStore {
