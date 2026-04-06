@@ -25,11 +25,12 @@ async function request<T>(info: DaemonInfo, route: string, body?: JsonValue): Pr
   });
 
   const text = await response.text();
-  const payload = text ? (JSON.parse(text) as T | { error?: { message?: string } }) : undefined;
+  const payload = text ? (JSON.parse(text) as T | { error?: { message?: string; details?: Record<string, unknown> } }) : undefined;
 
   if (!response.ok) {
-    const message = (payload as { error?: { message?: string } } | undefined)?.error?.message ?? response.statusText;
-    throw new BrowserPlatformError(message, { code: 'DAEMON_REQUEST_FAILED' });
+    const errorPayload = (payload as { error?: { message?: string; details?: Record<string, unknown> } } | undefined)?.error;
+    const message = errorPayload?.message ?? response.statusText;
+    throw new BrowserPlatformError(message, { code: 'DAEMON_REQUEST_FAILED', details: errorPayload?.details });
   }
 
   return payload as T;

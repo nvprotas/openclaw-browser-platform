@@ -127,9 +127,11 @@ describe('camoufox backend', () => {
       }
     }
 
-    expect(spawnMock).toHaveBeenCalledWith('python', ['-m', 'camoufox', 'server'], {
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    const firstSpawnCall = spawnMock.mock.calls[0] as unknown as [string, string[], { stdio: string[] }];
+    expect(firstSpawnCall[0]).toBe('python');
+    expect(firstSpawnCall[1]).toMatchObject(['-c', expect.stringContaining('config.pop("proxy", None)')]);
+    expect(firstSpawnCall[2]).toEqual({ stdio: ['ignore', 'pipe', 'pipe'] });
     expect(firefoxConnectMock).toHaveBeenCalledWith('ws://127.0.0.1:9222', expect.any(Object));
     expect(chromiumLaunchMock).not.toHaveBeenCalled();
   });
@@ -157,9 +159,10 @@ describe('camoufox backend', () => {
       process.env.PATH = originalPath;
     }
 
-    expect(spawnMock).toHaveBeenCalledWith('python3', ['-m', 'camoufox', 'server'], {
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
+    const firstSpawnCall = spawnMock.mock.calls[0] as unknown as [string, string[], { stdio: string[] }];
+    expect(firstSpawnCall[0]).toBe('python3');
+    expect(firstSpawnCall[1]).toMatchObject(['-c', expect.any(String)]);
+    expect(firstSpawnCall[2]).toEqual({ stdio: ['ignore', 'pipe', 'pipe'] });
   });
 
   it('uses CAMOUFOX_PYTHON_BIN when provided', async () => {
@@ -186,9 +189,10 @@ describe('camoufox backend', () => {
       }
     }
 
-    expect(spawnMock).toHaveBeenCalledWith('python3.12', ['-m', 'camoufox', 'server'], {
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
+    const firstSpawnCall = spawnMock.mock.calls[0] as unknown as [string, string[], { stdio: string[] }];
+    expect(firstSpawnCall[0]).toBe('python3.12');
+    expect(firstSpawnCall[1]).toMatchObject(['-c', expect.any(String)]);
+    expect(firstSpawnCall[2]).toEqual({ stdio: ['ignore', 'pipe', 'pipe'] });
   });
 
   it('drains stdout/stderr after endpoint is found', async () => {

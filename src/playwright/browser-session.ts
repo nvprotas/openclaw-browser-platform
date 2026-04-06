@@ -38,6 +38,34 @@ export interface BrowserSessionSnapshotResult extends SnapshotPaths {
 }
 
 const CAMOUFOX_WS_REGEX = /wss?:\/\/[^\s"'<>]+/i;
+const CAMOUFOX_SERVER_WRAPPER = `
+import base64
+import subprocess
+from pathlib import Path
+
+import camoufox.server as server
+
+config = server.launch_options()
+if config.get("proxy") is None:
+    config.pop("proxy", None)
+
+data = server.orjson.dumps(server.to_camel_case_dict(config))
+nodejs = server.get_nodejs()
+
+process = subprocess.Popen(
+    [nodejs, str(server.LAUNCH_SCRIPT)],
+    cwd=Path(nodejs).parent / "package",
+    stdin=subprocess.PIPE,
+    text=True,
+)
+
+if process.stdin:
+    process.stdin.write(base64.b64encode(data).decode())
+    process.stdin.close()
+
+process.wait()
+raise RuntimeError("Server process terminated unexpectedly")
+`.trim();
 
 export function extractWebsocketEndpoint(logLine: string): string | null {
   const normalized = logLine.trim();
@@ -85,6 +113,10 @@ export function resolveCamoufoxPythonCommand(env: NodeJS.ProcessEnv = process.en
   }
 
   return 'python';
+}
+
+export function buildCamoufoxServerArgs(): string[] {
+  return ['-c', CAMOUFOX_SERVER_WRAPPER];
 }
 
 export class BrowserSession {
@@ -144,7 +176,7 @@ export class BrowserSession {
 
   private async openCamoufoxBrowser(): Promise<Browser> {
     const pythonBin = resolveCamoufoxPythonCommand();
-    const proc = spawn(pythonBin, ['-m', 'camoufox', 'server'], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawn(pythonBin, buildCamoufoxServerArgs(), { stdio: ['ignore', 'pipe', 'pipe'] });
     this.camoufoxProcess = proc;
 
     const timeoutMs = this.options.camoufoxStartupTimeoutMs ?? 15_000;

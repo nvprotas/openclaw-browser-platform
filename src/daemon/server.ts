@@ -43,7 +43,9 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
 
-function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: false; error: { message: string; code?: string } } } {
+function toErrorResponse(
+  error: unknown
+): { statusCode: number; payload: { ok: false; error: { message: string; code?: string; details?: Record<string, unknown> } } } {
   if (error instanceof BrowserPlatformError) {
     const statusCode =
       error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : 400;
@@ -53,7 +55,8 @@ function toErrorResponse(error: unknown): { statusCode: number; payload: { ok: f
         ok: false,
         error: {
           message: error.message,
-          code: error.code
+          code: error.code,
+          details: error.details
         }
       }
     };
