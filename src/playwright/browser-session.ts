@@ -15,6 +15,7 @@ export interface BrowserSessionOptions {
   storageStatePath?: string;
   backend?: SessionBackend;
   camoufoxStartupTimeoutMs?: number;
+  contextPool?: BrowserContextPool;
 }
 
 export interface PageStateSummary extends ObserveSummary {
@@ -53,6 +54,21 @@ type BrowserSessionOpenTimingStage = {
   durationMs: number;
   status: 'ok' | 'error';
   detail: string | null;
+};
+
+type SharedBrowserContextEntry = {
+  key: string;
+  browser: Browser;
+  context: BrowserContext;
+  stop: () => void;
+  refCount: number;
+};
+
+type BrowserContextLease = {
+  browser: Browser;
+  context: BrowserContext;
+  reused: boolean;
+  release: () => void;
 };
 
 export interface BrowserSessionSnapshotResult extends SnapshotPaths {
@@ -317,11 +333,85 @@ export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ brows
   }
 }
 
+export class BrowserContextPool {
+  private readonly entries = new Map<string, SharedBrowserContextEntry>();
+
+  async acquire(options: {
+    backend?: SessionBackend;
+    storageStatePath: string;
+    viewport?: { width: number; height: number };
+    camoufoxStartupTimeoutMs?: number;
+  }): Promise<BrowserContextLease> {
+    const backend = options.backend ?? 'camoufox';
+    const key = `${backend}:${options.storageStatePath}`;
+    const existing = this.entries.get(key);
+    if (existing) {
+      existing.refCount += 1;
+      return {
+        browser: existing.browser,
+        context: existing.context,
+        reused: true,
+        release: () => this.release(key)
+      };
+    }
+
+    const launched = await launchCamoufoxBrowser(options.camoufoxStartupTimeoutMs);
+
+    try {
+      const context = await launched.browser.newContext({
+        viewport: options.viewport ?? { width: 1440, height: 900 },
+        storageState: options.storageStatePath
+      });
+      const created: SharedBrowserContextEntry = {
+        key,
+        browser: launched.browser,
+        context,
+        stop: launched.stop,
+        refCount: 1
+      };
+      this.entries.set(key, created);
+
+      return {
+        browser: created.browser,
+        context: created.context,
+        reused: false,
+        release: () => this.release(key)
+      };
+    } catch (error) {
+      await launched.browser.close().catch(() => undefined);
+      launched.stop();
+      throw error;
+    }
+  }
+
+  async closeAll(): Promise<void> {
+    const entries = [...this.entries.values()];
+    this.entries.clear();
+    await Promise.all(
+      entries.map(async (entry) => {
+        await entry.context.close().catch(() => undefined);
+        await entry.browser.close().catch(() => undefined);
+        entry.stop();
+      })
+    );
+  }
+
+  private release(key: string): void {
+    const entry = this.entries.get(key);
+    if (!entry) {
+      return;
+    }
+
+    entry.refCount = Math.max(0, entry.refCount - 1);
+  }
+}
+
 export class BrowserSession {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private pageInstance: Page | null = null;
-  private camoufoxProcess: ChildProcess | null = null;
+  private stopCamoufoxBrowser: (() => void) | null = null;
+  private contextLease: BrowserContextLease | null = null;
 
   constructor(private readonly options: BrowserSessionOptions) {}
 
@@ -336,18 +426,47 @@ export class BrowserSession {
     let page: Page | null = null;
 
     try {
-      browser = await timing.run('launch_camoufox_browser', () => this.openCamoufoxBrowser());
-      const readyBrowser = browser;
+      if (this.options.contextPool && this.options.storageStatePath) {
+        const lease = await timing.run(
+          'acquire_shared_context',
+          () =>
+            this.options.contextPool!.acquire({
+              backend,
+              storageStatePath: this.options.storageStatePath!,
+              viewport: { width: 1440, height: 900 },
+              camoufoxStartupTimeoutMs: this.options.camoufoxStartupTimeoutMs
+            }),
+          this.options.storageStatePath
+        );
+        this.contextLease = lease;
+        browser = lease.browser;
+        context = lease.context;
+        timing.stages.push({
+          step: lease.reused ? 'reuse_shared_context' : 'create_shared_context',
+          startedAt: isoNow(),
+          finishedAt: isoNow(),
+          durationMs: 0,
+          status: 'ok',
+          detail: this.options.storageStatePath
+        });
+      } else {
+        const launched = await timing.run('launch_camoufox_browser', () =>
+          launchCamoufoxBrowser(this.options.camoufoxStartupTimeoutMs)
+        );
+        this.stopCamoufoxBrowser = launched.stop;
+        browser = launched.browser;
+        const readyBrowser = browser;
 
-      context = await timing.run(
-        'new_context',
-        () =>
-          readyBrowser.newContext({
-            viewport: { width: 1440, height: 900 },
-            storageState: this.options.storageStatePath
-          }),
-        this.options.storageStatePath ?? null
-      );
+        context = await timing.run(
+          'new_context',
+          () =>
+            readyBrowser.newContext({
+              viewport: { width: 1440, height: 900 },
+              storageState: this.options.storageStatePath
+            }),
+          this.options.storageStatePath ?? null
+        );
+      }
       const readyContext = context;
 
       page = await timing.run('new_page', () => readyContext.newPage());
@@ -355,9 +474,16 @@ export class BrowserSession {
       await timing.run('goto_domcontentloaded', () => readyPage.goto(url, { waitUntil: 'domcontentloaded' }), url);
       await timing.run('wait_for_initial_load', () => waitForInitialLoad(readyPage));
     } catch (error) {
-      await context?.close().catch(() => undefined);
-      await browser?.close().catch(() => undefined);
-      this.stopCamoufoxProcess();
+      await page?.close().catch(() => undefined);
+      if (this.contextLease) {
+        this.contextLease.release();
+        this.contextLease = null;
+      } else {
+        await context?.close().catch(() => undefined);
+        await browser?.close().catch(() => undefined);
+        this.stopCamoufoxBrowser?.();
+        this.stopCamoufoxBrowser = null;
+      }
 
       throw new BrowserPlatformError(`Failed to open browser session (${backend})`, {
         code: 'SESSION_OPEN_FAILED',
@@ -396,38 +522,6 @@ export class BrowserSession {
         stages: timing.stages
       }
     };
-  }
-
-  private async openCamoufoxBrowser(): Promise<Browser> {
-    const pythonBin = resolveCamoufoxPythonCommand();
-    const proc = spawn(pythonBin, buildCamoufoxServerArgs(), { stdio: ['ignore', 'pipe', 'pipe'] });
-    this.camoufoxProcess = proc;
-
-    const timeoutMs = this.options.camoufoxStartupTimeoutMs ?? 60_000;
-    const wsEndpoint = await waitForCamoufoxEndpointFromProcess(proc, timeoutMs, () => this.stopCamoufoxProcess());
-
-    try {
-      return await firefox.connect(wsEndpoint, { timeout: timeoutMs });
-    } catch (error) {
-      this.stopCamoufoxProcess();
-      throw new BrowserPlatformError('Camoufox started but Playwright Firefox failed to connect', {
-        code: 'SESSION_OPEN_FAILED',
-        details: {
-          wsEndpoint,
-          cause: error instanceof Error ? error.message : String(error)
-        }
-      });
-    }
-  }
-
-  private stopCamoufoxProcess(): void {
-    if (!this.camoufoxProcess) {
-      return;
-    }
-
-    const proc = this.camoufoxProcess;
-    this.camoufoxProcess = null;
-    stopCamoufoxProcess(proc);
   }
 
   page(): Page {
@@ -613,12 +707,19 @@ export class BrowserSession {
   }
 
   async close(): Promise<void> {
-    await this.context?.close();
-    await this.browser?.close();
-    this.stopCamoufoxProcess();
+    await this.pageInstance?.close().catch(() => undefined);
+    if (!this.contextLease) {
+      await this.context?.close().catch(() => undefined);
+      await this.browser?.close().catch(() => undefined);
+      this.stopCamoufoxBrowser?.();
+    } else {
+      this.contextLease.release();
+    }
     this.pageInstance = null;
     this.context = null;
     this.browser = null;
+    this.contextLease = null;
+    this.stopCamoufoxBrowser = null;
   }
 
   private requirePage(): Page {

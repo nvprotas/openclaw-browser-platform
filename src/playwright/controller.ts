@@ -3,6 +3,7 @@ import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionActionPayload } from '../daemon/types.js';
 import { TraceWriter } from '../traces/writer.js';
 import {
+  BrowserContextPool,
   BrowserSession,
   type BrowserSessionOpenResult,
   type BrowserSessionSnapshotResult,
@@ -14,6 +15,7 @@ import type { SessionBackend } from '../daemon/types.js';
 export class PlaywrightController {
   private readonly sessions = new Map<string, BrowserSession>();
   private readonly traceWriter: TraceWriter;
+  private readonly contextPool = new BrowserContextPool();
 
   constructor(private readonly rootDir: string) {
     this.traceWriter = new TraceWriter(path.join(this.rootDir, 'artifacts', 'traces'));
@@ -31,7 +33,8 @@ export class PlaywrightController {
       sessionId,
       snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots'),
       storageStatePath: options?.storageStatePath,
-      backend: options?.backend
+      backend: options?.backend,
+      contextPool: options?.storageStatePath ? this.contextPool : undefined
     });
 
     const opened = await session.open(url);
@@ -71,6 +74,7 @@ export class PlaywrightController {
   async closeAll(): Promise<void> {
     const sessionIds = [...this.sessions.keys()];
     await Promise.all(sessionIds.map((sessionId) => this.closeSession(sessionId)));
+    await this.contextPool.closeAll();
   }
 
   private requireSession(sessionId: string): BrowserSession {

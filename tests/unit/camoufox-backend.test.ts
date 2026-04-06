@@ -47,7 +47,8 @@ const page = {
   goto: vi.fn(async () => undefined),
   url: vi.fn(() => 'https://example.com/'),
   title: vi.fn(async () => 'Example'),
-  viewportSize: vi.fn(() => ({ width: 1440, height: 900 }))
+  viewportSize: vi.fn(() => ({ width: 1440, height: 900 })),
+  close: vi.fn(async () => undefined)
 };
 
 const context = {
@@ -295,6 +296,82 @@ describe('camoufox backend', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('reuses shared context for the same storage state path', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const pool = new mod.BrowserContextPool();
+    const sessionA = new mod.BrowserSession({
+      sessionId: 'shared-a',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/litres/storage-state.json',
+      contextPool: pool
+    });
+    const sessionB = new mod.BrowserSession({
+      sessionId: 'shared-b',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/litres/storage-state.json',
+      contextPool: pool
+    });
+
+    const openA = sessionA.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    const openedA = await openA;
+    const openedB = await sessionB.open('https://example.com');
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(browser.newContext).toHaveBeenCalledTimes(1);
+    expect(context.newPage).toHaveBeenCalledTimes(2);
+    expect(openedA.timing?.stages.some((stage) => stage.step === 'create_shared_context')).toBe(true);
+    expect(openedB.timing?.stages.some((stage) => stage.step === 'reuse_shared_context')).toBe(true);
+
+    await sessionA.close();
+    await sessionB.close();
+
+    expect(browser.close).not.toHaveBeenCalled();
+    expect(context.close).not.toHaveBeenCalled();
+
+    await pool.closeAll();
+
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(browser.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reuse context across different storage state paths', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const pool = new mod.BrowserContextPool();
+    const sessionA = new mod.BrowserSession({
+      sessionId: 'profile-a',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/litres/storage-state.json',
+      contextPool: pool
+    });
+    const sessionB = new mod.BrowserSession({
+      sessionId: 'profile-b',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/kuper/storage-state.json',
+      contextPool: pool
+    });
+
+    const openA = sessionA.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openA;
+
+    const openB = sessionB.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9333\n'));
+    await openB;
+
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    expect(browser.newContext).toHaveBeenCalledTimes(2);
+
+    await pool.closeAll();
   });
 });
 
