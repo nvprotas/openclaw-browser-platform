@@ -59,7 +59,9 @@ export class SessionRegistry {
         bootstrapScriptPath: null,
         bootstrapOutDir: null,
         bootstrapFinalUrl: null,
-        bootstrapError: null
+        bootstrapError: null,
+        bootstrapDurationMs: null,
+        bootstrapTimeline: []
       },
       paymentContext: createEmptyPaymentContext()
     };

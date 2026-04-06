@@ -1,3 +1,12 @@
+export interface TimingEntry {
+  step: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  status: 'ok' | 'error' | 'skipped';
+  detail: string | null;
+}
+
 export interface SessionPackContext {
   matchedPack: boolean;
   siteId: string | null;
@@ -36,6 +45,8 @@ export interface SessionAuthContext {
   bootstrapOutDir: string | null;
   bootstrapFinalUrl: string | null;
   bootstrapError: string | null;
+  bootstrapDurationMs: number | null;
+  bootstrapTimeline: TimingEntry[];
 }
 
 export interface SessionProfileContext {

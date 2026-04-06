@@ -2,6 +2,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Browser, BrowserContext, Page } from 'playwright';
 import type { LoadedSitePack } from '../packs/loader.js';
+import type { TimingEntry } from './types.js';
 import { DEFAULT_KUPER_STORAGE_STATE } from './kuper-auth.js';
 import { launchCamoufoxBrowser } from '../playwright/browser-session.js';
 
@@ -40,6 +41,8 @@ export interface LitresBootstrapAttemptResult {
   finalUrl: string | null;
   rawStatus: string | null;
   errorMessage: string | null;
+  durationMs?: number;
+  timeline?: TimingEntry[];
 }
 
 export async function fileExists(path: string): Promise<boolean> {
@@ -65,6 +68,55 @@ async function maybeScreenshot(page: Page, file: string, enabled: boolean, scree
   if (!enabled) return;
   await page.screenshot({ path: file, fullPage: true });
   screenshots.push(file);
+}
+
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+async function timedStep<T>(
+  timeline: TimingEntry[],
+  step: string,
+  fn: () => Promise<T>,
+  detail: string | null = null
+): Promise<T> {
+  const startedAt = isoNow();
+  const startedMs = Date.now();
+
+  try {
+    const result = await fn();
+    timeline.push({
+      step,
+      startedAt,
+      finishedAt: isoNow(),
+      durationMs: Date.now() - startedMs,
+      status: 'ok',
+      detail
+    });
+    return result;
+  } catch (error) {
+    timeline.push({
+      step,
+      startedAt,
+      finishedAt: isoNow(),
+      durationMs: Date.now() - startedMs,
+      status: 'error',
+      detail: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
+}
+
+function finishedResult(
+  startedMs: number,
+  timeline: TimingEntry[],
+  result: LitresBootstrapAttemptResult
+): LitresBootstrapAttemptResult {
+  return {
+    ...result,
+    durationMs: Date.now() - startedMs,
+    timeline
+  };
 }
 
 export async function resolveStorageStateForSession(input: {
@@ -116,8 +168,11 @@ export async function runIntegratedLitresBootstrap(input: {
   headed?: boolean;
   debugScreenshots?: boolean;
 }): Promise<LitresBootstrapAttemptResult> {
+  const startedMs = Date.now();
+  const timeline: TimingEntry[] = [];
+
   if (input.matchedPack?.summary.siteId !== 'litres') {
-    return {
+    return finishedResult(startedMs, timeline, {
       attempted: false,
       ok: false,
       status: 'not_applicable',
@@ -130,13 +185,14 @@ export async function runIntegratedLitresBootstrap(input: {
       finalUrl: null,
       rawStatus: null,
       errorMessage: null
-    };
+    });
   }
 
   const cookiesPath = path.resolve(input.cookiesPath ?? DEFAULT_SBER_COOKIES_PATH);
   const outDir = path.resolve(input.outDir ?? DEFAULT_LITRES_BOOTSTRAP_OUT_DIR);
-  if (!(await fileExists(cookiesPath))) {
-    return {
+  const hasCookies = await timedStep(timeline, 'check_cookies_file', () => fileExists(cookiesPath), cookiesPath);
+  if (!hasCookies) {
+    return finishedResult(startedMs, timeline, {
       attempted: true,
       ok: false,
       status: 'skipped_missing_cookies',
@@ -149,7 +205,7 @@ export async function runIntegratedLitresBootstrap(input: {
       finalUrl: null,
       rawStatus: null,
       errorMessage: 'Sber cookies file is missing'
-    };
+    });
   }
 
   const statePath = path.resolve(input.storageStatePath ?? DEFAULT_LITRES_STORAGE_STATE);
@@ -157,16 +213,22 @@ export async function runIntegratedLitresBootstrap(input: {
   await ensureDir(outDir);
   await ensureDir(path.dirname(statePath));
 
-  const cookies = JSON.parse(await readFile(cookiesPath, 'utf8')) as Array<{
-    name: string;
-    value: string;
-    domain: string;
-    path: string;
-    expires?: number;
-    httpOnly?: boolean;
-    secure?: boolean;
-    sameSite?: 'Strict' | 'Lax' | 'None';
-  }>;
+  const cookies = await timedStep(
+    timeline,
+    'read_cookies',
+    async () =>
+      JSON.parse(await readFile(cookiesPath, 'utf8')) as Array<{
+        name: string;
+        value: string;
+        domain: string;
+        path: string;
+        expires?: number;
+        httpOnly?: boolean;
+        secure?: boolean;
+        sameSite?: 'Strict' | 'Lax' | 'None';
+      }>,
+    cookiesPath
+  );
 
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
@@ -174,53 +236,74 @@ export async function runIntegratedLitresBootstrap(input: {
   let stopCamoufox: (() => void) | null = null;
 
   try {
-    const launched = await launchCamoufoxBrowser();
+    const launched = await timedStep(timeline, 'launch_camoufox', () => launchCamoufoxBrowser());
     browser = launched.browser;
     stopCamoufox = launched.stop;
+    const liveBrowser = browser;
 
-    const reusedSavedState = await fileExists(statePath);
-    context = reusedSavedState
-      ? await browser.newContext({ viewport: { width: 1440, height: 1200 }, storageState: statePath })
-      : await browser.newContext({ viewport: { width: 1440, height: 1200 } });
-    page = await context.newPage();
+    const reusedSavedState = await timedStep(timeline, 'check_existing_state', () => fileExists(statePath), statePath);
+    context = await timedStep(
+      timeline,
+      'create_context',
+      () =>
+        reusedSavedState
+          ? liveBrowser.newContext({ viewport: { width: 1440, height: 1200 }, storageState: statePath })
+          : liveBrowser.newContext({ viewport: { width: 1440, height: 1200 } }),
+      reusedSavedState ? 'reuse_saved_state' : 'fresh_context'
+    );
+    const liveContext = context;
+    page = await timedStep(timeline, 'create_page', () => liveContext.newPage());
+    const livePage = page;
 
-    await context.addCookies(cookies as Parameters<typeof context.addCookies>[0]);
-    await context.storageState({ path: statePath });
+    await timedStep(timeline, 'inject_cookies', () => liveContext.addCookies(cookies as Parameters<typeof liveContext.addCookies>[0]));
+    await timedStep(timeline, 'persist_initial_state', () => liveContext.storageState({ path: statePath }), statePath);
 
-    await page.goto(DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });
-    await page.waitForTimeout(1500);
-    await maybeScreenshot(page, path.join(outDir, '01-login-page.png'), Boolean(input.debugScreenshots), screenshots);
+    await timedStep(
+      timeline,
+      'goto_litres_login',
+      () => livePage.goto(DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL, { waitUntil: 'domcontentloaded', timeout: 120000 }),
+      DEFAULT_LITRES_BOOTSTRAP_ENTRY_URL
+    );
+    await timedStep(timeline, 'stabilize_login_page', () => livePage.waitForTimeout(1500));
+    await maybeScreenshot(livePage, path.join(outDir, '01-login-page.png'), Boolean(input.debugScreenshots), screenshots);
 
-    const otherWays = page.locator('text=Другие способы').first();
-    await otherWays.waitFor({ state: 'visible', timeout: 30000 });
-    await otherWays.click({ timeout: 30000 });
-    await page.waitForTimeout(1500);
-    await maybeScreenshot(page, path.join(outDir, '02-other-ways.png'), Boolean(input.debugScreenshots), screenshots);
+    const otherWays = livePage.locator('text=Другие способы').first();
+    await timedStep(timeline, 'wait_other_ways', () => otherWays.waitFor({ state: 'visible', timeout: 30000 }));
+    await timedStep(timeline, 'click_other_ways', () => otherWays.click({ timeout: 30000 }));
+    await timedStep(timeline, 'stabilize_other_ways', () => livePage.waitForTimeout(1500));
+    await maybeScreenshot(livePage, path.join(outDir, '02-other-ways.png'), Boolean(input.debugScreenshots), screenshots);
 
-    const sberIcon = page.locator('img[alt="sb"]').first();
-    await sberIcon.waitFor({ state: 'visible', timeout: 30000 });
+    const sberIcon = livePage.locator('img[alt="sb"]').first();
+    await timedStep(timeline, 'wait_sber_icon', () => sberIcon.waitFor({ state: 'visible', timeout: 30000 }));
 
-    const beforeClickUrl = page.url();
-    await Promise.allSettled([
-      page.waitForURL(/id\.sber\.ru|callbacks\/social-auth|litres\.ru/i, { timeout: 20000 }),
-      sberIcon.click({ timeout: 10000 })
-    ]);
+    const beforeClickUrl = livePage.url();
+    await timedStep(timeline, 'click_sber_login', async () => {
+      await Promise.allSettled([
+        livePage.waitForURL(/id\.sber\.ru|callbacks\/social-auth|litres\.ru/i, { timeout: 20000 }),
+        sberIcon.click({ timeout: 10000 })
+      ]);
+    });
 
-    await page.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {});
-    await page.waitForTimeout(3000);
+    await timedStep(
+      timeline,
+      'wait_post_click_load',
+      () => livePage.waitForLoadState('domcontentloaded', { timeout: 30000 }).catch(() => {}),
+      'domcontentloaded_or_timeout'
+    );
+    await timedStep(timeline, 'stabilize_post_click', () => livePage.waitForTimeout(3000));
 
-    const finalUrl = page.url();
-    const text = await saveBodyText(page, path.join(outDir, 'page.txt'));
-    await maybeScreenshot(page, path.join(outDir, '03-after-sber-click.png'), Boolean(input.debugScreenshots), screenshots);
-    await context.storageState({ path: statePath });
+    const finalUrl = livePage.url();
+    const text = await timedStep(timeline, 'capture_page_text', () => saveBodyText(livePage, path.join(outDir, 'page.txt')));
+    await maybeScreenshot(livePage, path.join(outDir, '03-after-sber-click.png'), Boolean(input.debugScreenshots), screenshots);
+    await timedStep(timeline, 'persist_final_state', () => liveContext.storageState({ path: statePath }), statePath);
 
     const lowered = text.toLowerCase();
     const redirectedToSberId = /id\.sber\.ru/i.test(finalUrl);
     const maybeAuthenticated = /callbacks\/social-auth/i.test(finalUrl) || /выйти|профиль|аккаунт|мой кабинет/i.test(lowered);
-    const stateExists = await fileExists(statePath);
+    const stateExists = await timedStep(timeline, 'check_final_state', () => fileExists(statePath), statePath);
 
     if (redirectedToSberId) {
-      return {
+      return finishedResult(startedMs, timeline, {
         attempted: true,
         ok: true,
         status: 'redirected_to_sberid',
@@ -233,11 +316,11 @@ export async function runIntegratedLitresBootstrap(input: {
         finalUrl,
         rawStatus: 'redirected-to-sberid',
         errorMessage: null
-      };
+      });
     }
 
     if (maybeAuthenticated) {
-      return {
+      return finishedResult(startedMs, timeline, {
         attempted: true,
         ok: true,
         status: stateExists ? 'state_refreshed' : 'completed_without_auth',
@@ -250,10 +333,10 @@ export async function runIntegratedLitresBootstrap(input: {
         finalUrl,
         rawStatus: finalUrl.includes('/callbacks/social-auth') ? 'litres-callback' : 'maybe-authenticated',
         errorMessage: null
-      };
+      });
     }
 
-    return {
+    return finishedResult(startedMs, timeline, {
       attempted: true,
       ok: stateExists,
       status: stateExists ? 'state_refreshed' : 'completed_without_auth',
@@ -266,13 +349,13 @@ export async function runIntegratedLitresBootstrap(input: {
       finalUrl: finalUrl === beforeClickUrl ? finalUrl : finalUrl,
       rawStatus: finalUrl === beforeClickUrl ? 'loaded' : 'navigated',
       errorMessage: stateExists ? null : 'Bootstrap finished without producing a reusable state file'
-    };
+    });
   } catch (error) {
     const errorShot = path.join(outDir, 'error.png');
     await page?.screenshot({ path: errorShot, fullPage: true }).catch(() => {});
     if (!screenshots.includes(errorShot)) screenshots.push(errorShot);
 
-    return {
+    return finishedResult(startedMs, timeline, {
       attempted: true,
       ok: false,
       status: 'failed',
@@ -285,7 +368,7 @@ export async function runIntegratedLitresBootstrap(input: {
       finalUrl: page?.url() ?? null,
       rawStatus: null,
       errorMessage: error instanceof Error ? error.message : String(error)
-    };
+    });
   } finally {
     await page?.close().catch(() => undefined);
     await context?.close().catch(() => undefined);

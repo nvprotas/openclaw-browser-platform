@@ -240,6 +240,10 @@ describe('browser-platform CLI + daemon runtime', () => {
       expect(JSON.parse(await readFile(String(openSession.trace?.tracePath), 'utf8'))).toMatchObject({
         sessionId,
         requestedUrl: serverUrl,
+        timing: {
+          durationMs: expect.any(Number),
+          stages: expect.arrayContaining([expect.objectContaining({ step: 'open_session_initial', status: 'ok' })])
+        },
         page: {
           title: 'Observation Fixture'
         }

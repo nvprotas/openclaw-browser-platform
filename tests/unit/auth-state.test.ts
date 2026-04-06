@@ -90,5 +90,14 @@ describe('integrated LitRes bootstrap', () => {
     expect(result.statePath).toContain('browser-platform-missing-state.json');
     expect(result.status).toBe('skipped_missing_cookies');
     expect(result.bootstrapFailed).toBe(true);
+    expect(result.durationMs).toBeTypeOf('number');
+    expect(result.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          step: 'check_cookies_file',
+          status: 'ok'
+        })
+      ])
+    );
   });
 });

@@ -17,10 +17,61 @@ import type {
   SessionActionResult,
   SessionBackend,
   SessionObservation,
-  SessionSnapshot
+  SessionSnapshot,
+  TimingEntry
 } from './types.js';
 
 const VERSION = '0.1.0';
+
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+function createTimingCollector() {
+  const stages: TimingEntry[] = [];
+
+  return {
+    stages,
+    async run<T>(step: string, fn: () => Promise<T>, detail: string | null = null): Promise<T> {
+      const startedAt = isoNow();
+      const startedMs = Date.now();
+
+      try {
+        const result = await fn();
+        stages.push({
+          step,
+          startedAt,
+          finishedAt: isoNow(),
+          durationMs: Date.now() - startedMs,
+          status: 'ok',
+          detail
+        });
+        return result;
+      } catch (error) {
+        stages.push({
+          step,
+          startedAt,
+          finishedAt: isoNow(),
+          durationMs: Date.now() - startedMs,
+          status: 'error',
+          detail: error instanceof Error ? error.message : String(error)
+        });
+        throw error;
+      }
+    },
+    skip(step: string, detail: string): void {
+      const now = isoNow();
+      stages.push({
+        step,
+        startedAt: now,
+        finishedAt: now,
+        durationMs: 0,
+        status: 'skipped',
+        detail
+      });
+    }
+  };
+}
 
 function sendJson(response: http.ServerResponse, statusCode: number, payload: unknown): void {
   response.statusCode = statusCode;
@@ -103,6 +154,9 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
       }
 
       if (request.method === 'POST' && request.url === '/v1/session/open') {
+        const requestStartedAt = isoNow();
+        const requestStartedMs = Date.now();
+        const timing = createTimingCollector();
         const body = (await readJsonBody(request)) as {
           url?: string;
           storageStatePath?: string;
@@ -114,24 +168,30 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           sendJson(response, 400, { ok: false, error: { message: 'Missing url' } });
           return;
         }
+        const requestedUrl = body.url;
 
         if (body.backend !== undefined && body.backend !== null && body.backend !== 'camoufox') {
           sendJson(response, 400, { ok: false, error: { message: 'Invalid backend. Allowed values: camoufox', code: 'INVALID_BACKEND' } });
           return;
         }
-        const preMatchedPack = await matchSitePackByUrl(body.url);
+        const preMatchedPack = await timing.run('match_site_pack_pre', () => matchSitePackByUrl(requestedUrl), requestedUrl);
         const backend: SessionBackend = 'camoufox';
-        const profile = await resolveProfileForSession({
-          stateRootDir: stateStore.root,
-          backend,
-          requestedUrl: body.url,
-          explicitStorageStatePath: body.storageStatePath,
-          profileId: body.profileId,
-          matchedPack: preMatchedPack
-        });
+        const profile = await timing.run(
+          'resolve_profile',
+          () =>
+            resolveProfileForSession({
+              stateRootDir: stateStore.root,
+              backend,
+              requestedUrl,
+              explicitStorageStatePath: body.storageStatePath,
+              profileId: body.profileId,
+              matchedPack: preMatchedPack
+            }),
+          body.profileId ?? null
+        );
 
         const record = registry.open({
-          url: body.url,
+          url: requestedUrl,
           backend,
           scenarioId: body.scenarioId ?? null,
           profileContext: {
@@ -144,23 +204,38 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
         });
         try {
           const openWithStatePath = profile.storageStateExists ? profile.storageStatePath ?? undefined : undefined;
-          let opened = await controller.openSession(record.sessionId, body.url, {
-            storageStatePath: openWithStatePath,
-            backend
-          });
-          let matchedPack = await matchSitePackByUrl(opened.url);
-          let observed = await controller.observeSession(record.sessionId);
+          let opened = await timing.run(
+            'open_session_initial',
+            () =>
+              controller.openSession(record.sessionId, requestedUrl, {
+                storageStatePath: openWithStatePath,
+                backend
+              }),
+            openWithStatePath ?? null
+          );
+          let matchedPack = await timing.run('match_site_pack_opened_initial', () => matchSitePackByUrl(opened.url), opened.url);
+          let observed = await timing.run('observe_session_initial', () => controller.observeSession(record.sessionId));
           let auth = detectLoginGate(opened.url, observed);
           const bootstrapResult: LitresBootstrapAttemptResult =
             matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated' && !profile.storageStateExists
-              ? await runIntegratedLitresBootstrap({
-                  matchedPack,
-                  storageStatePath: profile.storageStatePath
-                })
+              ? await timing.run(
+                  'bootstrap_litres',
+                  () =>
+                    runIntegratedLitresBootstrap({
+                      matchedPack,
+                      storageStatePath: profile.storageStatePath
+                    }),
+                  profile.storageStatePath ?? null
+                )
               : matchedPack?.summary.siteId === 'kuper' && auth.state !== 'authenticated' && !profile.storageStateExists
-                ? await runIntegratedKuperBootstrap({
-                    storageStatePath: profile.storageStatePath
-                  })
+                ? await timing.run(
+                    'bootstrap_kuper',
+                    () =>
+                      runIntegratedKuperBootstrap({
+                        storageStatePath: profile.storageStatePath
+                      }),
+                    profile.storageStatePath ?? null
+                  )
                 : {
                     attempted: false,
                     ok: false,
@@ -173,21 +248,33 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                     outDir: null,
                     finalUrl: null,
                     rawStatus: null,
-                    errorMessage: null
+                    errorMessage: null,
+                    durationMs: 0,
+                    timeline: []
                   };
+          if (!bootstrapResult.attempted) {
+            timing.skip('bootstrap_skipped', profile.storageStateExists ? 'existing_storage_state' : 'not_applicable');
+          }
 
           const refreshedStatePath = bootstrapResult.statePath ?? profile.storageStatePath;
           const refreshedStateExists = profile.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));
 
           if (bootstrapResult.attempted && refreshedStatePath && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
-            await controller.closeSession(record.sessionId);
-            opened = await controller.openSession(record.sessionId, body.url, {
-              storageStatePath: refreshedStatePath,
-              backend
-            });
-            matchedPack = await matchSitePackByUrl(opened.url);
-            observed = await controller.observeSession(record.sessionId);
+            await timing.run('close_session_before_reopen', () => controller.closeSession(record.sessionId));
+            opened = await timing.run(
+              'open_session_rehydrated',
+              () =>
+                controller.openSession(record.sessionId, requestedUrl, {
+                  storageStatePath: refreshedStatePath,
+                  backend
+                }),
+              refreshedStatePath
+            );
+            matchedPack = await timing.run('match_site_pack_opened_rehydrated', () => matchSitePackByUrl(opened.url), opened.url);
+            observed = await timing.run('observe_session_rehydrated', () => controller.observeSession(record.sessionId));
             auth = detectLoginGate(opened.url, observed);
+          } else {
+            timing.skip('reopen_after_bootstrap', 'not_needed');
           }
 
           const session =
@@ -228,13 +315,21 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
                 bootstrapScriptPath: bootstrapResult.scriptPath,
                 bootstrapOutDir: bootstrapResult.outDir,
                 bootstrapFinalUrl: bootstrapResult.finalUrl,
-                bootstrapError: bootstrapResult.errorMessage
+                bootstrapError: bootstrapResult.errorMessage,
+                bootstrapDurationMs: bootstrapResult.durationMs ?? null,
+                bootstrapTimeline: bootstrapResult.timeline ?? []
               },
               paymentContext: observed.paymentContext
             }) ?? record;
           const trace = await controller.writeTrace(record.sessionId, 'session-open', {
             sessionId: record.sessionId,
-            requestedUrl: body.url,
+            requestedUrl,
+            timing: {
+              startedAt: requestStartedAt,
+              finishedAt: isoNow(),
+              durationMs: Date.now() - requestStartedMs,
+              stages: timing.stages
+            },
             opened,
             packContext: session.packContext,
             authContext: session.authContext,
