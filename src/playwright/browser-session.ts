@@ -562,7 +562,9 @@ export class BrowserSession {
 
       // Use TreeWalker to collect visible text nodes — works on CSS-modules/React sites
       // where class names are hashed and semantic selectors don't match.
-      const mainEl = document.querySelector('main, [role="main"]') ?? document.body;
+      // Start from body (not just main) so header signals like "Профиль"/"Войти" are included
+      // for auth detection. Content from <main> follows naturally in DOM order.
+      const mainEl = document.body;
       const seenTexts = new Set<string>();
       const visibleTexts: string[] = [];
       const walker = document.createTreeWalker(mainEl, NodeFilter.SHOW_TEXT);
