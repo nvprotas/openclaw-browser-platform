@@ -6,23 +6,17 @@
 curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
 ```
 
-**One-line install/update:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash
-```
-
 Stateful browser automation runtime for OpenClaw.
 
-Поддерживаемые сайты:
+Supported sites:
 
-- **LitRes (`litres.ru`)**: самый проработанный pack на текущий момент.
-- **Азбука вкуса (`av.ru`)**: уровень `assisted`; описаны стартовые flow поиска/карточки/корзины, но выбор города, способа получения и anti-bot gate могут потребовать ручного участия.
+- **LitRes (`litres.ru`)**: the most complete pack at the moment.
+- **Azbuka Vkusa (`av.ru`)**: `assisted` support level; search/product/cart flows are described, but city selection, delivery mode, and anti-bot gates may still require human handoff.
 
 The current architecture is:
 
 ```text
-OpenClaw skill -> exec -> browser-platform CLI -> daemon -> Playwright
+OpenClaw skill -> exec -> browser-platform CLI -> daemon -> Playwright -> Camoufox
 ```
 
 This repo is intentionally **not** a native OpenClaw plugin yet.
@@ -36,9 +30,10 @@ This repository currently contains:
 - CLI entrypoint with JSON-first command handling
 - localhost daemon with stateful in-memory session registry
 - Playwright-backed browser runtime
+- Camoufox-only browser backend
 - LitRes-oriented site pack loading
 - LitRes auth reuse + repo-owned bootstrap flow
-- session `packContext` + `authContext`
+- session `profileContext`, `scenarioContext`, `packContext`, and `authContext`
 - action / observe / snapshot flow
 - trace artifacts for `session open` / `observe` / `act` / `snapshot`
 - tests for daemon/session lifecycle and pack loading
@@ -50,12 +45,31 @@ This repository currently contains:
 - a Linux/macOS host where Camoufox can run
 - OpenClaw installed separately if you want agent integration
 
+## Ubuntu 24.04 / headless VPS notes
+
+For a fresh Ubuntu 24.04 VPS, Camoufox needs more than only `pip install`:
+
+- Ubuntu 24.04 often marks the system Python as **externally managed** (PEP 668)
+- Camoufox/Firefox still need Linux shared libraries such as `libasound.so.2` and `libX11-xcb.so.1`
+- a headless VPS usually has **no `DISPLAY`**, so Camoufox needs `xvfb`
+
+The installer now handles this path directly:
+
+- if Python packaging is blocked by PEP 668, it creates a dedicated venv in `~/.openclaw/venvs/camoufox`
+- once it switches to that venv, it installs Camoufox there without `pip --user`
+- it installs the required Ubuntu libraries plus `xvfb`
+- it creates a wrapper script at `~/.openclaw/venvs/camoufox/camoufox-python-xvfb`
+- it writes `CAMOUFOX_PYTHON_BIN` export instructions to `~/.openclaw/camoufox.env`
+
+On a headless Ubuntu VPS, `CAMOUFOX_PYTHON_BIN` should normally point to that wrapper, not to plain `python` or `python3`.
+
 ## Quick local setup
 
 ```bash
 git clone https://github.com/nvprotas/openclaw-browser-platform.git
 cd openclaw-browser-platform
 npm ci
+./install.sh
 npm run build
 npm run test
 ```
@@ -69,13 +83,24 @@ node dist/bin/browser-platform.js daemon ensure --json
 
 ### Backend: Camoufox
 
-`session open` always uses `camoufox`. The canonical flow is to open a fresh scenario session against a named profile:
+`session open` now defaults to and only accepts `camoufox`.
+The canonical flow is to open a fresh scenario session against a named profile:
 
 ```bash
-node dist/bin/browser-platform.js session open --url https://example.com --profile demo --scenario smoke --backend camoufox --json
+node dist/bin/browser-platform.js session open \
+  --url https://example.com \
+  --profile demo \
+  --scenario smoke \
+  --backend camoufox \
+  --json
 ```
 
 Runtime expects a working `camoufox` Python installation and can use `CAMOUFOX_PYTHON_BIN` to select a specific interpreter explicitly.
+On Ubuntu 24.04 headless VPS, the recommended value is:
+
+```bash
+export CAMOUFOX_PYTHON_BIN="$HOME/.openclaw/venvs/camoufox/camoufox-python-xvfb"
+```
 
 ## Recommended install mode for a clean OpenClaw host
 
@@ -109,8 +134,42 @@ SKILL_MODE=shared ./install.sh
 LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh
 ```
 
-Текущая реализация runtime ищет `python`, затем `python3`; при необходимости можно явно задать интерпретатор через `CAMOUFOX_PYTHON_BIN`.
-Если Python на хосте помечен как externally managed (PEP 668), installer автоматически создаёт отдельный venv в `~/.openclaw/venvs/camoufox` и использует его.
+The runtime still checks `CAMOUFOX_PYTHON_BIN` first and only then falls back to `python` / `python3`.
+On Ubuntu 24.04 headless VPS, prefer the generated wrapper path explicitly:
+
+```bash
+export CAMOUFOX_PYTHON_BIN="$HOME/.openclaw/venvs/camoufox/camoufox-python-xvfb"
+```
+
+If the host Python is marked as externally managed (PEP 668), the installer automatically creates `~/.openclaw/venvs/camoufox` and installs Camoufox there without `pip --user`.
+The installer also writes the same export into:
+
+```bash
+$HOME/.openclaw/camoufox.env
+```
+
+Enable it in the current shell with:
+
+```bash
+. "$HOME/.openclaw/camoufox.env"
+```
+
+### What the installer now provisions on Ubuntu 24.04
+
+- Python package `camoufox[geoip]`
+- dedicated venv when PEP 668 blocks system-package install
+- Ubuntu shared libraries needed by Camoufox/Firefox
+- `xvfb` for headless VPS execution
+- wrapper script `~/.openclaw/venvs/camoufox/camoufox-python-xvfb`
+- `CAMOUFOX_PYTHON_BIN` export file at `~/.openclaw/camoufox.env`
+
+### Manual recovery on an already-provisioned VPS
+
+If you already have the venv and only need to restore the runtime shell wiring:
+
+```bash
+. "$HOME/.openclaw/camoufox.env"
+```
 
 Exact step-by-step instructions live here:
 
@@ -185,12 +244,14 @@ For MVP0 acceptance, the runtime now writes JSON trace artifacts under:
 ```
 
 Current trace coverage:
+
 - `session open` writes the opened page state plus resolved pack/auth/payment context
 - `session observe` writes the observed page summary
 - `session act` writes before/after state, diff, and success/failure observations
 - `session snapshot` writes a trace JSON that points at the saved screenshot + HTML snapshot paths
 
 Hard-stop contract for payment extraction:
+
 - `session observe`, `session act`, and `session snapshot` may now include `hardStop`
 - `hardStop.reason = "gateway_payment_json_ready"` means fail-closed: stop normal flow and return only `hardStop.finalPayload`
 - hard stop is emitted only for gateway URLs `https://payecom.ru/pay?...` and `https://platiecom.ru/deeplink?...` when extraction JSON is ready
@@ -201,8 +262,6 @@ The heavier screenshot/HTML artifacts still live under:
 <package-root>/.tmp/browser-platform/artifacts/snapshots/
 ```
 
-This is enough to diagnose both a successful LitRes pilot flow and a representative failure without adding risky external automation steps.
-
 ### 3. Site packs are repo/package-local
 
 The CLI auto-discovers `site-packs/` relative to the installed package layout.
@@ -212,9 +271,10 @@ That means:
 - `npm link` runs work
 - packed distribution artifacts can also ship the same `site-packs/`
 
-### 3. Persistent profile vs scenario session
+### 4. Persistent profile vs scenario session
 
-`session open` now models a **fresh scenario session** that may reuse a **long-lived profile**. This is the main intended contract for both CLI and OpenClaw skill usage:
+`session open` now models a **fresh scenario session** that may reuse a **long-lived profile**.
+This is the main intended contract for both CLI and OpenClaw skill usage:
 
 - `--profile <id>` stores persistent state under `<state-root>/profiles/<backend>/<profileId>/storage-state.json`
 - `--scenario <id>` labels the current live task/session so agents can treat it as disposable runtime state
@@ -222,22 +282,12 @@ That means:
 - when a scenario finishes or looks suspicious, close that session and open a new one against the same `--profile`
 - `--storage-state <path>` still works, but only as a legacy/debug/import override when you need to reuse or inspect an external state file directly
 
-Canonical example:
-
-```bash
-node dist/bin/browser-platform.js session open \
-  --url https://www.litres.ru/ \
-  --profile litres \
-  --scenario search-1984 \
-  --json
-```
-
 Current JSON responses expose both:
 
-- `session.profileContext` — durable profile/storage-state identity
-- `session.scenarioContext` — live scenario identity and reuse policy hint
+- `session.profileContext` - durable profile/storage-state identity
+- `session.scenarioContext` - live scenario identity and reuse policy hint
 
-### 4. LitRes auth paths currently reused by default
+### 5. LitRes auth paths currently reused by default
 
 For the LitRes pilot, the runtime still reuses these practical artifact paths by default:
 
