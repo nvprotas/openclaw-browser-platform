@@ -10,6 +10,7 @@ import { resolveProfileForSession } from './profile-state.js';
 import { runIntegratedKuperBootstrap } from './kuper-auth.js';
 import { SessionRegistry } from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
+import { isDebugEnabled, appendDebugLog } from '../debug/capture.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
@@ -136,6 +137,24 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
       return;
     }
 
+    const requestStartMs = Date.now();
+    let logSessionId: string | null = null;
+    let logPayloadSummary: Record<string, unknown> | null = null;
+
+    response.on('finish', () => {
+      if (!isDebugEnabled()) return;
+      void appendDebugLog(stateStore.root, {
+        source: 'agent',
+        event: 'request',
+        method: request.method,
+        route: request.url,
+        sessionId: logSessionId,
+        payload: logPayloadSummary,
+        statusCode: response.statusCode,
+        durationMs: Date.now() - requestStartMs
+      });
+    });
+
     try {
       if (request.method === 'GET' && request.url === '/v1/daemon/status') {
         const payload: DaemonStatusResponse = {
@@ -164,6 +183,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           profileId?: string;
           scenarioId?: string;
         };
+        logPayloadSummary = { url: body?.url ?? null, profileId: body?.profileId ?? null, scenarioId: body?.scenarioId ?? null };
         if (!body?.url) {
           sendJson(response, 400, { ok: false, error: { message: 'Missing url' } });
           return;
@@ -374,6 +394,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
 
       if (request.method === 'POST' && request.url === '/v1/session/context') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
+        logSessionId = body?.sessionId ?? null;
         const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
         if (!session) {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
@@ -385,6 +406,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
 
       if (request.method === 'POST' && request.url === '/v1/session/observe') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
+        logSessionId = body?.sessionId ?? null;
         const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
         if (!session) {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
@@ -425,6 +447,8 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
 
       if (request.method === 'POST' && request.url === '/v1/session/act') {
         const body = (await readJsonBody(request)) as { sessionId?: string; payload?: SessionActionPayload };
+        logSessionId = body?.sessionId ?? null;
+        logPayloadSummary = body?.payload ? { action: body.payload.action } : null;
         const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
         if (!session) {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
@@ -487,6 +511,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
 
       if (request.method === 'POST' && request.url === '/v1/session/snapshot') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
+        logSessionId = body?.sessionId ?? null;
         const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
         if (!session) {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
@@ -528,6 +553,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
 
       if (request.method === 'POST' && request.url === '/v1/session/close') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
+        logSessionId = body?.sessionId ?? null;
         const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
         if (!session) {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });

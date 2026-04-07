@@ -1,9 +1,19 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Page } from 'playwright';
 
 export function isDebugEnabled(): boolean {
   return process.env['BROWSER_PLATFORM_DEBUG'] === '1';
+}
+
+export function getDebugLogPath(rootDir: string): string {
+  return path.join(rootDir, 'artifacts', 'debug', 'browser-platform.log');
+}
+
+export async function appendDebugLog(rootDir: string, entry: Record<string, unknown>): Promise<void> {
+  const logPath = getDebugLogPath(rootDir);
+  await mkdir(path.dirname(logPath), { recursive: true });
+  await appendFile(logPath, `${JSON.stringify({ ts: new Date().toISOString(), ...entry })}\n`, 'utf8');
 }
 
 export async function captureDebugStepJson(

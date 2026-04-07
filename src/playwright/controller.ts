@@ -2,7 +2,7 @@ import path from 'node:path';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionActionPayload } from '../daemon/types.js';
 import { TraceWriter } from '../traces/writer.js';
-import { isDebugEnabled, captureDebugStep, captureDebugStepJson } from '../debug/capture.js';
+import { isDebugEnabled, captureDebugStep, captureDebugStepJson, appendDebugLog } from '../debug/capture.js';
 import {
   BrowserContextPool,
   BrowserSession,
@@ -136,9 +136,17 @@ export class PlaywrightController {
 
   private async debugCapture(sessionId: string, stepName: string, meta: unknown): Promise<void> {
     if (!isDebugEnabled()) return;
+    const startMs = Date.now();
     const page = this.sessions.get(sessionId)?.page();
     if (!page) return;
     await captureDebugStep(page, this.rootDir, sessionId, stepName, meta);
+    await appendDebugLog(this.rootDir, {
+      source: 'browser',
+      event: stepName,
+      sessionId,
+      durationMs: Date.now() - startMs,
+      ...(meta !== null && typeof meta === 'object' ? meta as Record<string, unknown> : { meta })
+    });
   }
 
   private requireSession(sessionId: string): BrowserSession {
