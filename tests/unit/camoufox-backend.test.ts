@@ -331,10 +331,40 @@ describe('camoufox backend', () => {
     await sessionA.close();
     await sessionB.close();
 
-    expect(browser.close).not.toHaveBeenCalled();
-    expect(context.close).not.toHaveBeenCalled();
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(browser.close).toHaveBeenCalledTimes(1);
+  });
 
-    await pool.closeAll();
+  it('keeps shared context alive until the last pooled session is closed', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const pool = new mod.BrowserContextPool();
+    const sessionA = new mod.BrowserSession({
+      sessionId: 'shared-retain-a',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/litres/storage-state.json',
+      contextPool: pool
+    });
+    const sessionB = new mod.BrowserSession({
+      sessionId: 'shared-retain-b',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/litres/storage-state.json',
+      contextPool: pool
+    });
+
+    const openA = sessionA.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openA;
+    await sessionB.open('https://example.com');
+
+    await sessionA.close();
+
+    expect(context.close).not.toHaveBeenCalled();
+    expect(browser.close).not.toHaveBeenCalled();
+
+    await sessionB.close();
 
     expect(context.close).toHaveBeenCalledTimes(1);
     expect(browser.close).toHaveBeenCalledTimes(1);

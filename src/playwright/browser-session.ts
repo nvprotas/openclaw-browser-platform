@@ -75,7 +75,7 @@ type BrowserContextLease = {
   browser: Browser;
   context: BrowserContext;
   reused: boolean;
-  release: () => void;
+  release: () => Promise<void>;
 };
 
 export interface BrowserSessionSnapshotResult extends SnapshotPaths {
@@ -403,13 +403,21 @@ export class BrowserContextPool {
     );
   }
 
-  private release(key: string): void {
+  private async release(key: string): Promise<void> {
     const entry = this.entries.get(key);
     if (!entry) {
       return;
     }
 
     entry.refCount = Math.max(0, entry.refCount - 1);
+    if (entry.refCount > 0) {
+      return;
+    }
+
+    this.entries.delete(key);
+    await entry.context.close().catch(() => undefined);
+    await entry.browser.close().catch(() => undefined);
+    entry.stop();
   }
 }
 
@@ -491,7 +499,7 @@ export class BrowserSession {
     } catch (error) {
       await page?.close().catch(() => undefined);
       if (this.contextLease) {
-        this.contextLease.release();
+        await this.contextLease.release();
         this.contextLease = null;
       } else {
         await context?.close().catch(() => undefined);
@@ -798,7 +806,7 @@ export class BrowserSession {
       await this.browser?.close().catch(() => undefined);
       this.stopCamoufoxBrowser?.();
     } else {
-      this.contextLease.release();
+      await this.contextLease.release();
     }
     this.pageInstance = null;
     this.context = null;
