@@ -353,7 +353,7 @@ export async function runIntegratedLitresBootstrap(input: {
   let browser: Browser | null = null;
   let context: BrowserContext | null = null;
   let page: Page | null = null;
-  let stopCamoufox: (() => void) | null = null;
+  let stopCamoufox: (() => Promise<void>) | null = null;
   let adoptedSession: AdoptedBrowserSession | null = null;
   const usingExistingPage = Boolean(input.existingPage);
 
@@ -497,7 +497,7 @@ export async function runIntegratedLitresBootstrap(input: {
           browser: browser!,
           context: liveContext,
           page: livePage,
-          stop: stopCamoufox ?? (() => undefined)
+          stop: stopCamoufox ?? (async () => undefined)
         };
       }
 
@@ -525,7 +525,7 @@ export async function runIntegratedLitresBootstrap(input: {
           browser: browser!,
           context: liveContext,
           page: livePage,
-          stop: stopCamoufox ?? (() => undefined)
+          stop: stopCamoufox ?? (async () => undefined)
         };
       }
 
@@ -596,8 +596,10 @@ export async function runIntegratedLitresBootstrap(input: {
     if (!usingExistingPage && !adoptedSession) {
       await page?.close().catch(() => undefined);
       await context?.close().catch(() => undefined);
-      stopCamoufox?.();
-      await browser?.close().catch(() => undefined);
+      await Promise.allSettled([
+        browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
+        stopCamoufox?.().catch(() => undefined) ?? Promise.resolve(undefined)
+      ]);
     }
   }
 }

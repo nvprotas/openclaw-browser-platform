@@ -71,16 +71,21 @@ export class PlaywrightController {
       backend: options?.backend
     });
 
-    session.adoptExisting(adopted);
-    session.markUsed();
-    await session.persistStorageState();
-    const page = session.page();
-    this.sessions.set(sessionId, session);
+    try {
+      session.adoptExisting(adopted);
+      session.markUsed();
+      await session.persistStorageState();
+      const page = session.page();
+      this.sessions.set(sessionId, session);
 
-    return {
-      url: page.url(),
-      title: await page.title()
-    };
+      return {
+        url: page.url(),
+        title: await page.title()
+      };
+    } catch (error) {
+      await session.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   async writeTrace(sessionId: string, stepType: string, payload: unknown) {
