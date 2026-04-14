@@ -94,7 +94,7 @@ export async function runIntegratedKuperBootstrap(input: {
     sameSite?: 'Strict' | 'Lax' | 'None';
   }>;
 
-  let stopCamoufox: (() => void) | null = null;
+  let stopCamoufox: (() => Promise<void>) | null = null;
   let browser: Browser | null = null;
   let page: Page | null = null;
 
@@ -285,7 +285,9 @@ export async function runIntegratedKuperBootstrap(input: {
       errorMessage: error instanceof Error ? error.message : String(error)
     };
   } finally {
-    await browser?.close().catch(() => {});
-    stopCamoufox?.();
+    await Promise.allSettled([
+      browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
+      stopCamoufox?.().catch(() => undefined) ?? Promise.resolve(undefined)
+    ]);
   }
 }

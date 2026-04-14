@@ -10,6 +10,7 @@ class FakeProcess extends EventEmitter {
   exitCode: number | null = null;
   signalCode: NodeJS.Signals | null = null;
   exitOnTerm = true;
+  killReturnsFalse = false;
   killSignals: NodeJS.Signals[] = [];
 
   constructor() {
@@ -25,6 +26,9 @@ class FakeProcess extends EventEmitter {
   }
 
   kill(signal: NodeJS.Signals = 'SIGTERM') {
+    if (this.killReturnsFalse) {
+      return false;
+    }
     this.killed = true;
     this.killSignals.push(signal);
     if (signal === 'SIGTERM' && this.exitOnTerm) {
@@ -84,6 +88,7 @@ afterEach(() => {
   vi.clearAllMocks();
   latestProc = undefined;
   delete process.env.CAMOUFOX_PYTHON_BIN;
+  vi.useRealTimers();
 });
 
 describe('camoufox backend', () => {
@@ -272,30 +277,118 @@ describe('camoufox backend', () => {
 
   it('escalates to SIGKILL if camoufox ignores SIGTERM during shutdown', async () => {
     vi.useFakeTimers();
-    try {
-      const mod = await import('../../src/playwright/browser-session.js');
-      const session = new mod.BrowserSession({
-        sessionId: 's7',
-        snapshotRootDir: '/tmp/snapshots',
-        backend: 'camoufox'
-      });
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's7',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
 
-      const openPromise = session.open('https://example.com');
-      await Promise.resolve();
-      latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
-      await openPromise;
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openPromise;
 
-      latestProc!.exitOnTerm = false;
-      await session.close();
+    latestProc!.exitOnTerm = false;
+    let closed = false;
+    const closePromise = session.close().then(() => {
+      closed = true;
+    });
 
-      expect(latestProc!.killSignals).toEqual(['SIGTERM']);
+    await Promise.resolve();
+    expect(closed).toBe(false);
 
-      await vi.advanceTimersByTimeAsync(3_000);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await closePromise;
 
-      expect(latestProc!.killSignals).toEqual(['SIGTERM', 'SIGKILL']);
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(latestProc!.killSignals).toContain('SIGTERM');
+    expect(latestProc!.killSignals).toContain('SIGKILL');
+    expect(closed).toBe(true);
+  });
+
+  it('waits for wrapper exit on firefox connect failure', async () => {
+    vi.useFakeTimers();
+    firefoxConnectMock.mockRejectedValueOnce(new Error('connect failed'));
+
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's7b',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const openPromise = session.open('https://example.com');
+    let failed = false;
+    const trackedOpenPromise = openPromise.then(
+      () => ({ ok: true as const, error: null }),
+      (error) => {
+        failed = true;
+        return { ok: false as const, error };
+      }
+    );
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    latestProc!.exitOnTerm = false;
+
+    await Promise.resolve();
+    expect(failed).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    const result = await trackedOpenPromise;
+    expect(result.ok).toBe(false);
+    expect(result.error).toMatchObject({
+      details: { cause: 'Camoufox started but Playwright Firefox failed to connect' }
+    });
+    expect(latestProc!.killSignals).toContain('SIGTERM');
+    expect(latestProc!.killSignals).toContain('SIGKILL');
+    expect(failed).toBe(true);
+  });
+
+  it('allows repeated session close without duplicating wrapper shutdown', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's7c',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openPromise;
+
+    await session.close();
+    await session.close();
+
+    expect(latestProc!.killSignals).toEqual(['SIGTERM']);
+  });
+
+  it('does not hang shutdown if process kill returns false', async () => {
+    vi.useFakeTimers();
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's7d',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openPromise;
+
+    latestProc!.killReturnsFalse = true;
+    let closed = false;
+    const closePromise = session.close().then(() => {
+      closed = true;
+    });
+
+    await Promise.resolve();
+    await closePromise;
+
+    expect(closed).toBe(true);
+    expect(latestProc!.killSignals).toEqual([]);
   });
 
   it('reuses shared context for the same storage state path', async () => {
@@ -331,10 +424,40 @@ describe('camoufox backend', () => {
     await sessionA.close();
     await sessionB.close();
 
-    expect(browser.close).not.toHaveBeenCalled();
-    expect(context.close).not.toHaveBeenCalled();
+    expect(context.close).toHaveBeenCalledTimes(1);
+    expect(browser.close).toHaveBeenCalledTimes(1);
+  });
 
-    await pool.closeAll();
+  it('keeps shared context alive until the last pooled session is closed', async () => {
+    const mod = await import('../../src/playwright/browser-session.js');
+    const pool = new mod.BrowserContextPool();
+    const sessionA = new mod.BrowserSession({
+      sessionId: 'shared-retain-a',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/litres/storage-state.json',
+      contextPool: pool
+    });
+    const sessionB = new mod.BrowserSession({
+      sessionId: 'shared-retain-b',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox',
+      storageStatePath: '/tmp/litres/storage-state.json',
+      contextPool: pool
+    });
+
+    const openA = sessionA.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openA;
+    await sessionB.open('https://example.com');
+
+    await sessionA.close();
+
+    expect(context.close).not.toHaveBeenCalled();
+    expect(browser.close).not.toHaveBeenCalled();
+
+    await sessionB.close();
 
     expect(context.close).toHaveBeenCalledTimes(1);
     expect(browser.close).toHaveBeenCalledTimes(1);

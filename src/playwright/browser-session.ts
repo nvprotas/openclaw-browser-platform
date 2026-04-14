@@ -51,7 +51,7 @@ export interface AdoptedBrowserSession {
   browser: Browser;
   context: BrowserContext;
   page: Page;
-  stop: () => void;
+  stop: () => Promise<void>;
 }
 
 type BrowserSessionOpenTimingStage = {
@@ -67,7 +67,7 @@ type SharedBrowserContextEntry = {
   key: string;
   browser: Browser;
   context: BrowserContext;
-  stop: () => void;
+  stop: () => Promise<void>;
   refCount: number;
 };
 
@@ -75,7 +75,7 @@ type BrowserContextLease = {
   browser: Browser;
   context: BrowserContext;
   reused: boolean;
-  release: () => void;
+  release: () => Promise<void>;
 };
 
 export interface BrowserSessionSnapshotResult extends SnapshotPaths {
@@ -83,6 +83,7 @@ export interface BrowserSessionSnapshotResult extends SnapshotPaths {
 }
 
 const CAMOUFOX_WS_REGEX = /wss?:\/\/[^\s"'<>]+/i;
+const CAMOUFOX_STOP_TIMEOUT_MS = 3_000;
 const CAMOUFOX_SERVER_WRAPPER = `
 import atexit
 import base64
@@ -190,6 +191,8 @@ function isProcessRunning(proc: ChildProcess): boolean {
   return proc.exitCode === null && proc.signalCode === null;
 }
 
+const camoufoxStopPromises = new WeakMap<ChildProcess, Promise<void>>();
+
 function isoNow(): string {
   return new Date().toISOString();
 }
@@ -229,24 +232,79 @@ function createOpenTimingCollector() {
   };
 }
 
-function stopCamoufoxProcess(proc: ChildProcess): void {
+export async function stopCamoufoxProcess(proc: ChildProcess): Promise<void> {
+  const existing = camoufoxStopPromises.get(proc);
+  if (existing) {
+    await existing;
+    return;
+  }
+
   if (!isProcessRunning(proc)) {
     return;
   }
 
-  proc.kill('SIGTERM');
-  const killTimer = setTimeout(() => {
-    if (isProcessRunning(proc)) {
-      proc.kill('SIGKILL');
+  const stopPromise = new Promise<void>((resolve) => {
+    let settled = false;
+    let killTimer: NodeJS.Timeout | null = null;
+
+    const cleanup = () => {
+      proc.off('exit', onExit);
+      proc.off('error', onError);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
+    };
+
+    const finish = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve();
+    };
+
+    const onExit = () => finish();
+    const onError = () => finish();
+    const tryKill = (signal: NodeJS.Signals): boolean => {
+      try {
+        return proc.kill(signal);
+      } catch {
+        return false;
+      }
+    };
+
+    proc.once('exit', onExit);
+    proc.once('error', onError);
+
+    if (!tryKill('SIGTERM')) {
+      finish();
+      return;
     }
-  }, 3_000);
-  killTimer.unref();
+
+    killTimer = setTimeout(() => {
+      if (isProcessRunning(proc)) {
+        if (!tryKill('SIGKILL')) {
+          finish();
+        }
+      }
+    }, CAMOUFOX_STOP_TIMEOUT_MS);
+    killTimer.unref();
+  });
+
+  camoufoxStopPromises.set(proc, stopPromise);
+
+  try {
+    await stopPromise;
+  } finally {
+    camoufoxStopPromises.delete(proc);
+  }
 }
 
 async function waitForCamoufoxEndpointFromProcess(
   proc: ChildProcess,
   timeoutMs: number,
-  onFailure?: () => void
+  onFailure?: () => Promise<void>
 ): Promise<string> {
   return new Promise<string>((resolve, reject) => {
     const recentLogs: string[] = [];
@@ -264,12 +322,12 @@ async function waitForCamoufoxEndpointFromProcess(
       proc.stderr?.resume();
     };
 
-    const finishWithError = (message: string): void => {
+    const finishWithError = async (message: string): Promise<void> => {
       if (settled) {
         return;
       }
       cleanup();
-      onFailure?.();
+      await onFailure?.().catch(() => undefined);
       reject(new BrowserPlatformError(message, {
         code: 'SESSION_OPEN_FAILED',
         details: {
@@ -299,15 +357,15 @@ async function waitForCamoufoxEndpointFromProcess(
     };
 
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      finishWithError(`Camoufox server exited before publishing ws endpoint (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
+      void finishWithError(`Camoufox server exited before publishing ws endpoint (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
     };
 
     const onError = (error: Error) => {
-      finishWithError(`Failed to start Camoufox server: ${error.message}`);
+      void finishWithError(`Failed to start Camoufox server: ${error.message}`);
     };
 
     const timeout = setTimeout(() => {
-      finishWithError(`Timed out waiting for Camoufox ws endpoint after ${timeoutMs}ms`);
+      void finishWithError(`Timed out waiting for Camoufox ws endpoint after ${timeoutMs}ms`);
     }, timeoutMs);
 
     proc.stdout?.on('data', onData);
@@ -317,7 +375,7 @@ async function waitForCamoufoxEndpointFromProcess(
   });
 }
 
-export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ browser: Browser; stop: () => void }> {
+export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ browser: Browser; stop: () => Promise<void> }> {
   const pythonBin = resolveCamoufoxPythonCommand();
   const proc = spawn(pythonBin, buildCamoufoxServerArgs(), { stdio: ['ignore', 'pipe', 'pipe'] });
   const wsEndpoint = await waitForCamoufoxEndpointFromProcess(proc, timeoutMs, () => stopCamoufoxProcess(proc));
@@ -329,7 +387,7 @@ export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ brows
       stop: () => stopCamoufoxProcess(proc)
     };
   } catch (error) {
-    stopCamoufoxProcess(proc);
+    await stopCamoufoxProcess(proc);
     throw new BrowserPlatformError('Camoufox started but Playwright Firefox failed to connect', {
       code: 'SESSION_OPEN_FAILED',
       details: {
@@ -386,7 +444,7 @@ export class BrowserContextPool {
       };
     } catch (error) {
       await launched.browser.close().catch(() => undefined);
-      launched.stop();
+      await launched.stop().catch(() => undefined);
       throw error;
     }
   }
@@ -397,19 +455,25 @@ export class BrowserContextPool {
     await Promise.all(
       entries.map(async (entry) => {
         await entry.context.close().catch(() => undefined);
-        await entry.browser.close().catch(() => undefined);
-        entry.stop();
+        await Promise.allSettled([entry.browser.close(), entry.stop()]);
       })
     );
   }
 
-  private release(key: string): void {
+  private async release(key: string): Promise<void> {
     const entry = this.entries.get(key);
     if (!entry) {
       return;
     }
 
     entry.refCount = Math.max(0, entry.refCount - 1);
+    if (entry.refCount > 0) {
+      return;
+    }
+
+    this.entries.delete(key);
+    await entry.context.close().catch(() => undefined);
+    await Promise.allSettled([entry.browser.close(), entry.stop()]);
   }
 }
 
@@ -417,8 +481,10 @@ export class BrowserSession {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private pageInstance: Page | null = null;
-  private stopCamoufoxBrowser: (() => void) | null = null;
+  private stopCamoufoxBrowser: (() => Promise<void>) | null = null;
   private contextLease: BrowserContextLease | null = null;
+  private lastUsedAt = Date.now();
+  private closePromise: Promise<void> | null = null;
 
   constructor(private readonly options: BrowserSessionOptions) {}
 
@@ -428,6 +494,15 @@ export class BrowserSession {
     this.pageInstance = session.page;
     this.stopCamoufoxBrowser = session.stop;
     this.contextLease = null;
+    this.markUsed();
+  }
+
+  markUsed(): void {
+    this.lastUsedAt = Date.now();
+  }
+
+  getLastUsedAt(): number {
+    return this.lastUsedAt;
   }
 
   async open(url: string): Promise<BrowserSessionOpenResult> {
@@ -491,12 +566,14 @@ export class BrowserSession {
     } catch (error) {
       await page?.close().catch(() => undefined);
       if (this.contextLease) {
-        this.contextLease.release();
+        await this.contextLease.release();
         this.contextLease = null;
       } else {
         await context?.close().catch(() => undefined);
-        await browser?.close().catch(() => undefined);
-        this.stopCamoufoxBrowser?.();
+        await Promise.allSettled([
+          browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
+          this.stopCamoufoxBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
+        ]);
         this.stopCamoufoxBrowser = null;
       }
 
@@ -524,6 +601,7 @@ export class BrowserSession {
     this.browser = browser;
     this.context = context;
     this.pageInstance = page;
+    this.markUsed();
     await timing.run('persist_storage_state', () => this.persistStorageState(), this.options.storageStatePath ?? null);
     const readyPage = page;
 
@@ -556,6 +634,7 @@ export class BrowserSession {
   }
 
   async observe(): Promise<PageStateSummary> {
+    this.markUsed();
     const page = this.requirePage();
     const summary = (await page.evaluate(() => {
       const normalizeText = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim();
@@ -781,6 +860,7 @@ export class BrowserSession {
   }
 
   async snapshot(): Promise<BrowserSessionSnapshotResult> {
+    this.markUsed();
     const page = this.requirePage();
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     const paths = await capturePageSnapshot(page, this.options.snapshotRootDir, this.options.sessionId);
@@ -792,19 +872,34 @@ export class BrowserSession {
   }
 
   async close(): Promise<void> {
-    await this.pageInstance?.close().catch(() => undefined);
-    if (!this.contextLease) {
-      await this.context?.close().catch(() => undefined);
-      await this.browser?.close().catch(() => undefined);
-      this.stopCamoufoxBrowser?.();
-    } else {
-      this.contextLease.release();
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
-    this.pageInstance = null;
-    this.context = null;
-    this.browser = null;
-    this.contextLease = null;
-    this.stopCamoufoxBrowser = null;
+
+    this.closePromise = (async () => {
+      await this.pageInstance?.close().catch(() => undefined);
+      if (!this.contextLease) {
+        await this.context?.close().catch(() => undefined);
+        await Promise.allSettled([
+          this.browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
+          this.stopCamoufoxBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
+        ]);
+      } else {
+        await this.contextLease.release();
+      }
+      this.pageInstance = null;
+      this.context = null;
+      this.browser = null;
+      this.contextLease = null;
+      this.stopCamoufoxBrowser = null;
+    })();
+
+    try {
+      await this.closePromise;
+    } finally {
+      this.closePromise = null;
+    }
   }
 
   private requirePage(): Page {

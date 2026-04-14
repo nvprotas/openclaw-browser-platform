@@ -40,13 +40,16 @@ export class PlaywrightController {
     });
 
     const opened = await session.open(url);
+    session.markUsed();
     this.sessions.set(sessionId, session);
     await this.debugCapture(sessionId, 'open', { sessionId, url: opened.url, title: opened.title });
     return opened;
   }
 
   async observeSession(sessionId: string): Promise<PageStateSummary> {
-    const result = await this.requireSession(sessionId).observe();
+    const session = this.requireSession(sessionId);
+    session.markUsed();
+    const result = await session.observe();
     await this.debugCapture(sessionId, 'observe', { sessionId, url: result.url, title: result.title });
     return result;
   }
@@ -68,15 +71,21 @@ export class PlaywrightController {
       backend: options?.backend
     });
 
-    session.adoptExisting(adopted);
-    await session.persistStorageState();
-    const page = session.page();
-    this.sessions.set(sessionId, session);
+    try {
+      session.adoptExisting(adopted);
+      session.markUsed();
+      await session.persistStorageState();
+      const page = session.page();
+      this.sessions.set(sessionId, session);
 
-    return {
-      url: page.url(),
-      title: await page.title()
-    };
+      return {
+        url: page.url(),
+        title: await page.title()
+      };
+    } catch (error) {
+      await session.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   async writeTrace(sessionId: string, stepType: string, payload: unknown) {
@@ -85,6 +94,7 @@ export class PlaywrightController {
 
   async actInSession(sessionId: string, payload: SessionActionPayload) {
     const session = this.requireSession(sessionId);
+    session.markUsed();
     const { before, after } = await runStep(session, payload);
     await session.persistStorageState();
     const result = buildActionResult(payload, before, after);
@@ -101,7 +111,9 @@ export class PlaywrightController {
   }
 
   async snapshotSession(sessionId: string): Promise<BrowserSessionSnapshotResult> {
-    const result = await this.requireSession(sessionId).snapshot();
+    const session = this.requireSession(sessionId);
+    session.markUsed();
+    const result = await session.snapshot();
     if (isDebugEnabled()) {
       await captureDebugStepJson(this.rootDir, sessionId, 'snapshot', {
         sessionId,
@@ -122,6 +134,10 @@ export class PlaywrightController {
 
     this.sessions.delete(sessionId);
     await session.close();
+  }
+
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
   }
 
   async closeAll(): Promise<void> {

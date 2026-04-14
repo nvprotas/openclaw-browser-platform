@@ -113,7 +113,11 @@ export interface SessionRecord {
   url: string;
   createdAt: string;
   updatedAt: string;
+  lastUsedAt: string;
+  idleTimeoutMs: number;
   status: 'open' | 'closed';
+  closeReason: 'manual' | 'idle_timeout' | 'open_failed' | 'controller_missing' | 'shutdown' | null;
+  closedAt: string | null;
   title: string | null;
   scenarioContext: SessionScenarioContext;
   profileContext: SessionProfileContext;
