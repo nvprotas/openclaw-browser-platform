@@ -81,6 +81,29 @@ node dist/bin/browser-platform.js --help
 node dist/bin/browser-platform.js daemon ensure --json
 ```
 
+### Таймаут простоя browser session
+
+Daemon поддерживает авто-закрытие неиспользуемых browser session по idle timeout.
+
+- По умолчанию используется `1800000` мс, то есть `30` минут.
+- Таймаут задаётся через переменную окружения `BROWSER_PLATFORM_SESSION_IDLE_TIMEOUT_MS`.
+- Значение читается при старте daemon и применяется к новым сессиям.
+- Если значение пустое, невалидное или `<= 0`, runtime откатывается к дефолту `30` минут.
+
+Пример: таймаут простоя `10` минут
+
+```bash
+BROWSER_PLATFORM_SESSION_IDLE_TIMEOUT_MS=600000 \
+node dist/bin/browser-platform.js daemon ensure --json
+```
+
+Пример для установленного CLI:
+
+```bash
+BROWSER_PLATFORM_SESSION_IDLE_TIMEOUT_MS=300000 \
+browser-platform daemon ensure --json
+```
+
 ### Backend: Camoufox
 
 `session open` now defaults to and only accepts `camoufox`.
