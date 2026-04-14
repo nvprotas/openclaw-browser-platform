@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveSessionIdleTimeoutMs, runSessionJanitorPass } from '../../src/daemon/server.js';
+import { createSessionJanitorRunner, resolveSessionIdleTimeoutMs, runSessionJanitorPass } from '../../src/daemon/server.js';
 import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from '../../src/daemon/session-registry.js';
 
 function createDeferred<T = void>() {
@@ -76,5 +76,33 @@ describe('daemon session idle handling', () => {
 
     expect(registry.get(session.sessionId)).toBeUndefined();
     expect(finished).toBe(true);
+  });
+
+  it('does not start overlapping janitor close calls for the same expired session when one pass is already running', async () => {
+    let now = Date.parse('2026-04-14T10:00:00.000Z');
+    const registry = new SessionRegistry({
+      defaultIdleTimeoutMs: 1_000,
+      now: () => now
+    });
+    const session = registry.open({ url: 'https://example.com' });
+    const closeBarrier = createDeferred<void>();
+    const controller = {
+      closeSession: vi.fn(async () => {
+        await closeBarrier.promise;
+      })
+    };
+    const runSafely = createSessionJanitorRunner(registry, controller as never);
+
+    now += 1_000;
+    const firstPass = runSafely();
+    const secondPass = runSafely();
+
+    await Promise.resolve();
+    expect(controller.closeSession).toHaveBeenCalledTimes(1);
+
+    closeBarrier.resolve();
+    await Promise.all([firstPass, secondPass]);
+
+    expect(registry.get(session.sessionId)).toBeUndefined();
   });
 });

@@ -159,6 +159,27 @@ export async function runSessionJanitorPass(registry: SessionRegistry, controlle
   );
 }
 
+export function createSessionJanitorRunner(
+  registry: SessionRegistry,
+  controller: Pick<PlaywrightController, 'closeSession'>
+): () => Promise<void> {
+  let janitorPassPromise: Promise<void> | null = null;
+
+  return async () => {
+    if (janitorPassPromise) {
+      await janitorPassPromise;
+      return;
+    }
+
+    janitorPassPromise = runSessionJanitorPass(registry, controller);
+    try {
+      await janitorPassPromise;
+    } finally {
+      janitorPassPromise = null;
+    }
+  };
+}
+
 export async function startDaemonServer(options: StartDaemonServerOptions = {}): Promise<DaemonInfo> {
   const sessionIdleTimeoutMs = resolveSessionIdleTimeoutMs(process.env, options.sessionIdleTimeoutMs);
   const registry = options.registry ?? new SessionRegistry({ defaultIdleTimeoutMs: sessionIdleTimeoutMs });
@@ -177,8 +198,11 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
   };
 
   const janitorIntervalMs = options.sessionJanitorIntervalMs ?? DEFAULT_SESSION_JANITOR_INTERVAL_MS;
+  const runJanitorPassSafely = createSessionJanitorRunner(registry, controller);
+  let janitorPassPromise: Promise<void> | null = null;
   const janitor = setInterval(() => {
-    void runSessionJanitorPass(registry, controller).catch(() => undefined);
+    janitorPassPromise = runJanitorPassSafely();
+    void janitorPassPromise.catch(() => undefined);
   }, janitorIntervalMs);
   janitor.unref();
 
@@ -646,6 +670,7 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
 
   const shutdown = async (): Promise<void> => {
     clearInterval(janitor);
+    await janitorPassPromise?.catch(() => undefined);
     registry.closeAll('shutdown');
     await controller.closeAll();
     registry.clear();

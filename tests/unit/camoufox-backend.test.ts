@@ -10,6 +10,7 @@ class FakeProcess extends EventEmitter {
   exitCode: number | null = null;
   signalCode: NodeJS.Signals | null = null;
   exitOnTerm = true;
+  killReturnsFalse = false;
   killSignals: NodeJS.Signals[] = [];
 
   constructor() {
@@ -25,6 +26,9 @@ class FakeProcess extends EventEmitter {
   }
 
   kill(signal: NodeJS.Signals = 'SIGTERM') {
+    if (this.killReturnsFalse) {
+      return false;
+    }
     this.killed = true;
     this.killSignals.push(signal);
     if (signal === 'SIGTERM' && this.exitOnTerm) {
@@ -358,6 +362,33 @@ describe('camoufox backend', () => {
     await session.close();
 
     expect(latestProc!.killSignals).toEqual(['SIGTERM']);
+  });
+
+  it('does not hang shutdown if process kill returns false', async () => {
+    vi.useFakeTimers();
+    const mod = await import('../../src/playwright/browser-session.js');
+    const session = new mod.BrowserSession({
+      sessionId: 's7d',
+      snapshotRootDir: '/tmp/snapshots',
+      backend: 'camoufox'
+    });
+
+    const openPromise = session.open('https://example.com');
+    await Promise.resolve();
+    latestProc!.stdout.emit('data', Buffer.from('Listening on ws://127.0.0.1:9222\n'));
+    await openPromise;
+
+    latestProc!.killReturnsFalse = true;
+    let closed = false;
+    const closePromise = session.close().then(() => {
+      closed = true;
+    });
+
+    await Promise.resolve();
+    await closePromise;
+
+    expect(closed).toBe(true);
+    expect(latestProc!.killSignals).toEqual([]);
   });
 
   it('reuses shared context for the same storage state path', async () => {

@@ -245,11 +245,14 @@ export async function stopCamoufoxProcess(proc: ChildProcess): Promise<void> {
 
   const stopPromise = new Promise<void>((resolve) => {
     let settled = false;
+    let killTimer: NodeJS.Timeout | null = null;
 
     const cleanup = () => {
       proc.off('exit', onExit);
       proc.off('error', onError);
-      clearTimeout(killTimer);
+      if (killTimer) {
+        clearTimeout(killTimer);
+      }
     };
 
     const finish = () => {
@@ -263,14 +266,27 @@ export async function stopCamoufoxProcess(proc: ChildProcess): Promise<void> {
 
     const onExit = () => finish();
     const onError = () => finish();
+    const tryKill = (signal: NodeJS.Signals): boolean => {
+      try {
+        return proc.kill(signal);
+      } catch {
+        return false;
+      }
+    };
 
     proc.once('exit', onExit);
     proc.once('error', onError);
 
-    proc.kill('SIGTERM');
-    const killTimer = setTimeout(() => {
+    if (!tryKill('SIGTERM')) {
+      finish();
+      return;
+    }
+
+    killTimer = setTimeout(() => {
       if (isProcessRunning(proc)) {
-        proc.kill('SIGKILL');
+        if (!tryKill('SIGKILL')) {
+          finish();
+        }
       }
     }, CAMOUFOX_STOP_TIMEOUT_MS);
     killTimer.unref();
