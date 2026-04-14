@@ -427,6 +427,8 @@ export class BrowserSession {
   private pageInstance: Page | null = null;
   private stopCamoufoxBrowser: (() => void) | null = null;
   private contextLease: BrowserContextLease | null = null;
+  private lastUsedAt = Date.now();
+  private closePromise: Promise<void> | null = null;
 
   constructor(private readonly options: BrowserSessionOptions) {}
 
@@ -436,6 +438,15 @@ export class BrowserSession {
     this.pageInstance = session.page;
     this.stopCamoufoxBrowser = session.stop;
     this.contextLease = null;
+    this.markUsed();
+  }
+
+  markUsed(): void {
+    this.lastUsedAt = Date.now();
+  }
+
+  getLastUsedAt(): number {
+    return this.lastUsedAt;
   }
 
   async open(url: string): Promise<BrowserSessionOpenResult> {
@@ -532,6 +543,7 @@ export class BrowserSession {
     this.browser = browser;
     this.context = context;
     this.pageInstance = page;
+    this.markUsed();
     await timing.run('persist_storage_state', () => this.persistStorageState(), this.options.storageStatePath ?? null);
     const readyPage = page;
 
@@ -564,6 +576,7 @@ export class BrowserSession {
   }
 
   async observe(): Promise<PageStateSummary> {
+    this.markUsed();
     const page = this.requirePage();
     const summary = (await page.evaluate(() => {
       const normalizeText = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim();
@@ -789,6 +802,7 @@ export class BrowserSession {
   }
 
   async snapshot(): Promise<BrowserSessionSnapshotResult> {
+    this.markUsed();
     const page = this.requirePage();
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     const paths = await capturePageSnapshot(page, this.options.snapshotRootDir, this.options.sessionId);
@@ -800,19 +814,32 @@ export class BrowserSession {
   }
 
   async close(): Promise<void> {
-    await this.pageInstance?.close().catch(() => undefined);
-    if (!this.contextLease) {
-      await this.context?.close().catch(() => undefined);
-      await this.browser?.close().catch(() => undefined);
-      this.stopCamoufoxBrowser?.();
-    } else {
-      await this.contextLease.release();
+    if (this.closePromise) {
+      await this.closePromise;
+      return;
     }
-    this.pageInstance = null;
-    this.context = null;
-    this.browser = null;
-    this.contextLease = null;
-    this.stopCamoufoxBrowser = null;
+
+    this.closePromise = (async () => {
+      await this.pageInstance?.close().catch(() => undefined);
+      if (!this.contextLease) {
+        await this.context?.close().catch(() => undefined);
+        await this.browser?.close().catch(() => undefined);
+        this.stopCamoufoxBrowser?.();
+      } else {
+        await this.contextLease.release();
+      }
+      this.pageInstance = null;
+      this.context = null;
+      this.browser = null;
+      this.contextLease = null;
+      this.stopCamoufoxBrowser = null;
+    })();
+
+    try {
+      await this.closePromise;
+    } finally {
+      this.closePromise = null;
+    }
   }
 
   private requirePage(): Page {

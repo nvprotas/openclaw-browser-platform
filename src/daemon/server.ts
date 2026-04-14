@@ -8,9 +8,10 @@ import { getDefaultStateStore } from './state-store.js';
 import { runIntegratedLitresBootstrap, type LitresBootstrapAttemptResult } from './litres-auth.js';
 import { resolveProfileForSession } from './profile-state.js';
 import { runIntegratedKuperBootstrap } from './kuper-auth.js';
-import { SessionRegistry } from './session-registry.js';
+import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import { isDebugEnabled, appendDebugLog } from '../debug/capture.js';
+import { StateStore } from './state-store.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
@@ -23,9 +24,25 @@ import type {
 } from './types.js';
 
 const VERSION = '0.1.0';
+const SESSION_IDLE_TIMEOUT_ENV = 'BROWSER_PLATFORM_SESSION_IDLE_TIMEOUT_MS';
+const DEFAULT_SESSION_JANITOR_INTERVAL_MS = 60_000;
 
 function isoNow(): string {
   return new Date().toISOString();
+}
+
+export function resolveSessionIdleTimeoutMs(env: NodeJS.ProcessEnv = process.env, override?: number): number {
+  if (override !== undefined) {
+    return override > 0 ? override : DEFAULT_SESSION_IDLE_TIMEOUT_MS;
+  }
+
+  const raw = env[SESSION_IDLE_TIMEOUT_ENV]?.trim();
+  if (!raw) {
+    return DEFAULT_SESSION_IDLE_TIMEOUT_MS;
+  }
+
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SESSION_IDLE_TIMEOUT_MS;
 }
 
 function createTimingCollector() {
@@ -123,12 +140,47 @@ function toErrorResponse(
   };
 }
 
-export async function startDaemonServer(): Promise<DaemonInfo> {
-  const registry = new SessionRegistry();
-  const stateStore = getDefaultStateStore();
-  const controller = new PlaywrightController(stateStore.root);
+type StartDaemonServerOptions = {
+  sessionIdleTimeoutMs?: number;
+  sessionJanitorIntervalMs?: number;
+  registry?: SessionRegistry;
+  stateStore?: StateStore;
+  controller?: PlaywrightController;
+};
+
+export async function runSessionJanitorPass(registry: SessionRegistry, controller: Pick<PlaywrightController, 'closeSession'>): Promise<void> {
+  const expiredSessionIds = registry.findExpiredSessionIds();
+  await Promise.all(
+    expiredSessionIds.map(async (sessionId) => {
+      await controller.closeSession(sessionId);
+      registry.close(sessionId, 'idle_timeout');
+      registry.remove(sessionId);
+    })
+  );
+}
+
+export async function startDaemonServer(options: StartDaemonServerOptions = {}): Promise<DaemonInfo> {
+  const sessionIdleTimeoutMs = resolveSessionIdleTimeoutMs(process.env, options.sessionIdleTimeoutMs);
+  const registry = options.registry ?? new SessionRegistry({ defaultIdleTimeoutMs: sessionIdleTimeoutMs });
+  const stateStore = options.stateStore ?? getDefaultStateStore();
+  const controller = options.controller ?? new PlaywrightController(stateStore.root);
   const token = randomBytes(24).toString('hex');
   const startedAt = new Date().toISOString();
+
+  const closeAndForgetSession = async (
+    sessionId: string,
+    reason: 'manual' | 'idle_timeout' | 'open_failed' | 'controller_missing' | 'shutdown'
+  ): Promise<void> => {
+    await controller.closeSession(sessionId);
+    registry.close(sessionId, reason);
+    registry.remove(sessionId);
+  };
+
+  const janitorIntervalMs = options.sessionJanitorIntervalMs ?? DEFAULT_SESSION_JANITOR_INTERVAL_MS;
+  const janitor = setInterval(() => {
+    void runSessionJanitorPass(registry, controller).catch(() => undefined);
+  }, janitorIntervalMs);
+  janitor.unref();
 
   const server = http.createServer(async (request, response) => {
     const auth = request.headers.authorization;
@@ -214,6 +266,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           url: requestedUrl,
           backend,
           scenarioId: body.scenarioId ?? null,
+          idleTimeoutMs: sessionIdleTimeoutMs,
           profileContext: {
             profileId: profile.profileId,
             persistent: profile.persistent,
@@ -386,7 +439,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           });
           sendJson(response, 200, { ok: true, session: { ...session, trace } });
         } catch (error) {
-          registry.close(record.sessionId);
+          await closeAndForgetSession(record.sessionId, 'open_failed');
           throw error;
         }
         return;
@@ -400,7 +453,7 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
-        sendJson(response, 200, { ok: true, session });
+        sendJson(response, 200, { ok: true, session: registry.touchUsage(session.sessionId) ?? session });
         return;
       }
 
@@ -412,17 +465,18 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        registry.touchUsage(session.sessionId);
         let observed;
         try {
           observed = await controller.observeSession(session.sessionId);
         } catch (err) {
-          if (err instanceof BrowserPlatformError && (err as BrowserPlatformError & { details?: { code?: string } }).details?.code === 'SESSION_NOT_FOUND') {
-            registry.close(session.sessionId);
+          if (err instanceof BrowserPlatformError && err.code === 'SESSION_NOT_FOUND') {
+            await closeAndForgetSession(session.sessionId, 'controller_missing');
           }
           throw err;
         }
         const auth = detectLoginGate(observed.url, observed);
-        registry.touch(session.sessionId, {
+        registry.touchUsage(session.sessionId, {
           url: observed.url,
           title: observed.title,
           authContext: {
@@ -457,17 +511,18 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Missing action payload', { code: 'INVALID_ACTION_PAYLOAD' });
         }
 
+        registry.touchUsage(session.sessionId);
         let action;
         try {
           action = await controller.actInSession(session.sessionId, body.payload);
         } catch (err) {
-          if (err instanceof BrowserPlatformError && (err as BrowserPlatformError & { details?: { code?: string } }).details?.code === 'SESSION_NOT_FOUND') {
-            registry.close(session.sessionId);
+          if (err instanceof BrowserPlatformError && err.code === 'SESSION_NOT_FOUND') {
+            await closeAndForgetSession(session.sessionId, 'controller_missing');
           }
           throw err;
         }
         const auth = detectLoginGate(action.after.url, action.after);
-        registry.touch(session.sessionId, {
+        registry.touchUsage(session.sessionId, {
           url: action.after.url,
           title: action.after.title,
           authContext: {
@@ -517,9 +572,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        registry.touchUsage(session.sessionId);
         const snapshotResult = await controller.snapshotSession(session.sessionId);
         const auth = detectLoginGate(snapshotResult.state.url, snapshotResult.state);
-        registry.touch(session.sessionId, {
+        registry.touchUsage(session.sessionId, {
           url: snapshotResult.state.url,
           title: snapshotResult.state.title,
           authContext: {
@@ -559,8 +615,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
           throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
         }
 
+        const closedSession = registry.close(session.sessionId, 'manual') ?? session;
         await controller.closeSession(session.sessionId);
-        sendJson(response, 200, { ok: true, session: registry.close(session.sessionId) });
+        registry.remove(session.sessionId);
+        sendJson(response, 200, { ok: true, session: closedSession });
         return;
       }
 
@@ -587,7 +645,10 @@ export async function startDaemonServer(): Promise<DaemonInfo> {
   await stateStore.writeDaemonInfo(info);
 
   const shutdown = async (): Promise<void> => {
+    clearInterval(janitor);
+    registry.closeAll('shutdown');
     await controller.closeAll();
+    registry.clear();
     server.close();
   };
 
