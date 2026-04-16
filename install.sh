@@ -116,8 +116,12 @@ install_camoufox() {
 
   log "Installing Camoufox system dependencies (Firefox/GTK)"
   if command -v apt-get >/dev/null 2>&1; then
-    if ! apt-get install -y --no-install-recommends libgtk-3-0 libdbus-glib-1-2 libxt6 2>/dev/null; then
-      "$install_python_bin" -m playwright install-deps firefox \
+    if ! apt-get install -y --no-install-recommends \
+      libasound2t64 libgtk-3-0 libdbus-glib-1-2 libxt6 2>/dev/null; then
+
+      apt-get install -y --no-install-recommends \
+        libasound2 libgtk-3-0 libdbus-glib-1-2 libxt6 2>/dev/null \
+        || "$install_python_bin" -m playwright install-deps firefox \
         || log "Warning: could not install Firefox system dependencies; install libgtk-3-0 manually if camoufox fails"
     fi
   else
