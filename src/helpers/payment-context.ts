@@ -256,6 +256,7 @@ export function createEmptyPaymentContext(): SessionPaymentContext {
   return {
     detected: false,
     shouldReportImmediately: false,
+    terminalExtractionResult: false,
     provider: null,
     phase: null,
     paymentMethod: null,
@@ -382,7 +383,7 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
     href
   });
 
-  const shouldReportImmediately = Boolean(
+  const terminalExtractionResult = Boolean(
     extractionJson &&
       (extractionJson.paymentOrderId ||
         extractionJson.paymentUrl ||
@@ -397,7 +398,8 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
 
   return {
     detected,
-    shouldReportImmediately,
+    shouldReportImmediately: terminalExtractionResult,
+    terminalExtractionResult,
     provider,
     phase,
     paymentMethod,

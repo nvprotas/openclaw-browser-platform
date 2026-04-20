@@ -535,6 +535,20 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           throw new BrowserPlatformError('Missing action payload', { code: 'INVALID_ACTION_PAYLOAD' });
         }
 
+        // Hard-stop enforcement: if session is in terminal extraction state, block further actions.
+        // The agent must return the extractionJson and must not continue browsing.
+        const terminalContext = session.paymentContext;
+        if ((terminalContext.terminalExtractionResult || terminalContext.shouldReportImmediately) && terminalContext.extractionJson) {
+          const hardStop = buildHardStopSignal(session.url, terminalContext);
+          sendJson(response, 409, {
+            ok: false,
+            code: 'HARD_STOP_TERMINAL_EXTRACTION_RESULT',
+            message: 'Session is in terminal extraction state. Return hardStop.finalPayload to the user and do not continue browsing.',
+            hardStop
+          });
+          return;
+        }
+
         registry.touchUsage(session.sessionId);
         let action;
         try {

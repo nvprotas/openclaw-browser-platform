@@ -2,11 +2,12 @@ import type { SberPayExtractionJson, SessionPaymentContext } from '../daemon/typ
 
 export interface HardStopSignal {
   enabled: true;
-  reason: 'gateway_payment_json_ready';
+  terminalMode: true;
+  reason: 'terminal_extraction_result';
   returnPolicy: 'return_final_payload_verbatim';
-  agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).';
-  gateway: 'payecom' | 'platiecom';
-  gatewayUrl: string;
+  agentInstruction: 'СТОП. Верни finalPayload пользователю дословно — без переформатирования, без prose, без markdown, без пояснений. Не продолжай browsing.';
+  gateway?: 'payecom' | 'platiecom';
+  gatewayUrl?: string;
   finalPayload: SberPayExtractionJson;
 }
 
@@ -35,7 +36,8 @@ function resolveGateway(url: string): { gateway: 'payecom' | 'platiecom'; gatewa
 }
 
 export function buildHardStopSignal(currentUrl: string, paymentContext: SessionPaymentContext): HardStopSignal | null {
-  if (!paymentContext.shouldReportImmediately || !paymentContext.extractionJson) {
+  const isTerminal = paymentContext.terminalExtractionResult || paymentContext.shouldReportImmediately;
+  if (!isTerminal || !paymentContext.extractionJson) {
     return null;
   }
 
@@ -46,20 +48,22 @@ export function buildHardStopSignal(currentUrl: string, paymentContext: SessionP
     ...paymentContext.urlHints.map((value) => normalizeUrl(value))
   ].filter((value): value is string => Boolean(value));
 
+  let gateway: { gateway: 'payecom' | 'platiecom'; gatewayUrl: string } | undefined;
   for (const candidate of candidates) {
-    const gateway = resolveGateway(candidate);
-    if (gateway) {
-      return {
-        enabled: true,
-        reason: 'gateway_payment_json_ready',
-        returnPolicy: 'return_final_payload_verbatim',
-        agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).',
-        gateway: gateway.gateway,
-        gatewayUrl: gateway.gatewayUrl,
-        finalPayload: paymentContext.extractionJson
-      };
+    const resolved = resolveGateway(candidate);
+    if (resolved) {
+      gateway = resolved;
+      break;
     }
   }
 
-  return null;
+  return {
+    enabled: true,
+    terminalMode: true,
+    reason: 'terminal_extraction_result',
+    returnPolicy: 'return_final_payload_verbatim',
+    agentInstruction: 'СТОП. Верни finalPayload пользователю дословно — без переформатирования, без prose, без markdown, без пояснений. Не продолжай browsing.',
+    ...(gateway ? { gateway: gateway.gateway, gatewayUrl: gateway.gatewayUrl } : {}),
+    finalPayload: paymentContext.extractionJson
+  };
 }

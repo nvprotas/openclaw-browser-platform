@@ -27,6 +27,7 @@ function createPageState(tag: string): PageStateSummary {
     paymentContext: {
       detected: false,
       shouldReportImmediately: false,
+      terminalExtractionResult: false,
       provider: null,
       phase: null,
       paymentMethod: null,

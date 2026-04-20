@@ -28,7 +28,7 @@ function buildState(input: Partial<PageStateSummary>): PageStateSummary {
   };
 }
 
-describe('gateway hard-stop signal', () => {
+describe('hard-stop signal', () => {
   it('emits hard stop for payecom gateway with extraction payload', () => {
     const state = buildState({
       url: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
@@ -39,9 +39,9 @@ describe('gateway hard-stop signal', () => {
 
     expect(hardStop).toMatchObject({
       enabled: true,
-      reason: 'gateway_payment_json_ready',
+      terminalMode: true,
+      reason: 'terminal_extraction_result',
       returnPolicy: 'return_final_payload_verbatim',
-      agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).',
       gateway: 'payecom',
       gatewayUrl: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       finalPayload: {
@@ -60,18 +60,35 @@ describe('gateway hard-stop signal', () => {
 
     expect(hardStop).toMatchObject({
       enabled: true,
-      reason: 'gateway_payment_json_ready',
+      terminalMode: true,
+      reason: 'terminal_extraction_result',
       returnPolicy: 'return_final_payload_verbatim',
-      agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).',
       gateway: 'platiecom'
     });
     expect(hardStop?.finalPayload.mdOrder).toBe('md-456');
   });
 
-  it('does not emit hard stop for non-gateway checkout URL', () => {
+  it('emits hard stop even without gateway URL when terminalExtractionResult is true and extractionJson is present', () => {
+    // litres checkout page with formUrl hint pointing to payecom, but pay_ru (not matched by gateway regex)
+    // Previously this returned null — now it must return a hardstop
     const state = buildState({
       url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
-      urlHints: ['https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff']
+      urlHints: ['https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff']
+    });
+
+    const hardStop = buildHardStopSignal(state.url, state.paymentContext);
+
+    // urlHints contains a valid payecom gateway URL — should resolve gateway
+    expect(hardStop).not.toBeNull();
+    expect(hardStop?.terminalMode).toBe(true);
+    expect(hardStop?.finalPayload).toBeDefined();
+  });
+
+  it('does not emit hard stop when no extractionJson is present', () => {
+    // plain litres page without any payment identifiers
+    const state = buildState({
+      url: 'https://www.litres.ru/',
+      visibleTexts: ['Купить']
     });
 
     const hardStop = buildHardStopSignal(state.url, state.paymentContext);
@@ -79,7 +96,7 @@ describe('gateway hard-stop signal', () => {
     expect(hardStop).toBeNull();
   });
 
-  it('adds explicit hard-stop observation so caller does not continue normal flow', () => {
+  it('adds HARD_STOP_TERMINAL_EXTRACTION_RESULT observation so caller does not continue normal flow', () => {
     const before = buildState({
       url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
       visibleTexts: ['Российская карта', 'Продолжить']
@@ -90,9 +107,28 @@ describe('gateway hard-stop signal', () => {
     });
 
     const observations = buildPostActionObservations(before, after);
-    const hardStopObservation = observations.find((item) => item.code === 'HARD_STOP_GATEWAY_PAYMENT_JSON_READY');
+    const hardStopObservation = observations.find((item) => item.code === 'HARD_STOP_TERMINAL_EXTRACTION_RESULT');
 
     expect(hardStopObservation).toBeTruthy();
+    expect(hardStopObservation?.level).toBe('warning');
     expect(hardStopObservation?.message).toContain('do not continue normal flow');
+  });
+
+  it('PAYMENT_IDS_DETECTED observation is warning level when terminalExtractionResult fires', () => {
+    const before = buildState({
+      url: 'https://www.litres.ru/cart/',
+      visibleTexts: ['Корзина']
+    });
+    const after = buildState({
+      url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
+      urlHints: ['https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff']
+    });
+
+    const observations = buildPostActionObservations(before, after);
+    const detected = observations.find((item) => item.code === 'PAYMENT_IDS_DETECTED');
+
+    expect(detected).toBeTruthy();
+    expect(detected?.level).toBe('warning');
+    expect(detected?.message).toContain('СТОП');
   });
 });
