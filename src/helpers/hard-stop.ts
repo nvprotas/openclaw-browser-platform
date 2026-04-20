@@ -3,6 +3,8 @@ import type { SberPayExtractionJson, SessionPaymentContext } from '../daemon/typ
 export interface HardStopSignal {
   enabled: true;
   reason: 'gateway_payment_json_ready';
+  returnPolicy: 'return_final_payload_verbatim';
+  agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).';
   gateway: 'payecom' | 'platiecom';
   gatewayUrl: string;
   finalPayload: SberPayExtractionJson;
@@ -50,6 +52,8 @@ export function buildHardStopSignal(currentUrl: string, paymentContext: SessionP
       return {
         enabled: true,
         reason: 'gateway_payment_json_ready',
+        returnPolicy: 'return_final_payload_verbatim',
+        agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).',
         gateway: gateway.gateway,
         gatewayUrl: gateway.gatewayUrl,
         finalPayload: paymentContext.extractionJson
