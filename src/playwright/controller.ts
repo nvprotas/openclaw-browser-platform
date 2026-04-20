@@ -16,6 +16,7 @@ import type { SessionBackend } from '../daemon/types.js';
 
 export class PlaywrightController {
   private readonly sessions = new Map<string, BrowserSession>();
+  private readonly sessionOperationTails = new Map<string, Promise<void>>();
   private readonly traceWriter: TraceWriter;
   private readonly contextPool = new BrowserContextPool();
 
@@ -47,11 +48,13 @@ export class PlaywrightController {
   }
 
   async observeSession(sessionId: string): Promise<PageStateSummary> {
-    const session = this.requireSession(sessionId);
-    session.markUsed();
-    const result = await session.observe();
-    await this.debugCapture(sessionId, 'observe', { sessionId, url: result.url, title: result.title });
-    return result;
+    return this.runExclusive(sessionId, 'observe', async () => {
+      const session = this.requireSession(sessionId);
+      session.markUsed();
+      const result = await session.observe();
+      await this.debugCapture(sessionId, 'observe', { sessionId, url: result.url, title: result.title });
+      return result;
+    });
   }
 
   async adoptSession(
@@ -62,30 +65,32 @@ export class PlaywrightController {
       backend?: SessionBackend;
     }
   ): Promise<BrowserSessionOpenResult> {
-    await this.closeSession(sessionId);
+    return this.runExclusive(sessionId, 'adopt', async () => {
+      await this.closeSessionUnlocked(sessionId);
 
-    const session = new BrowserSession({
-      sessionId,
-      snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots'),
-      storageStatePath: options?.storageStatePath,
-      backend: options?.backend
+      const session = new BrowserSession({
+        sessionId,
+        snapshotRootDir: path.join(this.rootDir, 'artifacts', 'snapshots'),
+        storageStatePath: options?.storageStatePath,
+        backend: options?.backend
+      });
+
+      try {
+        session.adoptExisting(adopted);
+        session.markUsed();
+        await session.persistStorageState();
+        const page = session.page();
+        this.sessions.set(sessionId, session);
+
+        return {
+          url: page.url(),
+          title: await page.title()
+        };
+      } catch (error) {
+        await session.close().catch(() => undefined);
+        throw error;
+      }
     });
-
-    try {
-      session.adoptExisting(adopted);
-      session.markUsed();
-      await session.persistStorageState();
-      const page = session.page();
-      this.sessions.set(sessionId, session);
-
-      return {
-        url: page.url(),
-        title: await page.title()
-      };
-    } catch (error) {
-      await session.close().catch(() => undefined);
-      throw error;
-    }
   }
 
   async writeTrace(sessionId: string, stepType: string, payload: unknown) {
@@ -93,40 +98,50 @@ export class PlaywrightController {
   }
 
   async actInSession(sessionId: string, payload: SessionActionPayload) {
-    const session = this.requireSession(sessionId);
-    session.markUsed();
-    const { before, after } = await runStep(session, payload);
-    await session.persistStorageState();
-    const result = buildActionResult(payload, before, after);
-    await this.debugCapture(sessionId, `act-${payload.action}`, {
-      sessionId,
-      action: result.action,
-      target: result.target,
-      input: result.input,
-      before: { url: before.url, title: before.title },
-      after: { url: after.url, title: after.title },
-      changes: result.changes
+    return this.runExclusive(sessionId, 'act', async () => {
+      const session = this.requireSession(sessionId);
+      session.markUsed();
+      const { before, after } = await runStep(session, payload);
+      await session.persistStorageState();
+      const result = buildActionResult(payload, before, after);
+      await this.debugCapture(sessionId, `act-${payload.action}`, {
+        sessionId,
+        action: result.action,
+        target: result.target,
+        input: result.input,
+        before: { url: before.url, title: before.title },
+        after: { url: after.url, title: after.title },
+        changes: result.changes
+      });
+      return result;
     });
-    return result;
   }
 
   async snapshotSession(sessionId: string): Promise<BrowserSessionSnapshotResult> {
-    const session = this.requireSession(sessionId);
-    session.markUsed();
-    const result = await session.snapshot();
-    if (isDebugEnabled()) {
-      await captureDebugStepJson(this.rootDir, sessionId, 'snapshot', {
-        sessionId,
-        screenshotPath: result.screenshotPath,
-        htmlPath: result.htmlPath,
-        url: result.state.url,
-        title: result.state.title
-      });
-    }
-    return result;
+    return this.runExclusive(sessionId, 'snapshot', async () => {
+      const session = this.requireSession(sessionId);
+      session.markUsed();
+      const result = await session.snapshot();
+      if (isDebugEnabled()) {
+        await captureDebugStepJson(this.rootDir, sessionId, 'snapshot', {
+          sessionId,
+          screenshotPath: result.screenshotPath,
+          htmlPath: result.htmlPath,
+          url: result.state.url,
+          title: result.state.title
+        });
+      }
+      return result;
+    });
   }
 
   async closeSession(sessionId: string): Promise<void> {
+    await this.runExclusive(sessionId, 'close', async () => {
+      await this.closeSessionUnlocked(sessionId);
+    });
+  }
+
+  private async closeSessionUnlocked(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
       return;
@@ -134,6 +149,54 @@ export class PlaywrightController {
 
     this.sessions.delete(sessionId);
     await session.close();
+  }
+
+  private async runExclusive<T>(sessionId: string, opName: string, fn: () => Promise<T>): Promise<T> {
+    const queuedAtMs = Date.now();
+    const queuedAt = new Date(queuedAtMs).toISOString();
+    const previousTail = this.sessionOperationTails.get(sessionId) ?? Promise.resolve();
+    const operationPromise = previousTail.catch(() => undefined).then(async () => {
+      const startedAtMs = Date.now();
+      const startedAt = new Date(startedAtMs).toISOString();
+      let status: 'ok' | 'error' = 'ok';
+
+      try {
+        return await fn();
+      } catch (error) {
+        status = 'error';
+        throw error;
+      } finally {
+        const finishedAtMs = Date.now();
+        if (isDebugEnabled()) {
+          void appendDebugLog(this.rootDir, {
+            source: 'browser',
+            event: 'session-operation',
+            sessionId,
+            opName,
+            status,
+            queuedAt,
+            startedAt,
+            finishedAt: new Date(finishedAtMs).toISOString(),
+            waitedMs: startedAtMs - queuedAtMs,
+            runMs: finishedAtMs - startedAtMs
+          });
+        }
+      }
+    });
+
+    const tail = operationPromise.then(
+      () => undefined,
+      () => undefined
+    );
+    this.sessionOperationTails.set(sessionId, tail);
+
+    try {
+      return await operationPromise;
+    } finally {
+      if (this.sessionOperationTails.get(sessionId) === tail) {
+        this.sessionOperationTails.delete(sessionId);
+      }
+    }
   }
 
   hasSession(sessionId: string): boolean {
