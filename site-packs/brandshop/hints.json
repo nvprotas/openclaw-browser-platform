@@ -2,11 +2,16 @@
   "button_texts": {
     "search_submit": ["Найти", "Искать", "Search", "Изменить запрос"],
     "add_to_cart": ["Добавить в корзину", "В корзину"],
-    "open_cart": ["Корзина", "Cart", "Оформить заказ"]
+    "open_cart": ["Корзина", "Cart", "Оформить заказ"],
+    "open_checkout": ["Оформить заказ", "Перейти к оформлению"],
+    "delivery_pickup": ["Самовывоз", "Забрать из магазина"],
+    "checkout_payment_method": ["SberPay", "СберПэй", "Сбер Пэй"],
+    "checkout_confirm": ["Подтвердить заказ"]
   },
   "selectors": {
     "search_input": [
       "input[type='search']",
+      "input[name='st']",
       "input[name='q']",
       "input[name='search']",
       "form[action*='/search'] input"
@@ -22,6 +27,16 @@
       "a[href^='/goods/']",
       ".product-card a[href*='/goods/']"
     ],
+    "search_empty_state": [
+      ".search-empty",
+      ".blank-page__title",
+      "button:has-text('Изменить запрос')"
+    ],
+    "size_option": [
+      "button:not([disabled])[class*='size']",
+      "[class*='size'] button:not([disabled])",
+      "[class*='product-size'] button:not([disabled])"
+    ],
     "add_to_cart": [
       "button.product-order__btn._add-cart",
       "button[class*='product-order__btn'][class*='_add-cart']",
@@ -33,7 +48,28 @@
       ".actions-header__icon-btn[aria-label='cart']",
       "a[href='/checkout/']",
       "a[href*='/checkout']"
-    ]
+    ],
+    "cart_counter": [
+      "button[aria-label='cart'] .header-counter__label span",
+      ".cart-header .header-counter__label span"
+    ],
+    "checkout": [
+      "a[href='/checkout/']",
+      "a[href*='/checkout']",
+      "button:has-text('Оформить заказ')"
+    ],
+    "delivery_pickup": [
+      "label:has-text('Самовывоз')",
+      "button:has-text('Самовывоз')",
+      "[role='radio']:has-text('Самовывоз')"
+    ],
+    "payment_sberpay": [
+      "label:has-text('SberPay')",
+      "button:has-text('SberPay')",
+      "label:has-text('Сбер')",
+      "button:has-text('Сбер')"
+    ],
+    "checkout_confirm": ["button:has-text('Подтвердить заказ')"]
   },
   "page_signatures": {
     "home": [
@@ -47,7 +83,8 @@
       "Результаты поиска",
       "Изменить запрос",
       "По этому запросу ничего не найдено",
-      "/search/?q="
+      "/search/?q=",
+      "/search/?st="
     ],
     "product_page": [
       "/goods/",
@@ -55,12 +92,18 @@
       "Доступные размеры",
       "Заказ в один клик"
     ],
-    "cart": [
-      "/cart/",
-      "Корзина",
-      "Оформить заказ",
+    "cart": ["/cart/", "Корзина", "Оформить заказ", "Состав заказа", "в корзине"],
+    "checkout": [
+      "/checkout/",
       "Оформление заказа",
-      "Перейти к новинкам"
+      "Самовывоз",
+      "Способ оплаты",
+      "SberPay",
+      "Подтвердить заказ"
+    ],
+    "yoomoney_boundary": [
+      "yoomoney.ru/checkout/payments/v2/contract",
+      "orderId="
     ]
   }
 }

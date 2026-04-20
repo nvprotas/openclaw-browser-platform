@@ -56,8 +56,14 @@ describe('payment context extraction', () => {
   it('extracts LitRes checkout ids and payecom order id from iframe hint', () => {
     const state = buildState({
       url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
-      visibleTexts: ['Назад', 'Оплата российской картой', 'Отсутствует подключение к Интернету'],
-      urlHints: ['https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff']
+      visibleTexts: [
+        'Назад',
+        'Оплата российской картой',
+        'Отсутствует подключение к Интернету'
+      ],
+      urlHints: [
+        'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff'
+      ]
     });
 
     expect(state.paymentContext).toMatchObject({
@@ -66,19 +72,20 @@ describe('payment context extraction', () => {
       phase: 'litres_checkout',
       paymentMethod: 'russian_card',
       paymentSystem: 'sbercard',
-      paymentUrl: 'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+      paymentUrl:
+        'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       paymentOrderId: '019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       litresOrder: '1577454527',
       traceId: 'df3fb423-c3c7-44af-88bb-b5871cacb080',
       extractionJson: {
         paymentMethod: 'SberPay',
-        paymentUrl: 'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+        paymentUrl:
+          'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
         paymentOrderId: '019d44bf-26ad-5eb3-13d1-e41086dc9cff',
         source: 'url'
       }
     });
   });
-
 
   it('extracts nested payment identifiers from encoded handoff hints without manual snapshot html', () => {
     const state = buildState({
@@ -99,15 +106,19 @@ describe('payment context extraction', () => {
       shouldReportImmediately: true,
       phase: 'platiecom_deeplink',
       provider: 'sberpay',
-      paymentUrl: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+      paymentUrl:
+        'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       paymentOrderId: '019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       bankInvoiceId: 'bank-123',
       mdOrder: 'md-456',
       merchantOrderId: 'merchant-id',
       merchantOrderNumber: 'merchant-number',
-      formUrl: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff'
+      formUrl:
+        'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff'
     });
-    expect(state.paymentContext.href).toContain('id.sber.ru/CSAFront/oidc/authorize.do');
+    expect(state.paymentContext.href).toContain(
+      'id.sber.ru/CSAFront/oidc/authorize.do'
+    );
     expect(state.paymentContext.extractionJson).toMatchObject({
       source: 'deeplink',
       bankInvoiceId: 'bank-123',
@@ -122,7 +133,9 @@ describe('payment context extraction', () => {
       url: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       title: 'Платёжная страница',
       visibleTexts: ['Войти по Сбер ID', 'Оплатить'],
-      visibleButtons: [{ text: 'Оплатить', role: 'button', type: null, ariaLabel: null }],
+      visibleButtons: [
+        { text: 'Оплатить', role: 'button', type: null, ariaLabel: null }
+      ],
       urlHints: [
         'https://id.sber.ru/CSAFront/oidc/authorize.do?redirect_uri=https%3A%2F%2Fpayecom.ru%2Fsberid&state=7f551e22173a4c979988aba5703059d8'
       ]
@@ -133,22 +146,87 @@ describe('payment context extraction', () => {
       shouldReportImmediately: true,
       provider: 'sberpay',
       phase: 'payecom_boundary',
-      paymentUrl: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+      paymentUrl:
+        'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       paymentOrderId: '019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       extractionJson: {
         paymentMethod: 'SberPay',
-        paymentUrl: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+        paymentUrl:
+          'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
         paymentOrderId: '019d44bf-26ad-5eb3-13d1-e41086dc9cff',
         source: 'url'
       }
     });
-    expect(state.paymentContext.href).toContain('id.sber.ru/CSAFront/oidc/authorize.do');
+    expect(state.paymentContext.href).toContain(
+      'id.sber.ru/CSAFront/oidc/authorize.do'
+    );
 
     const summaryCodes = summarizeObservation(state).map((item) => item.code);
     expect(summaryCodes).toContain('PAYMENT_BOUNDARY_VISIBLE');
     expect(summaryCodes).toContain('SBERPAY_ENTRY_VISIBLE');
     expect(summaryCodes).toContain('SBER_ID_HANDOFF_VISIBLE');
     expect(summaryCodes).toContain('PAYMENT_BOUNDARY_CARD_FORM_VISIBLE');
+  });
+
+  it('detects Brandshop checkout before payment identifiers are created', () => {
+    const state = buildState({
+      url: 'https://brandshop.ru/checkout/',
+      visibleTexts: [
+        'Оформление заказа',
+        'Самовывоз',
+        'SberPay',
+        'Подтвердить заказ'
+      ],
+      visibleButtons: [
+        {
+          text: 'Подтвердить заказ',
+          role: 'button',
+          type: null,
+          ariaLabel: null
+        }
+      ]
+    });
+
+    expect(state.paymentContext).toMatchObject({
+      detected: true,
+      shouldReportImmediately: false,
+      provider: 'sberpay',
+      phase: 'brandshop_checkout',
+      paymentOrderId: null,
+      paymentUrl: null
+    });
+
+    expect(summarizeObservation(state).map((item) => item.code)).toContain(
+      'CHECKOUT_VISIBLE'
+    );
+  });
+
+  it('extracts Brandshop SberPay order id from YooMoney boundary', () => {
+    const state = buildState({
+      url: 'https://yoomoney.ru/checkout/payments/v2/contract?orderId=2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+      title: 'YooMoney',
+      visibleTexts: ['SberPay']
+    });
+
+    expect(state.paymentContext).toMatchObject({
+      detected: true,
+      shouldReportImmediately: true,
+      provider: 'sberpay',
+      phase: 'yoomoney_boundary',
+      paymentUrl:
+        'https://yoomoney.ru/checkout/payments/v2/contract?orderId=2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+      paymentOrderId: '2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+      extractionJson: {
+        paymentMethod: 'SberPay',
+        paymentUrl:
+          'https://yoomoney.ru/checkout/payments/v2/contract?orderId=2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+        paymentOrderId: '2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+        source: 'url'
+      }
+    });
+
+    const summaryCodes = summarizeObservation(state).map((item) => item.code);
+    expect(summaryCodes).toContain('PAYMENT_BOUNDARY_VISIBLE');
   });
 });
 
@@ -160,8 +238,13 @@ describe('payment observations', () => {
     });
     const after = buildState({
       url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
-      visibleTexts: ['Оплата российской картой', 'Отсутствует подключение к Интернету'],
-      urlHints: ['https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff']
+      visibleTexts: [
+        'Оплата российской картой',
+        'Отсутствует подключение к Интернету'
+      ],
+      urlHints: [
+        'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff'
+      ]
     });
 
     const observations = buildPostActionObservations(before, after);
@@ -173,8 +256,14 @@ describe('payment observations', () => {
         })
       ])
     );
-    const paymentObservation = observations.find((item) => item.code === 'PAYMENT_IDS_DETECTED');
-    expect(paymentObservation?.message).toContain('Return paymentContext.extractionJson as JSON before continuing');
-    expect(paymentObservation?.message).toContain('"paymentOrderId":"019d44bf-26ad-5eb3-13d1-e41086dc9cff"');
+    const paymentObservation = observations.find(
+      (item) => item.code === 'PAYMENT_IDS_DETECTED'
+    );
+    expect(paymentObservation?.message).toContain(
+      'Return paymentContext.extractionJson as JSON before continuing'
+    );
+    expect(paymentObservation?.message).toContain(
+      '"paymentOrderId":"019d44bf-26ad-5eb3-13d1-e41086dc9cff"'
+    );
   });
 });

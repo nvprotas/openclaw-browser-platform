@@ -1,31 +1,54 @@
 import { BrowserPlatformError } from '../core/errors.js';
-import type { SessionActionPayload, SessionPaymentContext } from '../daemon/types.js';
+import type {
+  SessionActionPayload,
+  SessionPaymentContext
+} from '../daemon/types.js';
 import { withRetry } from '../helpers/retries.js';
 import { buildPostActionObservations } from '../helpers/validation.js';
 import { buildActionDiff } from '../helpers/tracing.js';
-import type { BrowserSession, PageStateSummary } from '../playwright/browser-session.js';
+import type {
+  BrowserSession,
+  PageStateSummary
+} from '../playwright/browser-session.js';
 
 function normalize(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-async function resolveLocator(session: BrowserSession, action: Exclude<SessionActionPayload, { action: 'navigate' | 'wait_for' }>) {
+async function resolveLocator(
+  session: BrowserSession,
+  action: Exclude<SessionActionPayload, { action: 'navigate' | 'wait_for' }>
+) {
   if (action.selector) {
     return session.page().locator(action.selector).first();
   }
 
   if (action.role) {
-    return session.page().getByRole(action.role as never, action.name ? { name: action.name } : undefined).first();
+    return session
+      .page()
+      .getByRole(
+        action.role as never,
+        action.name ? { name: action.name } : undefined
+      )
+      .first();
   }
 
   if (action.text) {
-    return session.page().getByText(action.text, { exact: action.exact ?? false }).first();
+    return session
+      .page()
+      .getByText(action.text, { exact: action.exact ?? false })
+      .first();
   }
 
-  throw new BrowserPlatformError('Action target requires selector, role, or text', { code: 'ACTION_TARGET_REQUIRED' });
+  throw new BrowserPlatformError(
+    'Action target requires selector, role, or text',
+    { code: 'ACTION_TARGET_REQUIRED' }
+  );
 }
 
-async function waitForNavigationSettled(session: BrowserSession): Promise<void> {
+async function waitForNavigationSettled(
+  session: BrowserSession
+): Promise<void> {
   await Promise.race([
     session.page().waitForLoadState('domcontentloaded', { timeout: 3000 }),
     new Promise((resolve) => setTimeout(resolve, 350))
@@ -55,7 +78,9 @@ function paymentFingerprint(context: SessionPaymentContext): string {
 }
 
 function isPaymentFlowUrl(url: string): boolean {
-  return /\/purchase\/ppd\b|payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink/i.test(url);
+  return /\/purchase\/ppd\b|brandshop\.ru\/checkout\/?|payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|yoomoney\.ru\/checkout\/payments\/v2\/contract/i.test(
+    url
+  );
 }
 
 function shouldStabilizeForPaymentFlow(
@@ -67,12 +92,20 @@ function shouldStabilizeForPaymentFlow(
     return false;
   }
 
-  const selector = 'selector' in payload ? payload.selector ?? '' : '';
+  const selector = 'selector' in payload ? (payload.selector ?? '') : '';
   const targetName = 'name' in payload ? normalize(payload.name) : '';
   const targetText = 'text' in payload ? normalize(payload.text) : '';
   const targetBlob = `${selector} ${targetName} ${targetText}`.toLowerCase();
 
-  if (/paymentlayout__payment--button|sbid-button|перейти к покупке|продолжить|сбер id|sber id/.test(targetBlob)) {
+  if (/sberpay|sber id|checkout|confirm|payment|delivery/.test(targetBlob)) {
+    return true;
+  }
+
+  if (
+    /paymentlayout__payment--button|sbid-button|перейти к покупке|продолжить|сбер id|sber id/.test(
+      targetBlob
+    )
+  ) {
     return true;
   }
 
@@ -83,8 +116,12 @@ function shouldStabilizeForPaymentFlow(
     after.paymentContext.detected ||
     before.paymentContext.phase === 'litres_checkout' ||
     after.paymentContext.phase === 'litres_checkout' ||
+    before.paymentContext.phase === 'brandshop_checkout' ||
+    after.paymentContext.phase === 'brandshop_checkout' ||
     before.paymentContext.phase === 'payecom_boundary' ||
-    after.paymentContext.phase === 'payecom_boundary'
+    after.paymentContext.phase === 'payecom_boundary' ||
+    before.paymentContext.phase === 'yoomoney_boundary' ||
+    after.paymentContext.phase === 'yoomoney_boundary'
   );
 }
 
@@ -105,21 +142,43 @@ async function stabilizeAfterPaymentAction(
     await new Promise((resolve) => setTimeout(resolve, 300));
     const current = await session.observe();
 
-    const paymentChanged = paymentFingerprint(current.paymentContext) !== initialFingerprint;
-    const urlHintsChanged = current.urlHints.join('\n') !== best.urlHints.join('\n');
-    const textsChanged = current.visibleTexts.join('\n') !== best.visibleTexts.join('\n');
-    const buttonsChanged = current.visibleButtons.map((button) => `${button.text}|${button.ariaLabel ?? ''}`).join('\n') !==
-      best.visibleButtons.map((button) => `${button.text}|${button.ariaLabel ?? ''}`).join('\n');
+    const paymentChanged =
+      paymentFingerprint(current.paymentContext) !== initialFingerprint;
+    const urlHintsChanged =
+      current.urlHints.join('\n') !== best.urlHints.join('\n');
+    const textsChanged =
+      current.visibleTexts.join('\n') !== best.visibleTexts.join('\n');
+    const buttonsChanged =
+      current.visibleButtons
+        .map((button) => `${button.text}|${button.ariaLabel ?? ''}`)
+        .join('\n') !==
+      best.visibleButtons
+        .map((button) => `${button.text}|${button.ariaLabel ?? ''}`)
+        .join('\n');
 
-    if (paymentChanged || urlHintsChanged || textsChanged || buttonsChanged || current.url !== best.url || current.title !== best.title) {
+    if (
+      paymentChanged ||
+      urlHintsChanged ||
+      textsChanged ||
+      buttonsChanged ||
+      current.url !== best.url ||
+      current.title !== best.title
+    ) {
       best = current;
     }
 
     if (
       current.paymentContext.shouldReportImmediately ||
       current.paymentContext.phase === 'payecom_boundary' ||
-      current.visibleTexts.some((text) => /войти по сбер id|номер карты|cvc|cvv|месяц\/год|оплатить/i.test(text)) ||
-      current.urlHints.some((hint) => /payecom\.ru\/pay(?:_ru)?|id\.sber\.ru/i.test(hint))
+      current.paymentContext.phase === 'yoomoney_boundary' ||
+      current.visibleTexts.some((text) =>
+        /войти по сбер id|номер карты|cvc|cvv|месяц\/год|оплатить/i.test(text)
+      ) ||
+      current.urlHints.some((hint) =>
+        /payecom\.ru\/pay(?:_ru)?|yoomoney\.ru\/checkout\/payments\/v2\/contract|id\.sber\.ru/i.test(
+          hint
+        )
+      )
     ) {
       best = current;
       break;
@@ -129,23 +188,56 @@ async function stabilizeAfterPaymentAction(
   return best;
 }
 
-export async function runStep(session: BrowserSession, payload: SessionActionPayload): Promise<{ before: PageStateSummary; after: PageStateSummary }> {
+export async function runStep(
+  session: BrowserSession,
+  payload: SessionActionPayload
+): Promise<{ before: PageStateSummary; after: PageStateSummary }> {
   const before = await session.observe();
 
   if (payload.action === 'navigate') {
     await withRetry(async () => {
-      await session.page().goto(payload.url, { waitUntil: 'domcontentloaded', timeout: payload.timeoutMs ?? 15_000 });
+      await session
+        .page()
+        .goto(payload.url, {
+          waitUntil: 'domcontentloaded',
+          timeout: payload.timeoutMs ?? 15_000
+        });
       await session.waitForInitialLoad();
     });
   } else if (payload.action === 'wait_for') {
     if (payload.selector) {
-      await session.page().waitForSelector(payload.selector, { state: payload.state ?? 'visible', timeout: payload.timeoutMs ?? 5_000 });
+      await session
+        .page()
+        .waitForSelector(payload.selector, {
+          state: payload.state ?? 'visible',
+          timeout: payload.timeoutMs ?? 5_000
+        });
     } else if (payload.text) {
-      await session.page().getByText(payload.text, { exact: payload.exact ?? false }).first().waitFor({ state: payload.state ?? 'visible', timeout: payload.timeoutMs ?? 5_000 });
+      await session
+        .page()
+        .getByText(payload.text, { exact: payload.exact ?? false })
+        .first()
+        .waitFor({
+          state: payload.state ?? 'visible',
+          timeout: payload.timeoutMs ?? 5_000
+        });
     } else if (payload.role) {
-      await session.page().getByRole(payload.role as never, payload.name ? { name: payload.name } : undefined).first().waitFor({ state: payload.state ?? 'visible', timeout: payload.timeoutMs ?? 5_000 });
+      await session
+        .page()
+        .getByRole(
+          payload.role as never,
+          payload.name ? { name: payload.name } : undefined
+        )
+        .first()
+        .waitFor({
+          state: payload.state ?? 'visible',
+          timeout: payload.timeoutMs ?? 5_000
+        });
     } else {
-      throw new BrowserPlatformError('wait_for requires selector, text, or role', { code: 'ACTION_TARGET_REQUIRED' });
+      throw new BrowserPlatformError(
+        'wait_for requires selector, text, or role',
+        { code: 'ACTION_TARGET_REQUIRED' }
+      );
     }
   } else {
     const locator = await resolveLocator(session, payload);
@@ -158,33 +250,50 @@ export async function runStep(session: BrowserSession, payload: SessionActionPay
     }
 
     if (payload.action === 'fill') {
-      await locator.fill(payload.value, { timeout: payload.timeoutMs ?? 5_000 });
+      await locator.fill(payload.value, {
+        timeout: payload.timeoutMs ?? 5_000
+      });
     }
 
     if (payload.action === 'type') {
       if (payload.clearFirst) {
         await locator.fill('', { timeout: payload.timeoutMs ?? 5_000 });
       }
-      await locator.type(payload.value, { delay: payload.delayMs ?? 20, timeout: payload.timeoutMs ?? 5_000 });
+      await locator.type(payload.value, {
+        delay: payload.delayMs ?? 20,
+        timeout: payload.timeoutMs ?? 5_000
+      });
     }
 
     if (payload.action === 'press') {
-      await locator.press(payload.key, { delay: payload.delayMs ?? 0, timeout: payload.timeoutMs ?? 5_000 });
+      await locator.press(payload.key, {
+        delay: payload.delayMs ?? 0,
+        timeout: payload.timeoutMs ?? 5_000
+      });
       await waitForNavigationSettled(session);
     }
   }
 
   const observedAfter = await session.observe();
-  const after = await stabilizeAfterPaymentAction(session, payload, before, observedAfter);
+  const after = await stabilizeAfterPaymentAction(
+    session,
+    payload,
+    before,
+    observedAfter
+  );
   return { before, after };
 }
 
-export function buildActionResult(payload: SessionActionPayload, before: PageStateSummary, after: PageStateSummary) {
+export function buildActionResult(
+  payload: SessionActionPayload,
+  before: PageStateSummary,
+  after: PageStateSummary
+) {
   return {
     action: payload.action,
     target: {
-      selector: 'selector' in payload ? payload.selector ?? null : null,
-      role: 'role' in payload ? payload.role ?? null : null,
+      selector: 'selector' in payload ? (payload.selector ?? null) : null,
+      role: 'role' in payload ? (payload.role ?? null) : null,
       name: 'name' in payload ? normalize(payload.name) || null : null,
       text: 'text' in payload ? normalize(payload.text) || null : null
     },

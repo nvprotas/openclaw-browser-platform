@@ -41,7 +41,8 @@ describe('gateway hard-stop signal', () => {
       enabled: true,
       reason: 'gateway_payment_json_ready',
       gateway: 'payecom',
-      gatewayUrl: 'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+      gatewayUrl:
+        'https://payecom.ru/pay?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
       finalPayload: {
         paymentOrderId: '019d44bf-26ad-5eb3-13d1-e41086dc9cff'
       }
@@ -64,10 +65,34 @@ describe('gateway hard-stop signal', () => {
     expect(hardStop?.finalPayload.mdOrder).toBe('md-456');
   });
 
+  it('emits hard stop for YooMoney gateway with Brandshop SberPay order id', () => {
+    const state = buildState({
+      url: 'https://yoomoney.ru/checkout/payments/v2/contract/sberpay?orderId=2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+      visibleTexts: ['SberPay']
+    });
+
+    const hardStop = buildHardStopSignal(state.url, state.paymentContext);
+
+    expect(hardStop).toMatchObject({
+      enabled: true,
+      reason: 'gateway_payment_json_ready',
+      gateway: 'yoomoney',
+      gatewayUrl:
+        'https://yoomoney.ru/checkout/payments/v2/contract/sberpay?orderId=2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+      finalPayload: {
+        paymentOrderId: '2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e',
+        paymentUrl:
+          'https://yoomoney.ru/checkout/payments/v2/contract/sberpay?orderId=2f4f5a72-9e0d-4b66-8c1f-1d650a8d8f2e'
+      }
+    });
+  });
+
   it('does not emit hard stop for non-gateway checkout URL', () => {
     const state = buildState({
       url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
-      urlHints: ['https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff']
+      urlHints: [
+        'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff'
+      ]
     });
 
     const hardStop = buildHardStopSignal(state.url, state.paymentContext);
@@ -86,9 +111,13 @@ describe('gateway hard-stop signal', () => {
     });
 
     const observations = buildPostActionObservations(before, after);
-    const hardStopObservation = observations.find((item) => item.code === 'HARD_STOP_GATEWAY_PAYMENT_JSON_READY');
+    const hardStopObservation = observations.find(
+      (item) => item.code === 'HARD_STOP_GATEWAY_PAYMENT_JSON_READY'
+    );
 
     expect(hardStopObservation).toBeTruthy();
-    expect(hardStopObservation?.message).toContain('do not continue normal flow');
+    expect(hardStopObservation?.message).toContain(
+      'do not continue normal flow'
+    );
   });
 });

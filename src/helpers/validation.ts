@@ -1,4 +1,7 @@
-import type { ActionObservationSummary, SessionPaymentContext } from '../daemon/types.js';
+import type {
+  ActionObservationSummary,
+  SessionPaymentContext
+} from '../daemon/types.js';
 import type { PageStateSummary } from '../playwright/browser-session.js';
 import { buildActionDiff, summarizeObservation } from './tracing.js';
 import { buildHardStopSignal } from './hard-stop.js';
@@ -31,28 +34,44 @@ function summarizePaymentContext(context: SessionPaymentContext): string {
     context.bankInvoiceId ? `bankInvoiceId=${context.bankInvoiceId}` : null,
     context.mdOrder ? `mdOrder=${context.mdOrder}` : null,
     context.formUrl ? `formUrl=${context.formUrl}` : null,
-    context.merchantOrderId ? `merchantOrderId=${context.merchantOrderId}` : null,
-    context.merchantOrderNumber ? `merchantOrderNumber=${context.merchantOrderNumber}` : null
+    context.merchantOrderId
+      ? `merchantOrderId=${context.merchantOrderId}`
+      : null,
+    context.merchantOrderNumber
+      ? `merchantOrderNumber=${context.merchantOrderNumber}`
+      : null
   ].filter((value): value is string => Boolean(value));
 
   return parts.join(', ');
 }
 
-export function buildPostActionObservations(before: PageStateSummary, after: PageStateSummary): ActionObservationSummary[] {
+export function buildPostActionObservations(
+  before: PageStateSummary,
+  after: PageStateSummary
+): ActionObservationSummary[] {
   const observations = summarizeObservation(after);
   const diff = buildActionDiff(before, after);
 
   if (diff.urlChanged) {
-    observations.push({ level: 'info', code: 'URL_CHANGED', message: `URL changed to ${after.url}` });
+    observations.push({
+      level: 'info',
+      code: 'URL_CHANGED',
+      message: `URL changed to ${after.url}`
+    });
   }
 
   if (diff.titleChanged) {
-    observations.push({ level: 'info', code: 'TITLE_CHANGED', message: `Title changed to ${after.title}` });
+    observations.push({
+      level: 'info',
+      code: 'TITLE_CHANGED',
+      message: `Title changed to ${after.title}`
+    });
   }
 
   if (
     after.paymentContext.shouldReportImmediately &&
-    paymentFingerprint(before.paymentContext) !== paymentFingerprint(after.paymentContext)
+    paymentFingerprint(before.paymentContext) !==
+      paymentFingerprint(after.paymentContext)
   ) {
     observations.push({
       level: 'info',
@@ -70,15 +89,25 @@ export function buildPostActionObservations(before: PageStateSummary, after: Pag
     });
   }
 
-  if (!diff.urlChanged && !diff.titleChanged && !diff.pageSignatureChanged && diff.addedButtons.length === 0 && diff.addedTexts.length === 0) {
+  if (
+    !diff.urlChanged &&
+    !diff.titleChanged &&
+    !diff.pageSignatureChanged &&
+    diff.addedButtons.length === 0 &&
+    diff.addedTexts.length === 0
+  ) {
     const paymentFlowStillActive =
       after.paymentContext.phase === 'litres_checkout' ||
+      after.paymentContext.phase === 'brandshop_checkout' ||
       after.paymentContext.phase === 'payecom_boundary' ||
+      after.paymentContext.phase === 'yoomoney_boundary' ||
       after.visibleTexts.some((text) => /войти по сбер id/i.test(text));
 
     observations.push({
       level: paymentFlowStillActive ? 'info' : 'warning',
-      code: paymentFlowStillActive ? 'PAYMENT_FLOW_STILL_ACTIVE' : 'NO_OBVIOUS_CHANGE',
+      code: paymentFlowStillActive
+        ? 'PAYMENT_FLOW_STILL_ACTIVE'
+        : 'NO_OBVIOUS_CHANGE',
       message: paymentFlowStillActive
         ? 'The payment flow is still active, but the page did not produce a clear navigation-level change yet.'
         : 'No obvious page change was detected after the action.'

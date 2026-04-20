@@ -1,5 +1,12 @@
-import type { FormSummary, VisibleButtonSummary } from '../playwright/dom-utils.js';
-import type { PaymentIntentSummary, SberPayExtractionJson, SessionPaymentContext } from '../daemon/types.js';
+import type {
+  FormSummary,
+  VisibleButtonSummary
+} from '../playwright/dom-utils.js';
+import type {
+  PaymentIntentSummary,
+  SberPayExtractionJson,
+  SessionPaymentContext
+} from '../daemon/types.js';
 
 interface PaymentContextInput {
   url: string;
@@ -9,8 +16,10 @@ interface PaymentContextInput {
   urlHints: string[];
 }
 
-const PAYMENT_URL_PATTERN = /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink)[^\s"'<>)]*/gi;
-const PAYMENT_PARAM_PATTERN = /(orderid|bankinvoiceid|merchantordernumber|merchantorderid|mdorder|formurl|href|order|trace-id|method|system)=([^\s&"'<>]+)/gi;
+const PAYMENT_URL_PATTERN =
+  /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|yoomoney\.ru\/checkout\/payments\/v2\/contract(?:\/sberpay)?)[^\s"'<>)]*/gi;
+const PAYMENT_PARAM_PATTERN =
+  /(orderid|bankinvoiceid|merchantordernumber|merchantorderid|mdorder|formurl|href|order|trace-id|method|system)=([^\s&"'<>]+)/gi;
 
 interface ExtractAccumulator {
   paymentUrls: string[];
@@ -29,7 +38,9 @@ interface ExtractAccumulator {
 }
 
 function uniq(values: Array<string | null | undefined>): string[] {
-  return Array.from(new Set(values.map((value) => (value ?? '').trim()).filter(Boolean)));
+  return Array.from(
+    new Set(values.map((value) => (value ?? '').trim()).filter(Boolean))
+  );
 }
 
 function first(values: string[]): string | null {
@@ -90,8 +101,11 @@ function collectKnownParams(url: URL, acc: ExtractAccumulator): void {
   }
 }
 
-
-function collectParamPair(key: string, rawValue: string, acc: ExtractAccumulator): void {
+function collectParamPair(
+  key: string,
+  rawValue: string,
+  acc: ExtractAccumulator
+): void {
   const lowered = key.toLowerCase();
   const value = deepDecode(rawValue).trim();
 
@@ -126,7 +140,11 @@ function collectParamPair(key: string, rawValue: string, acc: ExtractAccumulator
   }
 }
 
-function collectLooseSignals(raw: string, baseUrl: string, acc: ExtractAccumulator): void {
+function collectLooseSignals(
+  raw: string,
+  baseUrl: string,
+  acc: ExtractAccumulator
+): void {
   const variants = uniq([raw, deepDecode(raw)]);
 
   for (const variant of variants) {
@@ -152,7 +170,9 @@ function parseEncodedParams(raw: string, acc: ExtractAccumulator): void {
 
   for (const variant of variants) {
     try {
-      const params = new URLSearchParams(variant.startsWith('?') ? variant.slice(1) : variant);
+      const params = new URLSearchParams(
+        variant.startsWith('?') ? variant.slice(1) : variant
+      );
       for (const [key, value] of params.entries()) {
         collectParamPair(key, value, acc);
       }
@@ -162,7 +182,11 @@ function parseEncodedParams(raw: string, acc: ExtractAccumulator): void {
   }
 }
 
-function collectCandidate(candidate: string, baseUrl: string, acc: ExtractAccumulator): void {
+function collectCandidate(
+  candidate: string,
+  baseUrl: string,
+  acc: ExtractAccumulator
+): void {
   const absolute = toAbsoluteUrl(candidate, baseUrl);
   if (!absolute) {
     return;
@@ -178,7 +202,10 @@ function collectCandidate(candidate: string, baseUrl: string, acc: ExtractAccumu
   const href = url.toString();
   collectKnownParams(url, acc);
 
-  if (/payecom\.ru\/pay(?:_ru)?/i.test(href)) {
+  if (
+    /payecom\.ru\/pay(?:_ru)?/i.test(href) ||
+    /yoomoney\.ru\/checkout\/payments\/v2\/contract(?:\/sberpay)?/i.test(href)
+  ) {
     acc.paymentUrls.push(href);
   }
 
@@ -212,7 +239,13 @@ function pickExtractionSource(input: {
     return 'deeplink';
   }
 
-  if (input.bankInvoiceId || input.merchantOrderNumber || input.merchantOrderId || input.mdOrder || input.formUrl) {
+  if (
+    input.bankInvoiceId ||
+    input.merchantOrderNumber ||
+    input.merchantOrderId ||
+    input.mdOrder ||
+    input.formUrl
+  ) {
     return 'network_response';
   }
 
@@ -277,7 +310,9 @@ export function createEmptyPaymentContext(): SessionPaymentContext {
   };
 }
 
-export function extractPaymentContext(input: PaymentContextInput): SessionPaymentContext {
+export function extractPaymentContext(
+  input: PaymentContextInput
+): SessionPaymentContext {
   const acc: ExtractAccumulator = {
     paymentUrls: [],
     orderIds: [],
@@ -302,12 +337,19 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
 
   const urlHints = uniq(input.urlHints);
   const candidates = uniq([input.url, ...urlHints, ...formActionHints]);
-  candidates.forEach((candidate) => collectCandidate(candidate, input.url, acc));
+  candidates.forEach((candidate) =>
+    collectCandidate(candidate, input.url, acc)
+  );
 
   const combinedTextRaw = `${input.visibleTexts.join(' ')} ${input.visibleButtons
     .map((button) => `${button.text} ${button.ariaLabel ?? ''}`.trim())
     .join(' ')} ${input.forms
-    .flatMap((form) => [form.id ?? '', form.name ?? '', form.action ?? '', ...form.submitLabels])
+    .flatMap((form) => [
+      form.id ?? '',
+      form.name ?? '',
+      form.action ?? '',
+      ...form.submitLabels
+    ])
     .join(' ')}`;
   collectLooseSignals(combinedTextRaw, input.url, acc);
   urlHints.forEach((hint) => collectLooseSignals(hint, input.url, acc));
@@ -327,46 +369,86 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
   const formUrl = first(uniq(acc.formUrls));
   const rawDeeplink = first(uniq(acc.rawDeeplinks));
   const href = first(uniq(acc.hrefs));
-  const paymentIntents = buildPaymentIntents([...acc.orderIds, ...acc.mdOrders]);
+  const paymentIntents = buildPaymentIntents([
+    ...acc.orderIds,
+    ...acc.mdOrders
+  ]);
 
-  const sberIdHandoffVisible = Boolean(href) || urlHints.some((hint) => /id\.sber\.ru\/.+authorize/i.test(hint));
+  const sberIdHandoffVisible =
+    Boolean(href) ||
+    urlHints.some((hint) => /id\.sber\.ru\/.+authorize/i.test(hint));
   const checkoutUrlVisible = /\/purchase\/ppd\b/i.test(input.url);
+  const brandshopUrlVisible =
+    /brandshop\.ru/i.test(input.url) ||
+    candidates.some((candidate) => /brandshop\.ru/i.test(candidate));
+  const brandshopCheckoutVisible =
+    brandshopUrlVisible &&
+    (/brandshop\.ru\/checkout\/?/i.test(input.url) ||
+      /(?:^|\s)(sberpay|sber pay)(?:\s|$)/i.test(combinedText) ||
+      /\u0441\u0430\u043c\u043e\u0432\u044b\u0432\u043e\u0437/i.test(
+        combinedText
+      ));
+  const yoomoneyBoundaryVisible =
+    /yoomoney\.ru\/checkout\/payments\/v2\/contract(?:\/sberpay)?/i.test(
+      input.url
+    ) ||
+    Boolean(
+      paymentUrl &&
+      /yoomoney\.ru\/checkout\/payments\/v2\/contract(?:\/sberpay)?/i.test(
+        paymentUrl
+      )
+    );
   const hasStructuredPaymentEvidence = Boolean(
     paymentUrl ||
-      paymentOrderId ||
-      litresOrder ||
-      traceId ||
-      bankInvoiceId ||
-      merchantOrderNumber ||
-      merchantOrderId ||
-      mdOrder ||
-      formUrl ||
-      rawDeeplink
+    paymentOrderId ||
+    litresOrder ||
+    traceId ||
+    bankInvoiceId ||
+    merchantOrderNumber ||
+    merchantOrderId ||
+    mdOrder ||
+    formUrl ||
+    rawDeeplink
   );
-  const allowSberIdOnlySignals = checkoutUrlVisible || hasStructuredPaymentEvidence;
+  const allowSberIdOnlySignals =
+    checkoutUrlVisible || hasStructuredPaymentEvidence;
 
   let phase: SessionPaymentContext['phase'] = null;
   if (/platiecom\.ru\/deeplink/i.test(input.url) || rawDeeplink) {
     phase = 'platiecom_deeplink';
   } else if (/payecom\.ru\/pay(?:_ru)?/i.test(input.url)) {
     phase = 'payecom_boundary';
-  } else if (checkoutUrlVisible || paymentUrl || rawDeeplink || (allowSberIdOnlySignals && sberIdHandoffVisible)) {
+  } else if (yoomoneyBoundaryVisible) {
+    phase = 'yoomoney_boundary';
+  } else if (brandshopCheckoutVisible) {
+    phase = 'brandshop_checkout';
+  } else if (
+    checkoutUrlVisible ||
+    paymentUrl ||
+    rawDeeplink ||
+    (allowSberIdOnlySignals && sberIdHandoffVisible)
+  ) {
     phase = 'litres_checkout';
   }
 
   let provider: SessionPaymentContext['provider'] = null;
   if (
     /войти по сбер id|сбер id|сберпей/.test(combinedText) ||
+    brandshopCheckoutVisible ||
     Boolean(paymentUrl) ||
+    yoomoneyBoundaryVisible ||
     Boolean(rawDeeplink) ||
-    (allowSberIdOnlySignals && (href ? /id\.sber\.ru\/.+authorize/i.test(href) : false))
+    (allowSberIdOnlySignals &&
+      (href ? /id\.sber\.ru\/.+authorize/i.test(href) : false))
   ) {
     provider = 'sberpay';
   } else if (paymentMethod === 'sbp' || paymentSystem === 'sbersbp') {
     provider = 'sbp';
   }
 
-  const detected = Boolean(phase || hasStructuredPaymentEvidence || (allowSberIdOnlySignals && href));
+  const detected = Boolean(
+    phase || hasStructuredPaymentEvidence || (allowSberIdOnlySignals && href)
+  );
 
   const extractionJson = buildExtractionJson({
     provider,
@@ -384,15 +466,15 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
 
   const shouldReportImmediately = Boolean(
     extractionJson &&
-      (extractionJson.paymentOrderId ||
-        extractionJson.paymentUrl ||
-        extractionJson.bankInvoiceId ||
-        extractionJson.merchantOrderNumber ||
-        extractionJson.merchantOrderId ||
-        extractionJson.mdOrder ||
-        extractionJson.formUrl ||
-        extractionJson.rawDeeplink ||
-        extractionJson.href)
+    (extractionJson.paymentOrderId ||
+      extractionJson.paymentUrl ||
+      extractionJson.bankInvoiceId ||
+      extractionJson.merchantOrderNumber ||
+      extractionJson.merchantOrderId ||
+      extractionJson.mdOrder ||
+      extractionJson.formUrl ||
+      extractionJson.rawDeeplink ||
+      extractionJson.href)
   );
 
   return {

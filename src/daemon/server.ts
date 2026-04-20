@@ -5,10 +5,17 @@ import { PlaywrightController } from '../playwright/controller.js';
 import { matchSitePackByUrl } from '../packs/loader.js';
 import { detectLoginGate } from '../helpers/login-gates.js';
 import { getDefaultStateStore } from './state-store.js';
-import { runIntegratedLitresBootstrap, type LitresBootstrapAttemptResult } from './litres-auth.js';
+import {
+  runIntegratedLitresBootstrap,
+  type LitresBootstrapAttemptResult
+} from './litres-auth.js';
 import { resolveProfileForSession } from './profile-state.js';
+import { runIntegratedBrandshopBootstrap } from './brandshop-auth.js';
 import { runIntegratedKuperBootstrap } from './kuper-auth.js';
-import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from './session-registry.js';
+import {
+  DEFAULT_SESSION_IDLE_TIMEOUT_MS,
+  SessionRegistry
+} from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import { isDebugEnabled, appendDebugLog } from '../debug/capture.js';
 import { StateStore } from './state-store.js';
@@ -31,7 +38,10 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
-export function resolveSessionIdleTimeoutMs(env: NodeJS.ProcessEnv = process.env, override?: number): number {
+export function resolveSessionIdleTimeoutMs(
+  env: NodeJS.ProcessEnv = process.env,
+  override?: number
+): number {
   if (override !== undefined) {
     return override > 0 ? override : DEFAULT_SESSION_IDLE_TIMEOUT_MS;
   }
@@ -42,7 +52,9 @@ export function resolveSessionIdleTimeoutMs(env: NodeJS.ProcessEnv = process.env
   }
 
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SESSION_IDLE_TIMEOUT_MS;
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed
+    : DEFAULT_SESSION_IDLE_TIMEOUT_MS;
 }
 
 function createTimingCollector() {
@@ -50,7 +62,11 @@ function createTimingCollector() {
 
   return {
     stages,
-    async run<T>(step: string, fn: () => Promise<T>, detail: string | null = null): Promise<T> {
+    async run<T>(
+      step: string,
+      fn: () => Promise<T>,
+      detail: string | null = null
+    ): Promise<T> {
       const startedAt = isoNow();
       const startedMs = Date.now();
 
@@ -91,7 +107,11 @@ function createTimingCollector() {
   };
 }
 
-function sendJson(response: http.ServerResponse, statusCode: number, payload: unknown): void {
+function sendJson(
+  response: http.ServerResponse,
+  statusCode: number,
+  payload: unknown
+): void {
   response.statusCode = statusCode;
   response.setHeader('content-type', 'application/json');
   response.end(`${JSON.stringify(payload)}\n`);
@@ -110,12 +130,24 @@ async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
 }
 
-function toErrorResponse(
-  error: unknown
-): { statusCode: number; payload: { ok: false; error: { message: string; code?: string; details?: Record<string, unknown> } } } {
+function toErrorResponse(error: unknown): {
+  statusCode: number;
+  payload: {
+    ok: false;
+    error: {
+      message: string;
+      code?: string;
+      details?: Record<string, unknown>;
+    };
+  };
+} {
   if (error instanceof BrowserPlatformError) {
     const statusCode =
-      error.code === 'SESSION_NOT_FOUND' ? 404 : error.code === 'SESSION_OPEN_FAILED' ? 500 : 400;
+      error.code === 'SESSION_NOT_FOUND'
+        ? 404
+        : error.code === 'SESSION_OPEN_FAILED'
+          ? 500
+          : 400;
     return {
       statusCode,
       payload: {
@@ -148,7 +180,10 @@ type StartDaemonServerOptions = {
   controller?: PlaywrightController;
 };
 
-export async function runSessionJanitorPass(registry: SessionRegistry, controller: Pick<PlaywrightController, 'closeSession'>): Promise<void> {
+export async function runSessionJanitorPass(
+  registry: SessionRegistry,
+  controller: Pick<PlaywrightController, 'closeSession'>
+): Promise<void> {
   const expiredSessionIds = registry.findExpiredSessionIds();
   await Promise.all(
     expiredSessionIds.map(async (sessionId) => {
@@ -180,24 +215,38 @@ export function createSessionJanitorRunner(
   };
 }
 
-export async function startDaemonServer(options: StartDaemonServerOptions = {}): Promise<DaemonInfo> {
-  const sessionIdleTimeoutMs = resolveSessionIdleTimeoutMs(process.env, options.sessionIdleTimeoutMs);
-  const registry = options.registry ?? new SessionRegistry({ defaultIdleTimeoutMs: sessionIdleTimeoutMs });
+export async function startDaemonServer(
+  options: StartDaemonServerOptions = {}
+): Promise<DaemonInfo> {
+  const sessionIdleTimeoutMs = resolveSessionIdleTimeoutMs(
+    process.env,
+    options.sessionIdleTimeoutMs
+  );
+  const registry =
+    options.registry ??
+    new SessionRegistry({ defaultIdleTimeoutMs: sessionIdleTimeoutMs });
   const stateStore = options.stateStore ?? getDefaultStateStore();
-  const controller = options.controller ?? new PlaywrightController(stateStore.root);
+  const controller =
+    options.controller ?? new PlaywrightController(stateStore.root);
   const token = randomBytes(24).toString('hex');
   const startedAt = new Date().toISOString();
 
   const closeAndForgetSession = async (
     sessionId: string,
-    reason: 'manual' | 'idle_timeout' | 'open_failed' | 'controller_missing' | 'shutdown'
+    reason:
+      | 'manual'
+      | 'idle_timeout'
+      | 'open_failed'
+      | 'controller_missing'
+      | 'shutdown'
   ): Promise<void> => {
     await controller.closeSession(sessionId);
     registry.close(sessionId, reason);
     registry.remove(sessionId);
   };
 
-  const janitorIntervalMs = options.sessionJanitorIntervalMs ?? DEFAULT_SESSION_JANITOR_INTERVAL_MS;
+  const janitorIntervalMs =
+    options.sessionJanitorIntervalMs ?? DEFAULT_SESSION_JANITOR_INTERVAL_MS;
   const runJanitorPassSafely = createSessionJanitorRunner(registry, controller);
   let janitorPassPromise: Promise<void> | null = null;
   const janitor = setInterval(() => {
@@ -209,7 +258,10 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
   const server = http.createServer(async (request, response) => {
     const auth = request.headers.authorization;
     if (auth !== `Bearer ${token}`) {
-      sendJson(response, 401, { ok: false, error: { message: 'Unauthorized' } });
+      sendJson(response, 401, {
+        ok: false,
+        error: { message: 'Unauthorized' }
+      });
       return;
     }
 
@@ -259,18 +311,39 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           profileId?: string;
           scenarioId?: string;
         };
-        logPayloadSummary = { url: body?.url ?? null, profileId: body?.profileId ?? null, scenarioId: body?.scenarioId ?? null };
+        logPayloadSummary = {
+          url: body?.url ?? null,
+          profileId: body?.profileId ?? null,
+          scenarioId: body?.scenarioId ?? null
+        };
         if (!body?.url) {
-          sendJson(response, 400, { ok: false, error: { message: 'Missing url' } });
+          sendJson(response, 400, {
+            ok: false,
+            error: { message: 'Missing url' }
+          });
           return;
         }
         const requestedUrl = body.url;
 
-        if (body.backend !== undefined && body.backend !== null && body.backend !== 'camoufox') {
-          sendJson(response, 400, { ok: false, error: { message: 'Invalid backend. Allowed values: camoufox', code: 'INVALID_BACKEND' } });
+        if (
+          body.backend !== undefined &&
+          body.backend !== null &&
+          body.backend !== 'camoufox'
+        ) {
+          sendJson(response, 400, {
+            ok: false,
+            error: {
+              message: 'Invalid backend. Allowed values: camoufox',
+              code: 'INVALID_BACKEND'
+            }
+          });
           return;
         }
-        const preMatchedPack = await timing.run('match_site_pack_pre', () => matchSitePackByUrl(requestedUrl), requestedUrl);
+        const preMatchedPack = await timing.run(
+          'match_site_pack_pre',
+          () => matchSitePackByUrl(requestedUrl),
+          requestedUrl
+        );
         const backend: SessionBackend = 'camoufox';
         const profile = await timing.run(
           'resolve_profile',
@@ -300,7 +373,9 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           }
         });
         try {
-          const openWithStatePath = profile.storageStateExists ? profile.storageStatePath ?? undefined : undefined;
+          const openWithStatePath = profile.storageStateExists
+            ? (profile.storageStatePath ?? undefined)
+            : undefined;
           let opened = await timing.run(
             'open_session_initial',
             () =>
@@ -310,10 +385,21 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
               }),
             openWithStatePath ?? null
           );
-          let matchedPack = await timing.run('match_site_pack_opened_initial', () => matchSitePackByUrl(opened.url), opened.url);
-          let observed = await timing.run('observe_session_initial', () => controller.observeSession(record.sessionId));
+          let matchedPack = await timing.run(
+            'match_site_pack_opened_initial',
+            () => matchSitePackByUrl(opened.url),
+            opened.url
+          );
+          let observed = await timing.run('observe_session_initial', () =>
+            controller.observeSession(record.sessionId)
+          );
           let auth = detectLoginGate(opened.url, observed);
-          const needsLitresBootstrap = matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated';
+          const needsLitresBootstrap =
+            matchedPack?.summary.siteId === 'litres' &&
+            auth.state !== 'authenticated';
+          const needsBrandshopBootstrap =
+            matchedPack?.summary.siteId === 'brandshop' &&
+            auth.state !== 'authenticated';
           const bootstrapResult: LitresBootstrapAttemptResult =
             needsLitresBootstrap
               ? await timing.run(
@@ -328,61 +414,115 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
                     }),
                   profile.storageStatePath ?? null
                 )
-              : matchedPack?.summary.siteId === 'kuper' && auth.state !== 'authenticated' && !profile.storageStateExists
+              : needsBrandshopBootstrap
                 ? await timing.run(
-                    'bootstrap_kuper',
+                    'bootstrap_brandshop',
                     () =>
-                      runIntegratedKuperBootstrap({
-                        storageStatePath: profile.storageStatePath
+                      runIntegratedBrandshopBootstrap({
+                        matchedPack: matchedPack!,
+                        storageStatePath: profile.storageStatePath,
+                        existingPage: controller.getSessionPage(
+                          record.sessionId
+                        )
                       }),
                     profile.storageStatePath ?? null
                   )
-                : {
-                    attempted: false,
-                    ok: false,
-                    status: profile.storageStateExists ? 'reused_existing_state' : 'not_attempted',
-                    handoffRequired: false,
-                    redirectedToSberId: false,
-                    bootstrapFailed: false,
-                    usedExistingPage: false,
-                    scriptPath: null,
-                    statePath: profile.storageStatePath,
-                    outDir: null,
-                    finalUrl: null,
-                    rawStatus: null,
-                    errorMessage: null,
-                    durationMs: 0,
-                    timeline: []
-                  };
+                : matchedPack?.summary.siteId === 'kuper' &&
+                    auth.state !== 'authenticated' &&
+                    !profile.storageStateExists
+                  ? await timing.run(
+                      'bootstrap_kuper',
+                      () =>
+                        runIntegratedKuperBootstrap({
+                          storageStatePath: profile.storageStatePath
+                        }),
+                      profile.storageStatePath ?? null
+                    )
+                  : {
+                      attempted: false,
+                      ok: false,
+                      status: profile.storageStateExists
+                        ? 'reused_existing_state'
+                        : 'not_attempted',
+                      handoffRequired: false,
+                      redirectedToSberId: false,
+                      bootstrapFailed: false,
+                      usedExistingPage: false,
+                      scriptPath: null,
+                      statePath: profile.storageStatePath,
+                      outDir: null,
+                      finalUrl: null,
+                      rawStatus: null,
+                      errorMessage: null,
+                      durationMs: 0,
+                      timeline: []
+                    };
           if (!bootstrapResult.attempted) {
-            timing.skip('bootstrap_skipped', profile.storageStateExists ? 'existing_storage_state' : 'not_applicable');
+            timing.skip(
+              'bootstrap_skipped',
+              profile.storageStateExists
+                ? 'existing_storage_state'
+                : 'not_applicable'
+            );
           }
 
-          const refreshedStatePath = bootstrapResult.statePath ?? profile.storageStatePath;
-          const refreshedStateExists = profile.storageStateExists || (bootstrapResult.ok && Boolean(refreshedStatePath));
+          const refreshedStatePath =
+            bootstrapResult.statePath ?? profile.storageStatePath;
+          const refreshedStateExists =
+            profile.storageStateExists ||
+            (bootstrapResult.ok && Boolean(refreshedStatePath));
 
-          if (bootstrapResult.attempted && bootstrapResult.usedExistingPage && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
+          if (
+            bootstrapResult.attempted &&
+            bootstrapResult.usedExistingPage &&
+            (bootstrapResult.ok || bootstrapResult.handoffRequired)
+          ) {
             // Bootstrap ran on the existing session page. The session browser already navigated
             // through the auth flow. Re-observe the current page state without closing/reopening.
-            observed = await timing.run('observe_session_after_bootstrap', () => controller.observeSession(record.sessionId));
+            observed = await timing.run('observe_session_after_bootstrap', () =>
+              controller.observeSession(record.sessionId)
+            );
             opened = { url: observed.url, title: observed.title };
-            matchedPack = await timing.run('match_site_pack_after_bootstrap', () => matchSitePackByUrl(opened.url), opened.url);
+            matchedPack = await timing.run(
+              'match_site_pack_after_bootstrap',
+              () => matchSitePackByUrl(opened.url),
+              opened.url
+            );
             auth = detectLoginGate(opened.url, observed);
-          } else if (bootstrapResult.attempted && bootstrapResult.adoptedSession) {
+          } else if (
+            bootstrapResult.attempted &&
+            bootstrapResult.adoptedSession
+          ) {
             opened = await timing.run(
               'adopt_bootstrap_session',
               () =>
-                controller.adoptSession(record.sessionId, bootstrapResult.adoptedSession!, {
-                  storageStatePath: refreshedStatePath ?? undefined,
-                  backend
-                }),
+                controller.adoptSession(
+                  record.sessionId,
+                  bootstrapResult.adoptedSession!,
+                  {
+                    storageStatePath: refreshedStatePath ?? undefined,
+                    backend
+                  }
+                ),
               refreshedStatePath ?? null
             );
-            matchedPack = await timing.run('match_site_pack_adopted', () => matchSitePackByUrl(opened.url), opened.url);
-            observed = await timing.run('observe_session_adopted', () => controller.observeSession(record.sessionId));
+            matchedPack = await timing.run(
+              'match_site_pack_adopted',
+              () => matchSitePackByUrl(opened.url),
+              opened.url
+            );
+            observed = await timing.run('observe_session_adopted', () =>
+              controller.observeSession(record.sessionId)
+            );
             auth = detectLoginGate(opened.url, observed);
-          } else if (bootstrapResult.attempted && refreshedStatePath && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
-            await timing.run('close_session_before_reopen', () => controller.closeSession(record.sessionId));
+          } else if (
+            bootstrapResult.attempted &&
+            refreshedStatePath &&
+            (bootstrapResult.ok || bootstrapResult.handoffRequired)
+          ) {
+            await timing.run('close_session_before_reopen', () =>
+              controller.closeSession(record.sessionId)
+            );
             opened = await timing.run(
               'open_session_rehydrated',
               () =>
@@ -392,8 +532,14 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
                 }),
               refreshedStatePath
             );
-            matchedPack = await timing.run('match_site_pack_opened_rehydrated', () => matchSitePackByUrl(opened.url), opened.url);
-            observed = await timing.run('observe_session_rehydrated', () => controller.observeSession(record.sessionId));
+            matchedPack = await timing.run(
+              'match_site_pack_opened_rehydrated',
+              () => matchSitePackByUrl(opened.url),
+              opened.url
+            );
+            observed = await timing.run('observe_session_rehydrated', () =>
+              controller.observeSession(record.sessionId)
+            );
             auth = detectLoginGate(opened.url, observed);
           } else {
             timing.skip('reopen_after_bootstrap', 'not_needed');
@@ -425,7 +571,8 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
               authContext: {
                 state: auth.state,
                 loginGateDetected: auth.loginGateDetected,
-                bootstrapAttempted: Boolean(profile.source) || bootstrapResult.attempted,
+                bootstrapAttempted:
+                  Boolean(profile.source) || bootstrapResult.attempted,
                 bootstrapSource: profile.source,
                 storageStatePath: refreshedStatePath,
                 storageStateExists: refreshedStateExists,
@@ -444,23 +591,27 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
               },
               paymentContext: observed.paymentContext
             }) ?? record;
-          const trace = await controller.writeTrace(record.sessionId, 'session-open', {
-            sessionId: record.sessionId,
-            requestedUrl,
-            timing: {
-              startedAt: requestStartedAt,
-              finishedAt: isoNow(),
-              durationMs: Date.now() - requestStartedMs,
-              stages: timing.stages
-            },
-            opened,
-            openTiming: opened.timing ?? null,
-            packContext: session.packContext,
-            authContext: session.authContext,
-            paymentContext: session.paymentContext,
-            observedAt: new Date().toISOString(),
-            page: observed
-          });
+          const trace = await controller.writeTrace(
+            record.sessionId,
+            'session-open',
+            {
+              sessionId: record.sessionId,
+              requestedUrl,
+              timing: {
+                startedAt: requestStartedAt,
+                finishedAt: isoNow(),
+                durationMs: Date.now() - requestStartedMs,
+                stages: timing.stages
+              },
+              opened,
+              openTiming: opened.timing ?? null,
+              packContext: session.packContext,
+              authContext: session.authContext,
+              paymentContext: session.paymentContext,
+              observedAt: new Date().toISOString(),
+              page: observed
+            }
+          );
           sendJson(response, 200, { ok: true, session: { ...session, trace } });
         } catch (error) {
           await closeAndForgetSession(record.sessionId, 'open_failed');
@@ -472,21 +623,32 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
       if (request.method === 'POST' && request.url === '/v1/session/context') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
         logSessionId = body?.sessionId ?? null;
-        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        const session = body?.sessionId
+          ? registry.get(body.sessionId)
+          : undefined;
         if (!session) {
-          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+          throw new BrowserPlatformError('Session not found', {
+            code: 'SESSION_NOT_FOUND'
+          });
         }
 
-        sendJson(response, 200, { ok: true, session: registry.touchUsage(session.sessionId) ?? session });
+        sendJson(response, 200, {
+          ok: true,
+          session: registry.touchUsage(session.sessionId) ?? session
+        });
         return;
       }
 
       if (request.method === 'POST' && request.url === '/v1/session/observe') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
         logSessionId = body?.sessionId ?? null;
-        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        const session = body?.sessionId
+          ? registry.get(body.sessionId)
+          : undefined;
         if (!session) {
-          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+          throw new BrowserPlatformError('Session not found', {
+            code: 'SESSION_NOT_FOUND'
+          });
         }
 
         registry.touchUsage(session.sessionId);
@@ -494,8 +656,14 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
         try {
           observed = await controller.observeSession(session.sessionId);
         } catch (err) {
-          if (err instanceof BrowserPlatformError && err.code === 'SESSION_NOT_FOUND') {
-            await closeAndForgetSession(session.sessionId, 'controller_missing');
+          if (
+            err instanceof BrowserPlatformError &&
+            err.code === 'SESSION_NOT_FOUND'
+          ) {
+            await closeAndForgetSession(
+              session.sessionId,
+              'controller_missing'
+            );
           }
           throw err;
         }
@@ -516,32 +684,58 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           sessionId: session.sessionId,
           observedAt: new Date().toISOString(),
           ...observed,
-          hardStop: buildHardStopSignal(observed.url, observed.paymentContext) ?? undefined
+          hardStop:
+            buildHardStopSignal(observed.url, observed.paymentContext) ??
+            undefined
         };
-        payload.trace = await controller.writeTrace(session.sessionId, 'observe', payload);
+        payload.trace = await controller.writeTrace(
+          session.sessionId,
+          'observe',
+          payload
+        );
         sendJson(response, 200, { ok: true, session: payload });
         return;
       }
 
       if (request.method === 'POST' && request.url === '/v1/session/act') {
-        const body = (await readJsonBody(request)) as { sessionId?: string; payload?: SessionActionPayload };
+        const body = (await readJsonBody(request)) as {
+          sessionId?: string;
+          payload?: SessionActionPayload;
+        };
         logSessionId = body?.sessionId ?? null;
-        logPayloadSummary = body?.payload ? { action: body.payload.action } : null;
-        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        logPayloadSummary = body?.payload
+          ? { action: body.payload.action }
+          : null;
+        const session = body?.sessionId
+          ? registry.get(body.sessionId)
+          : undefined;
         if (!session) {
-          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+          throw new BrowserPlatformError('Session not found', {
+            code: 'SESSION_NOT_FOUND'
+          });
         }
         if (!body?.payload) {
-          throw new BrowserPlatformError('Missing action payload', { code: 'INVALID_ACTION_PAYLOAD' });
+          throw new BrowserPlatformError('Missing action payload', {
+            code: 'INVALID_ACTION_PAYLOAD'
+          });
         }
 
         registry.touchUsage(session.sessionId);
         let action;
         try {
-          action = await controller.actInSession(session.sessionId, body.payload);
+          action = await controller.actInSession(
+            session.sessionId,
+            body.payload
+          );
         } catch (err) {
-          if (err instanceof BrowserPlatformError && err.code === 'SESSION_NOT_FOUND') {
-            await closeAndForgetSession(session.sessionId, 'controller_missing');
+          if (
+            err instanceof BrowserPlatformError &&
+            err.code === 'SESSION_NOT_FOUND'
+          ) {
+            await closeAndForgetSession(
+              session.sessionId,
+              'controller_missing'
+            );
           }
           throw err;
         }
@@ -558,7 +752,10 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           },
           paymentContext: action.after.paymentContext
         });
-        const hardStop = buildHardStopSignal(action.after.url, action.after.paymentContext);
+        const hardStop = buildHardStopSignal(
+          action.after.url,
+          action.after.paymentContext
+        );
         const payload: SessionActionResult = {
           sessionId: session.sessionId,
           actedAt: new Date().toISOString(),
@@ -569,7 +766,11 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
             sessionId: session.sessionId,
             observedAt: new Date().toISOString(),
             ...action.before,
-            hardStop: buildHardStopSignal(action.before.url, action.before.paymentContext) ?? undefined
+            hardStop:
+              buildHardStopSignal(
+                action.before.url,
+                action.before.paymentContext
+              ) ?? undefined
           },
           after: {
             sessionId: session.sessionId,
@@ -581,7 +782,9 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           observations: action.observations,
           hardStop: hardStop ?? undefined
         };
-        payload.trace = await controller.writeTrace(session.sessionId, `act-${action.action}`,
+        payload.trace = await controller.writeTrace(
+          session.sessionId,
+          `act-${action.action}`,
           payload
         );
         sendJson(response, 200, { ok: true, action: payload });
@@ -591,14 +794,23 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
       if (request.method === 'POST' && request.url === '/v1/session/snapshot') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
         logSessionId = body?.sessionId ?? null;
-        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        const session = body?.sessionId
+          ? registry.get(body.sessionId)
+          : undefined;
         if (!session) {
-          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+          throw new BrowserPlatformError('Session not found', {
+            code: 'SESSION_NOT_FOUND'
+          });
         }
 
         registry.touchUsage(session.sessionId);
-        const snapshotResult = await controller.snapshotSession(session.sessionId);
-        const auth = detectLoginGate(snapshotResult.state.url, snapshotResult.state);
+        const snapshotResult = await controller.snapshotSession(
+          session.sessionId
+        );
+        const auth = detectLoginGate(
+          snapshotResult.state.url,
+          snapshotResult.state
+        );
         registry.touchUsage(session.sessionId, {
           url: snapshotResult.state.url,
           title: snapshotResult.state.title,
@@ -611,7 +823,10 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           },
           paymentContext: snapshotResult.state.paymentContext
         });
-        const hardStop = buildHardStopSignal(snapshotResult.state.url, snapshotResult.state.paymentContext);
+        const hardStop = buildHardStopSignal(
+          snapshotResult.state.url,
+          snapshotResult.state.paymentContext
+        );
         const snapshot: SessionSnapshot = {
           sessionId: session.sessionId,
           capturedAt: new Date().toISOString(),
@@ -626,7 +841,11 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           },
           hardStop: hardStop ?? undefined
         };
-        snapshot.trace = await controller.writeTrace(session.sessionId, 'snapshot', snapshot);
+        snapshot.trace = await controller.writeTrace(
+          session.sessionId,
+          'snapshot',
+          snapshot
+        );
         sendJson(response, 200, { ok: true, snapshot });
         return;
       }
@@ -634,12 +853,17 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
       if (request.method === 'POST' && request.url === '/v1/session/close') {
         const body = (await readJsonBody(request)) as { sessionId?: string };
         logSessionId = body?.sessionId ?? null;
-        const session = body?.sessionId ? registry.get(body.sessionId) : undefined;
+        const session = body?.sessionId
+          ? registry.get(body.sessionId)
+          : undefined;
         if (!session) {
-          throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+          throw new BrowserPlatformError('Session not found', {
+            code: 'SESSION_NOT_FOUND'
+          });
         }
 
-        const closedSession = registry.close(session.sessionId, 'manual') ?? session;
+        const closedSession =
+          registry.close(session.sessionId, 'manual') ?? session;
         await controller.closeSession(session.sessionId);
         registry.remove(session.sessionId);
         sendJson(response, 200, { ok: true, session: closedSession });

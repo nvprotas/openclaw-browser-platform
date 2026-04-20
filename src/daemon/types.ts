@@ -23,7 +23,12 @@ export interface SessionAuthContext {
   state: 'authenticated' | 'anonymous' | 'login_gate_detected';
   loginGateDetected: boolean;
   bootstrapAttempted: boolean;
-  bootstrapSource: 'explicit' | 'named' | 'auto_litres' | null;
+  bootstrapSource:
+    | 'explicit'
+    | 'named'
+    | 'auto_litres'
+    | 'auto_brandshop'
+    | null;
   storageStatePath: string | null;
   storageStateExists: boolean;
   authenticatedSignals: string[];
@@ -52,7 +57,7 @@ export interface SessionAuthContext {
 export interface SessionProfileContext {
   profileId: string | null;
   persistent: boolean;
-  source: 'explicit' | 'named' | 'auto_litres' | null;
+  source: 'explicit' | 'named' | 'auto_litres' | 'auto_brandshop' | null;
   storageStatePath: string | null;
   storageStateExists: boolean;
 }
@@ -86,7 +91,13 @@ export interface SessionPaymentContext {
   detected: boolean;
   shouldReportImmediately: boolean;
   provider: 'sberpay' | 'sbp' | null;
-  phase: 'litres_checkout' | 'payecom_boundary' | 'platiecom_deeplink' | null;
+  phase:
+    | 'litres_checkout'
+    | 'brandshop_checkout'
+    | 'payecom_boundary'
+    | 'platiecom_deeplink'
+    | 'yoomoney_boundary'
+    | null;
   paymentMethod: string | null;
   paymentSystem: string | null;
   paymentUrl: string | null;
@@ -116,7 +127,13 @@ export interface SessionRecord {
   lastUsedAt: string;
   idleTimeoutMs: number;
   status: 'open' | 'closed';
-  closeReason: 'manual' | 'idle_timeout' | 'open_failed' | 'controller_missing' | 'shutdown' | null;
+  closeReason:
+    | 'manual'
+    | 'idle_timeout'
+    | 'open_failed'
+    | 'controller_missing'
+    | 'shutdown'
+    | null;
   closedAt: string | null;
   title: string | null;
   scenarioContext: SessionScenarioContext;
@@ -133,7 +150,7 @@ export interface SessionTraceArtifact {
 export interface HardStopSignal {
   enabled: true;
   reason: 'gateway_payment_json_ready';
-  gateway: 'payecom' | 'platiecom';
+  gateway: 'payecom' | 'platiecom' | 'yoomoney';
   gatewayUrl: string;
   finalPayload: SberPayExtractionJson;
 }
@@ -201,7 +218,15 @@ interface ActionTarget {
   selector?: string;
   text?: string;
   exact?: boolean;
-  role?: 'button' | 'link' | 'textbox' | 'searchbox' | 'combobox' | 'checkbox' | 'radio' | 'heading';
+  role?:
+    | 'button'
+    | 'link'
+    | 'textbox'
+    | 'searchbox'
+    | 'combobox'
+    | 'checkbox'
+    | 'radio'
+    | 'heading';
   name?: string;
   timeoutMs?: number;
 }

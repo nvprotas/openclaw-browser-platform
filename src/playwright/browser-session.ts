@@ -1,6 +1,12 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
+import {
+  firefox,
+  type Browser,
+  type BrowserContext,
+  type LaunchOptions,
+  type Page
+} from 'playwright';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionBackend, SessionPaymentContext } from '../daemon/types.js';
 import { extractPaymentContext } from '../helpers/payment-context.js';
@@ -147,23 +153,32 @@ export function extractWebsocketEndpoint(logLine: string): string | null {
   }
 
   const candidate = matched[0].replace(/[\])},;]+$/, '');
-  return candidate.startsWith('ws://') || candidate.startsWith('wss://') ? candidate : null;
+  return candidate.startsWith('ws://') || candidate.startsWith('wss://')
+    ? candidate
+    : null;
 }
 
-export function resolveCamoufoxPythonCommand(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveCamoufoxPythonCommand(
+  env: NodeJS.ProcessEnv = process.env
+): string {
   const explicit = env.CAMOUFOX_PYTHON_BIN?.trim();
   if (explicit) {
     return explicit;
   }
 
-  const openclawHome = env.OPENCLAW_HOME?.trim() || (env.HOME ? `${env.HOME}/.openclaw` : '');
-  const defaultVenvPython = openclawHome ? `${openclawHome}/venvs/camoufox/bin/python` : '';
+  const openclawHome =
+    env.OPENCLAW_HOME?.trim() || (env.HOME ? `${env.HOME}/.openclaw` : '');
+  const defaultVenvPython = openclawHome
+    ? `${openclawHome}/venvs/camoufox/bin/python`
+    : '';
   if (defaultVenvPython && existsSync(defaultVenvPython)) {
     return defaultVenvPython;
   }
 
   const explicitVenvDir = env.CAMOUFOX_VENV_DIR?.trim();
-  const explicitVenvPython = explicitVenvDir ? `${explicitVenvDir}/bin/python` : '';
+  const explicitVenvPython = explicitVenvDir
+    ? `${explicitVenvDir}/bin/python`
+    : '';
   if (explicitVenvPython && existsSync(explicitVenvPython)) {
     return explicitVenvPython;
   }
@@ -175,7 +190,9 @@ export function resolveCamoufoxPythonCommand(env: NodeJS.ProcessEnv = process.en
     return 'python';
   }
 
-  const hasPython3 = pathEntries.some((entry) => existsSync(`${entry}/python3`));
+  const hasPython3 = pathEntries.some((entry) =>
+    existsSync(`${entry}/python3`)
+  );
   if (hasPython3) {
     return 'python3';
   }
@@ -202,7 +219,11 @@ function createOpenTimingCollector() {
 
   return {
     stages,
-    async run<T>(step: string, fn: () => Promise<T>, detail: string | null = null): Promise<T> {
+    async run<T>(
+      step: string,
+      fn: () => Promise<T>,
+      detail: string | null = null
+    ): Promise<T> {
       const startedAt = isoNow();
       const startedMs = Date.now();
 
@@ -328,12 +349,14 @@ async function waitForCamoufoxEndpointFromProcess(
       }
       cleanup();
       await onFailure?.().catch(() => undefined);
-      reject(new BrowserPlatformError(message, {
-        code: 'SESSION_OPEN_FAILED',
-        details: {
-          recentLogs: recentLogs.slice(-10)
-        }
-      }));
+      reject(
+        new BrowserPlatformError(message, {
+          code: 'SESSION_OPEN_FAILED',
+          details: {
+            recentLogs: recentLogs.slice(-10)
+          }
+        })
+      );
     };
 
     const onData = (chunk: Buffer) => {
@@ -357,7 +380,9 @@ async function waitForCamoufoxEndpointFromProcess(
     };
 
     const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
-      void finishWithError(`Camoufox server exited before publishing ws endpoint (code=${code ?? 'null'}, signal=${signal ?? 'null'})`);
+      void finishWithError(
+        `Camoufox server exited before publishing ws endpoint (code=${code ?? 'null'}, signal=${signal ?? 'null'})`
+      );
     };
 
     const onError = (error: Error) => {
@@ -365,7 +390,9 @@ async function waitForCamoufoxEndpointFromProcess(
     };
 
     const timeout = setTimeout(() => {
-      void finishWithError(`Timed out waiting for Camoufox ws endpoint after ${timeoutMs}ms`);
+      void finishWithError(
+        `Timed out waiting for Camoufox ws endpoint after ${timeoutMs}ms`
+      );
     }, timeoutMs);
 
     proc.stdout?.on('data', onData);
@@ -375,10 +402,18 @@ async function waitForCamoufoxEndpointFromProcess(
   });
 }
 
-export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ browser: Browser; stop: () => Promise<void> }> {
+export async function launchCamoufoxBrowser(
+  timeoutMs = 60_000
+): Promise<{ browser: Browser; stop: () => Promise<void> }> {
   const pythonBin = resolveCamoufoxPythonCommand();
-  const proc = spawn(pythonBin, buildCamoufoxServerArgs(), { stdio: ['ignore', 'pipe', 'pipe'] });
-  const wsEndpoint = await waitForCamoufoxEndpointFromProcess(proc, timeoutMs, () => stopCamoufoxProcess(proc));
+  const proc = spawn(pythonBin, buildCamoufoxServerArgs(), {
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  const wsEndpoint = await waitForCamoufoxEndpointFromProcess(
+    proc,
+    timeoutMs,
+    () => stopCamoufoxProcess(proc)
+  );
 
   try {
     const browser = await firefox.connect(wsEndpoint, { timeout: timeoutMs });
@@ -388,13 +423,16 @@ export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ brows
     };
   } catch (error) {
     await stopCamoufoxProcess(proc);
-    throw new BrowserPlatformError('Camoufox started but Playwright Firefox failed to connect', {
-      code: 'SESSION_OPEN_FAILED',
-      details: {
-        wsEndpoint,
-        cause: error instanceof Error ? error.message : String(error)
+    throw new BrowserPlatformError(
+      'Camoufox started but Playwright Firefox failed to connect',
+      {
+        code: 'SESSION_OPEN_FAILED',
+        details: {
+          wsEndpoint,
+          cause: error instanceof Error ? error.message : String(error)
+        }
       }
-    });
+    );
   }
 }
 
@@ -420,7 +458,9 @@ export class BrowserContextPool {
       };
     }
 
-    const launched = await launchCamoufoxBrowser(options.camoufoxStartupTimeoutMs);
+    const launched = await launchCamoufoxBrowser(
+      options.camoufoxStartupTimeoutMs
+    );
 
     try {
       const context = await launched.browser.newContext({
@@ -561,8 +601,14 @@ export class BrowserSession {
 
       page = await timing.run('new_page', () => readyContext.newPage());
       const readyPage = page;
-      await timing.run('goto_domcontentloaded', () => readyPage.goto(url, { waitUntil: 'domcontentloaded' }), url);
-      await timing.run('wait_for_initial_load', () => waitForInitialLoad(readyPage));
+      await timing.run(
+        'goto_domcontentloaded',
+        () => readyPage.goto(url, { waitUntil: 'domcontentloaded' }),
+        url
+      );
+      await timing.run('wait_for_initial_load', () =>
+        waitForInitialLoad(readyPage)
+      );
     } catch (error) {
       await page?.close().catch(() => undefined);
       if (this.contextLease) {
@@ -572,37 +618,48 @@ export class BrowserSession {
         await context?.close().catch(() => undefined);
         await Promise.allSettled([
           browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
-          this.stopCamoufoxBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
+          this.stopCamoufoxBrowser?.().catch(() => undefined) ??
+            Promise.resolve(undefined)
         ]);
         this.stopCamoufoxBrowser = null;
       }
 
-      throw new BrowserPlatformError(`Failed to open browser session (${backend})`, {
-        code: 'SESSION_OPEN_FAILED',
-        details: {
-          backend,
-          url,
-          cause: error instanceof Error ? error.message : String(error)
+      throw new BrowserPlatformError(
+        `Failed to open browser session (${backend})`,
+        {
+          code: 'SESSION_OPEN_FAILED',
+          details: {
+            backend,
+            url,
+            cause: error instanceof Error ? error.message : String(error)
+          }
         }
-      });
+      );
     }
 
     if (!browser || !context || !page) {
-      throw new BrowserPlatformError(`Failed to open browser session (${backend})`, {
-        code: 'SESSION_OPEN_FAILED',
-        details: {
-          backend,
-          url,
-          cause: 'Browser session was not initialized'
+      throw new BrowserPlatformError(
+        `Failed to open browser session (${backend})`,
+        {
+          code: 'SESSION_OPEN_FAILED',
+          details: {
+            backend,
+            url,
+            cause: 'Browser session was not initialized'
+          }
         }
-      });
+      );
     }
 
     this.browser = browser;
     this.context = context;
     this.pageInstance = page;
     this.markUsed();
-    await timing.run('persist_storage_state', () => this.persistStorageState(), this.options.storageStatePath ?? null);
+    await timing.run(
+      'persist_storage_state',
+      () => this.persistStorageState(),
+      this.options.storageStatePath ?? null
+    );
     const readyPage = page;
 
     return {
@@ -637,7 +694,8 @@ export class BrowserSession {
     this.markUsed();
     const page = this.requirePage();
     const summary = (await page.evaluate(() => {
-      const normalizeText = (value: string | null | undefined): string => (value ?? '').replace(/\s+/g, ' ').trim();
+      const normalizeText = (value: string | null | undefined): string =>
+        (value ?? '').replace(/\s+/g, ' ').trim();
 
       // Use TreeWalker to collect visible text nodes — works on CSS-modules/React sites
       // where class names are hashed and semantic selectors don't match.
@@ -655,7 +713,12 @@ export class BrowserSession {
           if (parent) {
             const style = window.getComputedStyle(parent);
             const rect = parent.getBoundingClientRect();
-            if (style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0) {
+            if (
+              style.visibility !== 'hidden' &&
+              style.display !== 'none' &&
+              rect.width > 0 &&
+              rect.height > 0
+            ) {
               if (!seenTexts.has(raw)) {
                 seenTexts.add(raw);
                 visibleTexts.push(raw);
@@ -669,14 +732,23 @@ export class BrowserSession {
       const isVisible = (element: HTMLElement) => {
         const style = window.getComputedStyle(element);
         const rect = element.getBoundingClientRect();
-        return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
+        return (
+          style.visibility !== 'hidden' &&
+          style.display !== 'none' &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
       };
       const toButtonSummary = (element: HTMLElement) => {
-        const inputType = element instanceof HTMLInputElement ? element.type : null;
+        const inputType =
+          element instanceof HTMLInputElement ? element.type : null;
         const text = normalizeText(
-          element instanceof HTMLInputElement ? element.value : element.innerText || element.textContent
+          element instanceof HTMLInputElement
+            ? element.value
+            : element.innerText || element.textContent
         );
-        const ariaLabel = normalizeText(element.getAttribute('aria-label')) || null;
+        const ariaLabel =
+          normalizeText(element.getAttribute('aria-label')) || null;
         const selector = (() => {
           const testId = element.getAttribute('data-testid');
           if (testId) return `[data-testid="${testId}"]`;
@@ -710,13 +782,17 @@ export class BrowserSession {
         "[data-testid*='purchase']"
       ];
       const priorityButtons = prioritySelectors
-        .flatMap((sel) => Array.from(document.querySelectorAll<HTMLElement>(sel)))
+        .flatMap((sel) =>
+          Array.from(document.querySelectorAll<HTMLElement>(sel))
+        )
         .filter(isVisible)
         .map(toButtonSummary)
         .filter((button) => button.text.length > 0 || button.ariaLabel);
 
       const allButtons = Array.from(
-        document.querySelectorAll<HTMLElement>('button, input[type="button"], input[type="submit"], [role="button"]')
+        document.querySelectorAll<HTMLElement>(
+          'button, input[type="button"], input[type="submit"], [role="button"]'
+        )
       )
         .filter(isVisible)
         .map(toButtonSummary)
@@ -734,10 +810,16 @@ export class BrowserSession {
 
       const forms = Array.from(document.forms).map((form) => {
         const submitLabels = Array.from(
-          form.querySelectorAll<HTMLInputElement | HTMLButtonElement>('button, input[type="submit"]')
+          form.querySelectorAll<HTMLInputElement | HTMLButtonElement>(
+            'button, input[type="submit"]'
+          )
         )
           .map((element) =>
-            normalizeText(element instanceof HTMLInputElement ? element.value : element.innerText || element.textContent)
+            normalizeText(
+              element instanceof HTMLInputElement
+                ? element.value
+                : element.innerText || element.textContent
+            )
           )
           .filter((text) => text.length > 0)
           .slice(0, 4);
@@ -753,18 +835,25 @@ export class BrowserSession {
       });
 
       const urlHintSources = [
-        ...Array.from(document.querySelectorAll<HTMLElement>(
-          'a[href], iframe[src], frame[src], form[action], [data-href], [data-url], [data-link], [data-target-url]'
-        )).map((element) =>
-          element.getAttribute('href') ??
-          element.getAttribute('src') ??
-          element.getAttribute('action') ??
-          element.getAttribute('data-href') ??
-          element.getAttribute('data-url') ??
-          element.getAttribute('data-link') ??
-          element.getAttribute('data-target-url')
+        ...Array.from(
+          document.querySelectorAll<HTMLElement>(
+            'a[href], iframe[src], frame[src], form[action], [data-href], [data-url], [data-link], [data-target-url]'
+          )
+        ).map(
+          (element) =>
+            element.getAttribute('href') ??
+            element.getAttribute('src') ??
+            element.getAttribute('action') ??
+            element.getAttribute('data-href') ??
+            element.getAttribute('data-url') ??
+            element.getAttribute('data-link') ??
+            element.getAttribute('data-target-url')
         ),
-        ...Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/json"], script[type="application/ld+json"], script'))
+        ...Array.from(
+          document.querySelectorAll<HTMLScriptElement>(
+            'script[type="application/json"], script[type="application/ld+json"], script'
+          )
+        )
           .map((script) => normalizeText(script.textContent))
           .filter((value) => value.length > 0)
       ];
@@ -777,7 +866,7 @@ export class BrowserSession {
 
           const normalized = normalizeText(raw);
           const matches = normalized.match(
-            /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|id\.sber\.ru\/[^\s"'<>)]*)[^\s"'<>)]*|(?:orderid|bankinvoiceid|mdorder|merchantorderid|merchantordernumber|formurl|purchase\/ppd)[^\s"'<>]*/gi
+            /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|yoomoney\.ru\/checkout\/payments\/v2\/contract(?:\/sberpay)?|id\.sber\.ru\/[^\s"'<>)]*)[^\s"'<>)]*|(?:orderid|bankinvoiceid|mdorder|merchantorderid|merchantordernumber|formurl|purchase\/ppd)[^\s"'<>]*/gi
           );
 
           if (matches?.length) {
@@ -792,7 +881,7 @@ export class BrowserSession {
         })
         .filter((value): value is string => Boolean(value))
         .filter((value) =>
-          /payecom\.ru|platiecom\.ru|id\.sber\.ru|sberid|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd/i.test(
+          /payecom\.ru|platiecom\.ru|yoomoney\.ru|id\.sber\.ru|sberid|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd/i.test(
             value
           )
         )
@@ -801,21 +890,42 @@ export class BrowserSession {
 
       const lowerTexts = visibleTexts.join(' ').toLowerCase();
       const buttonTexts = visibleButtons
-        .map((button) => `${button.text} ${button.ariaLabel ?? ''}`.trim().toLowerCase())
+        .map((button) =>
+          `${button.text} ${button.ariaLabel ?? ''}`.trim().toLowerCase()
+        )
         .join(' ');
-      const hasSearchSignals = /search|найти|поиск|каталог|catalog|корзин|my books|мои книги/.test(lowerTexts);
-      const hasAuthWords = /sign in|log in|войти|password|пароль/.test(lowerTexts);
-      const hasSearchForm = forms.some((form) => (form.action ?? '').toLowerCase().includes('/search'));
-      const hasLikelyAuthForm = forms.some((form) => form.inputCount >= 2 && !((form.action ?? '').toLowerCase().includes('/search')));
+      const hasSearchSignals =
+        /search|найти|поиск|каталог|catalog|корзин|my books|мои книги/.test(
+          lowerTexts
+        );
+      const hasAuthWords = /sign in|log in|войти|password|пароль/.test(
+        lowerTexts
+      );
+      const hasSearchForm = forms.some((form) =>
+        (form.action ?? '').toLowerCase().includes('/search')
+      );
+      const hasLikelyAuthForm = forms.some(
+        (form) =>
+          form.inputCount >= 2 &&
+          !(form.action ?? '').toLowerCase().includes('/search')
+      );
 
       const currentUrl = window.location.href;
       const urlHasSearch = /[?&]q=|\/search/i.test(currentUrl);
-      const urlHasCart = /\/cart|\/basket|\/my-books\/cart/i.test(currentUrl);
-      const urlHasProduct = /\/book\/|\/audiobook\/|\/product\//i.test(currentUrl);
+      const urlHasCart = /\/cart|\/basket|\/checkout|\/my-books\/cart/i.test(
+        currentUrl
+      );
+      const urlHasProduct =
+        /\/book\/|\/audiobook\/|\/product\/|\/goods\//i.test(currentUrl);
 
-      const hasBuyButtons = /buy|add to cart|purchase|купить|в корзину/.test(buttonTexts);
+      const hasBuyButtons = /buy|add to cart|purchase|купить|в корзину/.test(
+        buttonTexts
+      );
       // Strong cart signals: confirmation text or navigational cue to cart — not just nav badge
-      const hasCartConfirmation = /added to cart|go to cart|перейти в корзину|товар добавлен|добавлено в корзину/i.test(lowerTexts + ' ' + buttonTexts);
+      const hasCartConfirmation =
+        /added to cart|go to cart|перейти в корзину|товар добавлен|добавлено в корзину/i.test(
+          lowerTexts + ' ' + buttonTexts
+        );
 
       let pageSignatureGuess = 'unknown';
       if (hasLikelyAuthForm || (hasAuthWords && !hasSearchSignals)) {
@@ -824,9 +934,16 @@ export class BrowserSession {
         pageSignatureGuess = 'cart';
       } else if (urlHasProduct || hasBuyButtons) {
         pageSignatureGuess = 'product_page';
-      } else if (!hasBuyButtons && /cart|basket|checkout|корзин/.test(lowerTexts) && !urlHasSearch) {
+      } else if (
+        !hasBuyButtons &&
+        /cart|basket|checkout|корзин/.test(lowerTexts) &&
+        !urlHasSearch
+      ) {
         pageSignatureGuess = 'cart';
-      } else if (urlHasSearch || /search|results|найден|результат/.test(lowerTexts)) {
+      } else if (
+        urlHasSearch ||
+        /search|results|найден|результат/.test(lowerTexts)
+      ) {
         pageSignatureGuess = 'search_results';
       } else if (hasSearchSignals || hasSearchForm) {
         pageSignatureGuess = 'home';
@@ -862,8 +979,14 @@ export class BrowserSession {
   async snapshot(): Promise<BrowserSessionSnapshotResult> {
     this.markUsed();
     const page = this.requirePage();
-    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-    const paths = await capturePageSnapshot(page, this.options.snapshotRootDir, this.options.sessionId);
+    await page
+      .waitForLoadState('networkidle', { timeout: 5000 })
+      .catch(() => {});
+    const paths = await capturePageSnapshot(
+      page,
+      this.options.snapshotRootDir,
+      this.options.sessionId
+    );
     await this.persistStorageState();
     return {
       ...paths,
@@ -882,8 +1005,10 @@ export class BrowserSession {
       if (!this.contextLease) {
         await this.context?.close().catch(() => undefined);
         await Promise.allSettled([
-          this.browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
-          this.stopCamoufoxBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
+          this.browser?.close().catch(() => undefined) ??
+            Promise.resolve(undefined),
+          this.stopCamoufoxBrowser?.().catch(() => undefined) ??
+            Promise.resolve(undefined)
         ]);
       } else {
         await this.contextLease.release();
@@ -904,7 +1029,9 @@ export class BrowserSession {
 
   private requirePage(): Page {
     if (!this.pageInstance) {
-      throw new BrowserPlatformError('Session page is not initialized', { code: 'SESSION_NOT_READY' });
+      throw new BrowserPlatformError('Session page is not initialized', {
+        code: 'SESSION_NOT_READY'
+      });
     }
 
     return this.pageInstance;

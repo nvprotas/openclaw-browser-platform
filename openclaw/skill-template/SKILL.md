@@ -8,7 +8,7 @@ metadata: { "openclaw": { "emoji": "🌐", "requires": { "bins": ["browser-platf
 
 Use this skill when the user needs browser automation on a real site and a normal API/tool is not enough.
 
-Current pilot support is strongest for **LitRes (`litres.ru`)**.
+Current pilot support is strongest for **LitRes (`litres.ru`)** and assisted checkout flows on **Brandshop (`brandshop.ru`)**.
 
 ## Core rule
 
@@ -68,6 +68,7 @@ browser-platform session context --session <SESSION_ID> --json
 ```
 
 Check:
+
 - `packContext`
 - `authContext`
 - `paymentContext`
@@ -83,7 +84,7 @@ browser-platform session observe --session <SESSION_ID> --json
 
 Use observation to decide the next step.
 
-If `paymentContext.shouldReportImmediately` is true and the current gateway URL matches `https://payecom.ru/pay?...` or `https://platiecom.ru/deeplink?...`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer. Otherwise, treat it as a checkpoint signal and continue following the user task.
+If `paymentContext.shouldReportImmediately` is true and the current gateway URL matches `https://payecom.ru/pay?...`, `https://platiecom.ru/deeplink?...`, or `https://yoomoney.ru/checkout/payments/v2/contract?...`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer. Otherwise, treat it as a checkpoint signal and continue following the user task.
 
 ### 5. Act in small steps
 
@@ -129,6 +130,7 @@ If the user asked to reach SberPay specifically, the task is satisfied once you 
 Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
 
 Payment terminology (strict):
+
 - `СБП` / `SBP` means `Система быстрых платежей` (Fast Payment System).
 - `SberPay` / `СберПей` means `SberPay`.
 - `СБП` and `SberPay` are completely different payment methods; never treat them as synonyms.
@@ -137,12 +139,16 @@ Payment terminology (strict):
 Gateway JSON interception rule
 
 Trigger this rule only when the browser session reaches one of these gateway URL patterns:
+
 - `https://payecom.ru/pay?...`
 - `https://platiecom.ru/deeplink?...`
+- `https://yoomoney.ru/checkout/payments/v2/contract?...`
+- `https://yoomoney.ru/checkout/payments/v2/contract/sberpay?...`
 
 Do not trigger this rule for other payment-related pages, checkout states, or intermediate checkout URLs.
 
 When either gateway URL is detected:
+
 - stop normal browser-task execution immediately
 - stop narration, summarization, and further exploration
 - return exactly one JSON object and nothing else
@@ -153,8 +159,9 @@ Return this JSON shape:
 
 ```json
 {
-  "gateway": "payecom|platiecom",
+  "gateway": "payecom|platiecom|yoomoney",
   "gatewayUrl": "string",
+  "paymentUrl": "string|null",
   "paymentIntents": [
     {
       "provider": "sberpay",
@@ -174,13 +181,16 @@ Return this JSON shape:
 ```
 
 Mapping rules:
-- Set `gateway` to `payecom` for `payecom.ru/pay?...` and `platiecom` for `platiecom.ru/deeplink?...`.
+
+- Set `gateway` to `payecom` for `payecom.ru/pay?...`, `platiecom` for `platiecom.ru/deeplink?...`, and `yoomoney` for `yoomoney.ru/checkout/payments/v2/contract?...` or `/contract/sberpay?...`.
 - Set `gatewayUrl` to the exact detected gateway URL.
+- Set `paymentUrl` to the detected payment page URL; for YooMoney this should usually be the same as `gatewayUrl`.
 - Always include `paymentIntents` as an array.
 - For these gateway URLs, add one `paymentIntents` item with `provider: "sberpay"`.
 - Fill `paymentIntents[0].orderId` from the gateway order identifier when available.
 - For `payecom.ru/pay?...`, prefer the query `orderId` as the SberPay order identifier.
 - For `platiecom.ru/deeplink?...`, extract the best available SberPay order identifier from the deeplink/query payload; otherwise use `null`.
+- For `yoomoney.ru/checkout/payments/v2/contract...`, prefer the query `orderId` as the SberPay order identifier and set `paymentOrderId` to the same value.
 - Populate the remaining top-level fields from runtime evidence when available; otherwise use `null`.
 
 This gateway interception rule overrides normal browser automation response style.
@@ -195,6 +205,19 @@ Current known LitRes behavior:
 - after login, a merge-profiles modal can block clicks
 - a reliable close target from live testing is:
   - `div[data-testid="modal--overlay"] header > div:nth-child(2)`
+
+## Brandshop notes
+
+Current known Brandshop behavior:
+
+- Open Brandshop sessions with the `brandshop` profile when possible; runtime uses the same SberID cookies path as LitRes: `/root/.openclaw/workspace/sber-cookies.json`.
+- Search can be performed directly with `https://brandshop.ru/search/?q=<query>`.
+- Product URLs use `/goods/<id>/<slug>/`; choose an available size before clicking `Добавить в корзину`.
+- Use the header cart control or visible `Оформить заказ` action to enter checkout.
+- Delivery method must be `Самовывоз`.
+- Payment method must be `SberPay`; do not treat `СБП` as SberPay.
+- After `Самовывоз` and `SberPay` are selected, click `Подтвердить заказ` to reach the payment boundary.
+- Stop at `yoomoney.ru/checkout/payments/v2/contract?...orderId=...` or `/contract/sberpay?...orderId=...` and return the gateway JSON immediately.
 
 ## Working-directory rule
 

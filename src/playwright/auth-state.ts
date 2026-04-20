@@ -19,17 +19,23 @@ export async function fileExists(path: string): Promise<boolean> {
   }
 }
 
-export function inferAuthState(url: string, observation: PageStateSummary): AuthStateSummary {
+export function inferAuthState(
+  url: string,
+  observation: PageStateSummary
+): AuthStateSummary {
   const joinedTexts = observation.visibleTexts.join(' ').toLowerCase();
   const buttonTexts = observation.visibleButtons
-    .map((button) => `${button.text} ${button.ariaLabel ?? ''}`.trim().toLowerCase())
+    .map((button) =>
+      `${button.text} ${button.ariaLabel ?? ''}`.trim().toLowerCase()
+    )
     .join(' ');
   const combined = `${joinedTexts} ${buttonTexts}`;
   const lowerUrl = url.toLowerCase();
   const isIntermediateAuthUrl =
     /id\.sber\.ru/.test(lowerUrl) ||
     /litres\.ru\/auth_proxy\//.test(lowerUrl) ||
-    /litres\.ru\/callbacks\/social-auth/.test(lowerUrl);
+    /litres\.ru\/callbacks\/social-auth/.test(lowerUrl) ||
+    /api\.brandshop\.ru\/xhr\/checkout\/sber_id\/callback/.test(lowerUrl);
 
   const authenticatedSignals = [
     /выйти/.test(combined) ? 'visible_logout' : null,
@@ -58,7 +64,10 @@ export function inferAuthState(url: string, observation: PageStateSummary): Auth
     };
   }
 
-  if (authenticatedSignals.length > 0 && !anonymousSignals.includes('visible_login')) {
+  if (
+    authenticatedSignals.length > 0 &&
+    !anonymousSignals.includes('visible_login')
+  ) {
     return {
       state: 'authenticated',
       loginGateDetected,
