@@ -174,7 +174,7 @@ describe('payment observations', () => {
       ])
     );
     const paymentObservation = observations.find((item) => item.code === 'PAYMENT_IDS_DETECTED');
-    expect(paymentObservation?.message).toContain('Return paymentContext.extractionJson as JSON before continuing');
+    expect(paymentObservation?.message).toContain('СТОП');
     expect(paymentObservation?.message).toContain('"paymentOrderId":"019d44bf-26ad-5eb3-13d1-e41086dc9cff"');
   });
 });

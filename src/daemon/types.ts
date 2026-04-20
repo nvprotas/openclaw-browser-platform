@@ -84,7 +84,9 @@ export interface SberPayExtractionJson {
 
 export interface SessionPaymentContext {
   detected: boolean;
+  /** @deprecated Use terminalExtractionResult */
   shouldReportImmediately: boolean;
+  terminalExtractionResult: boolean;
   provider: 'sberpay' | 'sbp' | null;
   phase: 'litres_checkout' | 'payecom_boundary' | 'platiecom_deeplink' | null;
   paymentMethod: string | null;
@@ -132,11 +134,12 @@ export interface SessionTraceArtifact {
 
 export interface HardStopSignal {
   enabled: true;
-  reason: 'gateway_payment_json_ready';
+  terminalMode: true;
+  reason: 'terminal_extraction_result';
   returnPolicy: 'return_final_payload_verbatim';
-  agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).';
-  gateway: 'payecom' | 'platiecom';
-  gatewayUrl: string;
+  agentInstruction: 'СТОП. Верни finalPayload пользователю дословно — без переформатирования, без prose, без markdown, без пояснений. Не продолжай browsing.';
+  gateway?: 'payecom' | 'platiecom';
+  gatewayUrl?: string;
   finalPayload: SberPayExtractionJson;
 }
 

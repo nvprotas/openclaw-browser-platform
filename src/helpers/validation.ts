@@ -50,23 +50,23 @@ export function buildPostActionObservations(before: PageStateSummary, after: Pag
     observations.push({ level: 'info', code: 'TITLE_CHANGED', message: `Title changed to ${after.title}` });
   }
 
-  if (
-    after.paymentContext.shouldReportImmediately &&
-    paymentFingerprint(before.paymentContext) !== paymentFingerprint(after.paymentContext)
-  ) {
+  const isTerminal = after.paymentContext.terminalExtractionResult || after.paymentContext.shouldReportImmediately;
+  const hardStop = buildHardStopSignal(after.url, after.paymentContext);
+
+  if (isTerminal && paymentFingerprint(before.paymentContext) !== paymentFingerprint(after.paymentContext)) {
     observations.push({
-      level: 'info',
+      level: 'warning',
       code: 'PAYMENT_IDS_DETECTED',
-      message: `Payment identifiers detected. Return paymentContext.extractionJson as JSON before continuing: ${summarizePaymentContext(after.paymentContext)}`
+      message: `СТОП: обнаружены payment identifiers. Верни extractionJson дословно без prose: ${summarizePaymentContext(after.paymentContext)}`
     });
   }
 
-  const hardStop = buildHardStopSignal(after.url, after.paymentContext);
   if (hardStop) {
+    const gatewayInfo = hardStop.gateway ? ` (${hardStop.gateway})` : '';
     observations.push({
       level: 'warning',
-      code: 'HARD_STOP_GATEWAY_PAYMENT_JSON_READY',
-      message: `Hard stop required (${hardStop.gateway}): return hardStop.finalPayload JSON and do not continue normal flow.`
+      code: 'HARD_STOP_TERMINAL_EXTRACTION_RESULT',
+      message: `TERMINAL HARD STOP${gatewayInfo}: return hardStop.finalPayload JSON verbatim and do not continue normal flow.`
     });
   }
 
