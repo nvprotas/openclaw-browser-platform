@@ -216,6 +216,7 @@ Current trace coverage:
 Hard-stop contract for payment extraction:
 - `session observe`, `session act`, and `session snapshot` may now include `hardStop`
 - `hardStop.reason = "gateway_payment_json_ready"` means fail-closed: stop normal flow and return only `hardStop.finalPayload`
+- `hardStop.returnPolicy = "return_final_payload_verbatim"` и `hardStop.agentInstruction` задают машинный контракт: агент должен вернуть `hardStop.finalPayload` пользователю без изменений
 - hard stop is emitted only for gateway URLs `https://payecom.ru/pay?...` and `https://platiecom.ru/deeplink?...` when extraction JSON is ready
 
 The heavier screenshot/HTML artifacts still live under:

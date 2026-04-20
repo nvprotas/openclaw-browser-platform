@@ -133,6 +133,8 @@ export interface SessionTraceArtifact {
 export interface HardStopSignal {
   enabled: true;
   reason: 'gateway_payment_json_ready';
+  returnPolicy: 'return_final_payload_verbatim';
+  agentInstruction: 'Верни пользователю hardStop.finalPayload без изменений (без переформатирования и без добавления полей).';
   gateway: 'payecom' | 'platiecom';
   gatewayUrl: string;
   finalPayload: SberPayExtractionJson;
