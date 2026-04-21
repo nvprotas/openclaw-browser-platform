@@ -144,6 +144,113 @@ printf '{"ok":true}'
     await expect(readFile(path.join(workspace, 'skills/browser-platform/SKILL.md'), 'utf8')).rejects.toThrow();
   });
 
+  it('force stops an unresponsive browser-platform daemon during install', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-install-test-'));
+    tempDirs.push(tempRoot);
+
+    const openclawHome = path.join(tempRoot, '.openclaw');
+    const workspace = path.join(openclawHome, 'workspace');
+    const binDir = path.join(tempRoot, 'bin');
+    const logPath = path.join(tempRoot, 'tool-log.txt');
+
+    await mkdir(binDir, { recursive: true });
+    await mkdir(workspace, { recursive: true });
+
+    await makeStub(binDir, 'npm', '#!/usr/bin/env bash\nset -euo pipefail\n');
+    await makeStub(binDir, 'sleep', '#!/usr/bin/env bash\nset -euo pipefail\n');
+
+    await makeStub(
+      binDir,
+      'pgrep',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'pgrep args=%s\n' "$*" >> ${JSON.stringify(logPath)}
+printf '12345\n'
+`
+    );
+
+    await makeStub(
+      binDir,
+      'pkill',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'pkill args=%s\n' "$*" >> ${JSON.stringify(logPath)}
+`
+    );
+
+    await execFileAsync('bash', [installScriptPath], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH ?? ''}`,
+        HOME: tempRoot,
+        OPENCLAW_HOME: openclawHome,
+        OPENCLAW_WORKSPACE: workspace,
+        DAEMON_STOP_TIMEOUT_SECONDS: '1',
+        RUN_TESTS: '0',
+        RESTART_GATEWAY: '0',
+        RUN_SMOKE_TEST: '0',
+        SKILL_MODE: 'skip',
+        INSTALL_CAMOUFOX: '0'
+      }
+    });
+
+    const log = await readFile(logPath, 'utf8');
+    expect(log).toContain(`pgrep args=-f ${repoRoot}/dist/src/daemon/entry.js`);
+    expect(log).toContain(`pkill args=-TERM -f ${repoRoot}/dist/src/daemon/entry.js`);
+    expect(log).toContain(`pkill args=-KILL -f ${repoRoot}/dist/src/daemon/entry.js`);
+  });
+
+  it('updates the local repo when UPDATE_REPO is enabled', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-install-test-'));
+    tempDirs.push(tempRoot);
+
+    const openclawHome = path.join(tempRoot, '.openclaw');
+    const workspace = path.join(openclawHome, 'workspace');
+    const binDir = path.join(tempRoot, 'bin');
+    const logPath = path.join(tempRoot, 'tool-log.txt');
+
+    await mkdir(binDir, { recursive: true });
+    await mkdir(workspace, { recursive: true });
+
+    await makeStub(binDir, 'npm', '#!/usr/bin/env bash\nset -euo pipefail\n');
+    await makeStub(
+      binDir,
+      'git',
+      `#!/usr/bin/env bash
+set -euo pipefail
+printf 'git args=%s\n' "$*" >> ${JSON.stringify(logPath)}
+if [ "$1" = "-C" ] && [ "$3" = "ls-files" ]; then
+  exit 0
+fi
+`
+    );
+
+    await execFileAsync('bash', [installScriptPath], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        PATH: `${binDir}:${process.env.PATH ?? ''}`,
+        HOME: tempRoot,
+        OPENCLAW_HOME: openclawHome,
+        OPENCLAW_WORKSPACE: workspace,
+        UPDATE_REPO: '1',
+        RUN_TESTS: '0',
+        RESTART_GATEWAY: '0',
+        RUN_SMOKE_TEST: '0',
+        SKILL_MODE: 'skip',
+        INSTALL_CAMOUFOX: '0'
+      }
+    });
+
+    const log = await readFile(logPath, 'utf8');
+    expect(log).toContain(`git args=-C ${repoRoot} diff --quiet`);
+    expect(log).toContain(`git args=-C ${repoRoot} diff --cached --quiet`);
+    expect(log).toContain(`git args=-C ${repoRoot} ls-files --others --exclude-standard`);
+    expect(log).toContain(`git args=-C ${repoRoot} fetch origin master`);
+    expect(log).toContain(`git args=-C ${repoRoot} checkout -B master origin/master`);
+  });
+
   it('installs and verifies camoufox by default', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-install-test-'));
     tempDirs.push(tempRoot);

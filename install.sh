@@ -20,6 +20,8 @@ REPO_URL="${REPO_URL:-https://github.com/nvprotas/openclaw-browser-platform.git}
 BRANCH="${BRANCH:-master}"
 TARGET_DIR="${TARGET_DIR:-$HOME/git/openclaw-browser-platform}"
 FORCE_UPDATE="${FORCE_UPDATE:-0}"
+UPDATE_REPO="${UPDATE_REPO:-0}"
+DAEMON_STOP_TIMEOUT_SECONDS="${DAEMON_STOP_TIMEOUT_SECONDS:-10}"
 
 log() {
   printf '==> %s\n' "$*"
@@ -227,12 +229,68 @@ ensure_repo_clone() {
   fi
 }
 
+update_local_repo_if_requested() {
+  local repo_dir="$1"
+
+  if [ "$UPDATE_REPO" != "1" ]; then
+    return
+  fi
+
+  need_cmd git
+
+  if [ "$FORCE_UPDATE" != "1" ]; then
+    git -C "$repo_dir" diff --quiet || fail "Existing repo has unstaged changes at $repo_dir (commit/stash them or set FORCE_UPDATE=1)"
+    git -C "$repo_dir" diff --cached --quiet || fail "Existing repo has staged changes at $repo_dir (commit/stash them or set FORCE_UPDATE=1)"
+    [ -z "$(git -C "$repo_dir" ls-files --others --exclude-standard)" ] || fail "Existing repo has untracked files at $repo_dir (clean them or set FORCE_UPDATE=1)"
+  fi
+
+  log "Updating repo in $repo_dir"
+  git -C "$repo_dir" fetch origin "$BRANCH"
+  git -C "$repo_dir" checkout -B "$BRANCH" "origin/$BRANCH"
+
+  log "Running updated repo-local installer from $repo_dir"
+  UPDATE_REPO=0 exec bash "$repo_dir/install.sh"
+}
+
+stop_browser_platform_daemon() {
+  local repo_dir="$1"
+  local pattern="$repo_dir/dist/src/daemon/entry.js"
+  local pids=""
+  local waited=0
+
+  pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  if [ -z "$pids" ]; then
+    return
+  fi
+
+  log "Stopping browser-platform daemon pids: $pids"
+  pkill -TERM -f "$pattern" 2>/dev/null || true
+
+  while [ "$waited" -lt "$DAEMON_STOP_TIMEOUT_SECONDS" ]; do
+    pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+    if [ -z "$pids" ]; then
+      return
+    fi
+
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  pids="$(pgrep -f "$pattern" 2>/dev/null || true)"
+  if [ -n "$pids" ]; then
+    log "Force stopping browser-platform daemon pids: $pids"
+    pkill -KILL -f "$pattern" 2>/dev/null || true
+  fi
+}
+
 run_local_install() {
   local repo_dir="$1"
   local skill_dir=""
 
   need_cmd node
   need_cmd npm
+
+  update_local_repo_if_requested "$repo_dir"
 
   cd "$repo_dir"
 
@@ -243,7 +301,7 @@ run_local_install() {
 
   log "Building project"
   log "Stopping browser-platform daemon (if running)"
-  pkill -f "$repo_dir/dist/src/daemon/entry.js" 2>/dev/null || true
+  stop_browser_platform_daemon "$repo_dir"
 
   npm run build
 
