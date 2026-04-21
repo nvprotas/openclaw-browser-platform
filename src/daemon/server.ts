@@ -13,6 +13,7 @@ import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from './session-regi
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import { isDebugEnabled, appendDebugLog } from '../debug/capture.js';
 import { StateStore } from './state-store.js';
+import { SESSION_BACKENDS } from './types.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
@@ -27,10 +28,8 @@ import type {
 const VERSION = '0.1.0';
 const SESSION_IDLE_TIMEOUT_ENV = 'BROWSER_PLATFORM_SESSION_IDLE_TIMEOUT_MS';
 const DEFAULT_SESSION_JANITOR_INTERVAL_MS = 60_000;
-const ALLOWED_SESSION_BACKENDS: readonly SessionBackend[] = ['camoufox', 'chromium'];
-
-function isSessionBackend(value: unknown): value is SessionBackend {
-  return typeof value === 'string' && ALLOWED_SESSION_BACKENDS.includes(value as SessionBackend);
+export function isSessionBackend(value: unknown): value is SessionBackend {
+  return typeof value === 'string' && SESSION_BACKENDS.includes(value as SessionBackend);
 }
 
 function isoNow(): string {
@@ -277,7 +276,7 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
             sendJson(response, 400, {
               ok: false,
               error: {
-                message: `Invalid backend. Allowed values: ${ALLOWED_SESSION_BACKENDS.join(', ')}`
+                message: `Invalid backend. Allowed values: ${SESSION_BACKENDS.join(', ')}`
               }
             });
             return;
