@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
+import { chromium, firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionBackend, SessionPaymentContext } from '../daemon/types.js';
 import { extractPaymentContext } from '../helpers/payment-context.js';
@@ -398,6 +398,17 @@ export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ brows
   }
 }
 
+export async function launchChromiumBrowser(launchOptions?: LaunchOptions): Promise<{ browser: Browser; stop: () => Promise<void> }> {
+  const browser = await chromium.launch({
+    headless: true,
+    ...launchOptions
+  });
+  return {
+    browser,
+    stop: async () => undefined
+  };
+}
+
 export class BrowserContextPool {
   private readonly entries = new Map<string, SharedBrowserContextEntry>();
 
@@ -420,7 +431,10 @@ export class BrowserContextPool {
       };
     }
 
-    const launched = await launchCamoufoxBrowser(options.camoufoxStartupTimeoutMs);
+    const launched =
+      backend === 'chromium'
+        ? await launchChromiumBrowser()
+        : await launchCamoufoxBrowser(options.camoufoxStartupTimeoutMs);
 
     try {
       const context = await launched.browser.newContext({
@@ -540,8 +554,8 @@ export class BrowserSession {
           detail: this.options.storageStatePath
         });
       } else {
-        const launched = await timing.run('launch_camoufox_browser', () =>
-          launchCamoufoxBrowser(this.options.camoufoxStartupTimeoutMs)
+        const launched = await timing.run(`launch_${backend}_browser`, () =>
+          backend === 'chromium' ? launchChromiumBrowser(this.options.launchOptions) : launchCamoufoxBrowser(this.options.camoufoxStartupTimeoutMs)
         );
         this.stopCamoufoxBrowser = launched.stop;
         browser = launched.browser;

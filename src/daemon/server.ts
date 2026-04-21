@@ -7,6 +7,7 @@ import { detectLoginGate } from '../helpers/login-gates.js';
 import { getDefaultStateStore } from './state-store.js';
 import { runIntegratedLitresBootstrap, type LitresBootstrapAttemptResult } from './litres-auth.js';
 import { resolveProfileForSession } from './profile-state.js';
+import { resolveBackendForSession } from './backend-policy.js';
 import { runIntegratedKuperBootstrap } from './kuper-auth.js';
 import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
@@ -266,12 +267,29 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
         }
         const requestedUrl = body.url;
 
-        if (body.backend !== undefined && body.backend !== null && body.backend !== 'camoufox') {
-          sendJson(response, 400, { ok: false, error: { message: 'Invalid backend. Allowed values: camoufox', code: 'INVALID_BACKEND' } });
-          return;
+        if (body.backend !== undefined && body.backend !== null) {
+          console.warn('[daemon] POST /v1/session/open: body.backend is ignored; backend is selected by policy');
+          timing.skip('backend_input_ignored', String(body.backend));
         }
+
         const preMatchedPack = await timing.run('match_site_pack_pre', () => matchSitePackByUrl(requestedUrl), requestedUrl);
-        const backend: SessionBackend = 'camoufox';
+        const backendPolicy = await timing.run(
+          'resolve_backend_policy',
+          async () =>
+            resolveBackendForSession({
+              requestedUrl,
+              matchedPack: preMatchedPack,
+              profileId: body.profileId,
+              scenarioId: body.scenarioId
+            }),
+          requestedUrl
+        );
+        const backend: SessionBackend = backendPolicy.selectedBackend;
+        logPayloadSummary = {
+          ...logPayloadSummary,
+          selectedBackend: backendPolicy.selectedBackend,
+          matchedRule: backendPolicy.matchedRule
+        };
         const profile = await timing.run(
           'resolve_profile',
           () =>
