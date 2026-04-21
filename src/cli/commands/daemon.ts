@@ -1,17 +1,29 @@
+import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawn } from 'node:child_process';
 import { BrowserPlatformError } from '../../core/errors.js';
 import { getDaemonStatus, readRunningDaemonInfo } from '../../daemon/client.js';
+import {
+  DAEMON_BOOT_STARTED_AT_ENV,
+  DAEMON_LAUNCH_ID_ENV,
+  DAEMON_START_POLL_INTERVAL_MS,
+  DAEMON_START_TIMEOUT_MS,
+  classifyDaemonState,
+  isProcessAlive,
+  isStartupLockActive,
+  resolveDaemonStartedAt
+} from '../../daemon/lifecycle.js';
 import { getDefaultStateStore } from '../../daemon/state-store.js';
+import type { DaemonInfo, DaemonStatusResponse, DaemonStartupLock } from '../../daemon/types.js';
+import { DAEMON_VERSION } from '../../daemon/version.js';
 
-async function isDaemonReachable(): Promise<boolean> {
+async function readLiveDaemonStatus(): Promise<DaemonStatusResponse | null> {
   try {
-    await getDaemonStatus();
-    return true;
+    return await getDaemonStatus();
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -26,80 +38,233 @@ async function resolveDaemonEntryPoint(): Promise<string> {
   }
 }
 
-async function spawnDaemon(): Promise<void> {
+async function spawnDaemon(startingInfo: DaemonInfo): Promise<number> {
   const entryPoint = await resolveDaemonEntryPoint();
   const isTypeScript = entryPoint.endsWith('.ts');
   const args = isTypeScript ? ['--import', 'tsx', entryPoint] : [entryPoint];
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    [DAEMON_LAUNCH_ID_ENV]: startingInfo.launchId,
+    [DAEMON_BOOT_STARTED_AT_ENV]: startingInfo.bootStartedAt
+  };
+  delete env.NODE_CHANNEL_FD;
+  delete env.NODE_UNIQUE_ID;
   const child = spawn(process.execPath, args, {
     cwd: process.cwd(),
     detached: true,
-    stdio: 'ignore'
+    stdio: 'ignore',
+    env
   });
 
   child.unref();
+  if (!child.pid) {
+    throw new BrowserPlatformError('Failed to determine daemon pid', { code: 'DAEMON_SPAWN_FAILED' });
+  }
+
+  return child.pid;
+}
+
+function buildOfflineStatus(info: DaemonInfo | null, state: DaemonStatusResponse['daemon']['state'], startupLock?: DaemonStartupLock | null) {
+  const bootStartedAt = info?.bootStartedAt ?? startupLock?.createdAt ?? null;
+  return {
+    running: state === 'running',
+    state,
+    pid: info?.pid ?? startupLock?.pid ?? null,
+    port: info?.port ?? null,
+    startedAt: resolveDaemonStartedAt(info) ?? bootStartedAt,
+    bootStartedAt,
+    readyAt: info?.readyAt ?? null,
+    uptimeMs: null,
+    sessionCount: 0,
+    version: info?.version ?? null
+  };
+}
+
+async function waitFor(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function removeStaleStartupLock(): Promise<void> {
+  const stateStore = getDefaultStateStore();
+  const startupLock = await stateStore.readStartupLock();
+  if (!startupLock) {
+    return;
+  }
+
+  if (isStartupLockActive(startupLock)) {
+    return;
+  }
+
+  if (!isProcessAlive(startupLock.pid)) {
+    await stateStore.removeStartupLock();
+  }
+}
+
+async function waitForForeignLaunch(timeoutAt: number): Promise<DaemonStatusResponse | null> {
+  const stateStore = getDefaultStateStore();
+
+  while (Date.now() < timeoutAt) {
+    const liveStatus = await readLiveDaemonStatus();
+    if (liveStatus) {
+      return liveStatus;
+    }
+
+    const [info, startupLock] = await Promise.all([stateStore.readDaemonInfo(), stateStore.readStartupLock()]);
+    const state = classifyDaemonState(info, {
+      reachable: false,
+      startupLock
+    });
+
+    if (state === 'unhealthy') {
+      throw new BrowserPlatformError('Daemon process exists but is unhealthy', {
+        code: 'DAEMON_UNHEALTHY',
+        details: { pid: info?.pid ?? null, state }
+      });
+    }
+
+    if (state !== 'starting') {
+      return null;
+    }
+
+    await waitFor(DAEMON_START_POLL_INTERVAL_MS);
+  }
+
+  throw new BrowserPlatformError('Timed out waiting for daemon to start', { code: 'DAEMON_START_TIMEOUT' });
+}
+
+async function waitForOwnLaunch(timeoutAt: number, launchId: string): Promise<DaemonStatusResponse> {
+  const stateStore = getDefaultStateStore();
+
+  while (Date.now() < timeoutAt) {
+    const liveStatus = await readLiveDaemonStatus();
+    if (liveStatus) {
+      return liveStatus;
+    }
+
+    const [info, startupLock] = await Promise.all([stateStore.readDaemonInfo(), stateStore.readStartupLock()]);
+    const state = classifyDaemonState(info, {
+      reachable: false,
+      startupLock
+    });
+
+    if (state === 'starting' && info?.launchId === launchId) {
+      await waitFor(DAEMON_START_POLL_INTERVAL_MS);
+      continue;
+    }
+
+    if (state === 'unhealthy') {
+      throw new BrowserPlatformError('Daemon process exists but is unhealthy', {
+        code: 'DAEMON_UNHEALTHY',
+        details: { pid: info?.pid ?? null, state, launchId }
+      });
+    }
+
+    throw new BrowserPlatformError('Daemon failed to become ready', {
+      code: 'DAEMON_START_FAILED',
+      details: { state, launchId }
+    });
+  }
+
+  throw new BrowserPlatformError('Timed out waiting for daemon to start', { code: 'DAEMON_START_TIMEOUT' });
 }
 
 export async function handleDaemonEnsure(): Promise<unknown> {
-  if (await isDaemonReachable()) {
-    const status = await getDaemonStatus();
-    return { ok: true, daemon: { ...status.daemon, alreadyRunning: true } };
-  }
+  const stateStore = getDefaultStateStore();
+  const timeoutAt = Date.now() + DAEMON_START_TIMEOUT_MS;
 
-  await getDefaultStateStore().ensure();
-  await spawnDaemon();
-
-  const timeoutAt = Date.now() + 5_000;
   while (Date.now() < timeoutAt) {
-    if (await isDaemonReachable()) {
-      const status = await getDaemonStatus();
-      return { ok: true, daemon: { ...status.daemon, alreadyRunning: false } };
+    const liveStatus = await readLiveDaemonStatus();
+    if (liveStatus) {
+      return { ok: true, daemon: { ...liveStatus.daemon, alreadyRunning: true } };
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await stateStore.ensure();
+    await removeStaleStartupLock();
+
+    const [info, startupLock] = await Promise.all([stateStore.readDaemonInfo(), stateStore.readStartupLock()]);
+    const state = classifyDaemonState(info, {
+      reachable: false,
+      startupLock
+    });
+
+    if (state === 'unhealthy') {
+      throw new BrowserPlatformError('Daemon process exists but is unhealthy', {
+        code: 'DAEMON_UNHEALTHY',
+        details: { pid: info?.pid ?? null, state }
+      });
+    }
+
+    if (state === 'starting') {
+      const status = await waitForForeignLaunch(timeoutAt);
+      if (status) {
+        return { ok: true, daemon: { ...status.daemon, alreadyRunning: false } };
+      }
+
+      continue;
+    }
+
+    const bootStartedAt = new Date().toISOString();
+    const launchId = randomUUID();
+    const startupRecord: DaemonStartupLock = {
+      pid: process.pid,
+      createdAt: bootStartedAt,
+      launchId
+    };
+    const lockAcquired = await stateStore.createStartupLock(startupRecord);
+    if (!lockAcquired) {
+      const status = await waitForForeignLaunch(timeoutAt);
+      if (status) {
+        return { ok: true, daemon: { ...status.daemon, alreadyRunning: false } };
+      }
+
+      continue;
+    }
+
+    try {
+      const startingInfo: DaemonInfo = {
+        state: 'starting',
+        launchId,
+        pid: null,
+        port: null,
+        token: null,
+        bootStartedAt,
+        readyAt: null,
+        stoppedAt: null,
+        version: DAEMON_VERSION
+      };
+      await stateStore.writeDaemonInfo(startingInfo);
+      const daemonPid = await spawnDaemon(startingInfo);
+      await stateStore.writeDaemonInfo({
+        ...startingInfo,
+        pid: daemonPid
+      });
+
+      const status = await waitForOwnLaunch(timeoutAt, launchId);
+      return { ok: true, daemon: { ...status.daemon, alreadyRunning: false } };
+    } finally {
+      await stateStore.removeStartupLock();
+    }
   }
 
   throw new BrowserPlatformError('Timed out waiting for daemon to start', { code: 'DAEMON_START_TIMEOUT' });
 }
 
 export async function handleDaemonStatus(): Promise<unknown> {
-  const info = await getDefaultStateStore().readDaemonInfo();
-  if (!info) {
-    return {
-      ok: true,
-      daemon: {
-        running: false,
-        pid: null,
-        port: null,
-        startedAt: null,
-        uptimeMs: null,
-        sessionCount: 0,
-        version: null
-      }
-    };
+  const liveStatus = await readLiveDaemonStatus();
+  if (liveStatus) {
+    return liveStatus;
   }
 
-  if (!(await isDaemonReachable())) {
-    return {
-      ok: true,
-      daemon: {
-        running: false,
-        pid: info.pid,
-        port: info.port,
-        startedAt: info.startedAt,
-        uptimeMs: null,
-        sessionCount: 0,
-        version: info.version
-      }
-    };
-  }
+  const stateStore = getDefaultStateStore();
+  const [info, startupLock] = await Promise.all([stateStore.readDaemonInfo(), stateStore.readStartupLock()]);
+  const state = classifyDaemonState(info, {
+    reachable: false,
+    startupLock
+  });
 
-  const status = await getDaemonStatus();
   return {
     ok: true,
-    daemon: {
-      running: true,
-      ...status.daemon
-    }
+    daemon: buildOfflineStatus(info, state, startupLock)
   };
 }
 

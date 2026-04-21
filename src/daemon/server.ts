@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { BrowserPlatformError } from '../core/errors.js';
 import { PlaywrightController } from '../playwright/controller.js';
 import { matchSitePackByUrl } from '../packs/loader.js';
@@ -12,7 +12,9 @@ import { runIntegratedKuperBootstrap } from './kuper-auth.js';
 import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import { isDebugEnabled, appendDebugLog } from '../debug/capture.js';
+import { DAEMON_BOOT_STARTED_AT_ENV, DAEMON_LAUNCH_ID_ENV, resolveDaemonStartedAt } from './lifecycle.js';
 import { StateStore } from './state-store.js';
+import { DAEMON_VERSION } from './version.js';
 import { SESSION_BACKENDS } from './types.js';
 import type {
   DaemonInfo,
@@ -24,8 +26,6 @@ import type {
   SessionSnapshot,
   TimingEntry
 } from './types.js';
-
-const VERSION = '0.1.0';
 const SESSION_IDLE_TIMEOUT_ENV = 'BROWSER_PLATFORM_SESSION_IDLE_TIMEOUT_MS';
 const DEFAULT_SESSION_JANITOR_INTERVAL_MS = 60_000;
 export function isSessionBackend(value: unknown): value is SessionBackend {
@@ -191,7 +191,8 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
   const stateStore = options.stateStore ?? getDefaultStateStore();
   const controller = options.controller ?? new PlaywrightController(stateStore.root);
   const token = randomBytes(24).toString('hex');
-  const startedAt = new Date().toISOString();
+  const launchId = process.env[DAEMON_LAUNCH_ID_ENV]?.trim() || randomUUID();
+  const bootStartedAt = process.env[DAEMON_BOOT_STARTED_AT_ENV]?.trim() || isoNow();
 
   const closeAndForgetSession = async (
     sessionId: string,
@@ -205,6 +206,7 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
   const janitorIntervalMs = options.sessionJanitorIntervalMs ?? DEFAULT_SESSION_JANITOR_INTERVAL_MS;
   const runJanitorPassSafely = createSessionJanitorRunner(registry, controller);
   let janitorPassPromise: Promise<void> | null = null;
+  let info: DaemonInfo | null = null;
   const janitor = setInterval(() => {
     janitorPassPromise = runJanitorPassSafely();
     void janitorPassPromise.catch(() => undefined);
@@ -238,15 +240,20 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
 
     try {
       if (request.method === 'GET' && request.url === '/v1/daemon/status') {
+        const readyAt = resolveDaemonStartedAt(info);
         const payload: DaemonStatusResponse = {
           ok: true,
           daemon: {
+            running: true,
+            state: 'running',
             pid: process.pid,
             port: (server.address() as { port: number }).port,
-            startedAt,
+            startedAt: readyAt,
+            bootStartedAt: info?.bootStartedAt ?? bootStartedAt,
+            readyAt: info?.readyAt ?? null,
             uptimeMs: Math.round(process.uptime() * 1000),
             sessionCount: registry.countOpen(),
-            version: VERSION
+            version: DAEMON_VERSION
           }
         };
         sendJson(response, 200, payload);
@@ -697,23 +704,41 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
     server.listen(0, '127.0.0.1', () => resolve());
   });
 
-  const info: DaemonInfo = {
+  const readyAt = isoNow();
+  info = {
+    state: 'running',
+    launchId,
     pid: process.pid,
     port: (server.address() as { port: number }).port,
     token,
-    startedAt,
-    version: VERSION
+    bootStartedAt,
+    readyAt,
+    stoppedAt: null,
+    version: DAEMON_VERSION
   };
 
   await stateStore.writeDaemonInfo(info);
 
+  let shuttingDown = false;
   const shutdown = async (): Promise<void> => {
+    if (shuttingDown) {
+      return;
+    }
+
+    shuttingDown = true;
     clearInterval(janitor);
     await janitorPassPromise?.catch(() => undefined);
     registry.closeAll('shutdown');
     await controller.closeAll();
     registry.clear();
-    server.close();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await stateStore.writeDaemonInfo({
+      ...info,
+      state: 'stopped',
+      port: null,
+      token: null,
+      stoppedAt: isoNow()
+    });
   };
 
   process.on('SIGTERM', () => {

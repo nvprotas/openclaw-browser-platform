@@ -276,23 +276,43 @@ export interface SessionActionResult {
   trace?: SessionTraceArtifact;
 }
 
+export const PERSISTED_DAEMON_STATES = ['starting', 'running', 'stopped'] as const;
+export type PersistedDaemonState = (typeof PERSISTED_DAEMON_STATES)[number];
+
+export const DAEMON_LIFECYCLE_STATES = ['starting', 'running', 'unhealthy', 'stale', 'stopped'] as const;
+export type DaemonLifecycleState = (typeof DAEMON_LIFECYCLE_STATES)[number];
+
 export interface DaemonInfo {
-  pid: number;
-  port: number;
-  token: string;
-  startedAt: string;
+  state: PersistedDaemonState;
+  launchId: string;
+  pid: number | null;
+  port: number | null;
+  token: string | null;
+  bootStartedAt: string;
+  readyAt: string | null;
+  stoppedAt: string | null;
   version: string;
+}
+
+export interface DaemonStartupLock {
+  pid: number;
+  createdAt: string;
+  launchId: string;
 }
 
 export interface DaemonStatusResponse {
   ok: true;
   daemon: {
-    pid: number;
-    port: number;
-    startedAt: string;
-    uptimeMs: number;
+    running: boolean;
+    state: DaemonLifecycleState;
+    pid: number | null;
+    port: number | null;
+    startedAt: string | null;
+    bootStartedAt: string | null;
+    readyAt: string | null;
+    uptimeMs: number | null;
     sessionCount: number;
-    version: string;
+    version: string | null;
   };
 }
 

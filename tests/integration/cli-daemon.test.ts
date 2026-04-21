@@ -1,12 +1,13 @@
 import http from 'node:http';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionObservation } from '../../src/daemon/types.js';
+import { DAEMON_VERSION } from '../../src/daemon/version.js';
 import { findAddToCartTargets, findOpenCartTargets, isAddToCartConfirmed, isCartVisible } from '../../src/helpers/cart.js';
 import { chooseSearchResultTarget, fillSearchAndSubmit } from '../../src/helpers/search.js';
 import { matchSitePackByUrl } from '../../src/packs/loader.js';
@@ -202,6 +203,125 @@ async function runCli(cwd: string, args: string[]) {
 }
 
 describe('browser-platform CLI + daemon runtime', () => {
+  it('reports starting or running while ensure is in flight', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    const ensurePromise = runCli(cwd, ['daemon', 'ensure', '--json']);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const status = await runCli(cwd, ['daemon', 'status', '--json']);
+    const ensure = await ensurePromise;
+
+    expect(ensure.json).toMatchObject({
+      ok: true,
+      daemon: {
+        running: true,
+        state: 'running'
+      }
+    });
+    expect(typeof (ensure.json?.daemon as { alreadyRunning?: unknown } | undefined)?.alreadyRunning).toBe('boolean');
+    expect(['starting', 'running']).toContain((status.json?.daemon as { state: string }).state);
+  });
+
+  it('reports stale for a dead daemon record', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+    const stateRoot = path.join(cwd, '.tmp/browser-platform');
+    await mkdir(stateRoot, { recursive: true });
+
+    await writeFile(
+      path.join(stateRoot, 'daemon.json'),
+      `${JSON.stringify(
+        {
+          state: 'running',
+          launchId: 'stale-record',
+          pid: 999_999_999,
+          port: 3210,
+          token: 'token',
+          bootStartedAt: '2026-04-21T10:00:00.000Z',
+          readyAt: '2026-04-21T10:00:01.000Z',
+          stoppedAt: null,
+          version: DAEMON_VERSION
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    const status = await runCli(cwd, ['daemon', 'status', '--json']);
+    expect(status.json).toMatchObject({
+      ok: true,
+      daemon: {
+        running: false,
+        state: 'stale',
+        pid: 999_999_999,
+        port: 3210
+      }
+    });
+  });
+
+  it('reports unhealthy for a live but unreachable daemon process', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+    const stateRoot = path.join(cwd, '.tmp/browser-platform');
+    await mkdir(stateRoot, { recursive: true });
+
+    await writeFile(
+      path.join(stateRoot, 'daemon.json'),
+      `${JSON.stringify(
+        {
+          state: 'running',
+          launchId: 'unhealthy-record',
+          pid: process.pid,
+          port: 1,
+          token: 'token',
+          bootStartedAt: '2026-04-21T10:00:00.000Z',
+          readyAt: '2026-04-21T10:00:01.000Z',
+          stoppedAt: null,
+          version: DAEMON_VERSION
+        },
+        null,
+        2
+      )}\n`,
+      'utf8'
+    );
+
+    const status = await runCli(cwd, ['daemon', 'status', '--json']);
+    expect(status.json).toMatchObject({
+      ok: true,
+      daemon: {
+        running: false,
+        state: 'unhealthy',
+        pid: process.pid,
+        port: 1
+      }
+    });
+  });
+
+  it('reports stopped after a graceful daemon shutdown', async () => {
+    const cwd = await mkdtemp(path.join(os.tmpdir(), 'browser-platform-test-'));
+    tempDirs.push(cwd);
+
+    const ensure = await runCli(cwd, ['daemon', 'ensure', '--json']);
+    expect(ensure.json?.ok).toBe(true);
+
+    const raw = await readFile(path.join(cwd, '.tmp/browser-platform/daemon.json'), 'utf8');
+    const info = JSON.parse(raw) as { pid: number };
+    process.kill(info.pid, 'SIGTERM');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
+    const status = await runCli(cwd, ['daemon', 'status', '--json']);
+    expect(status.json).toMatchObject({
+      ok: true,
+      daemon: {
+        running: false,
+        state: 'stopped',
+        port: null
+      }
+    });
+  });
+
   it.skipIf(!browserRuntimeAvailable)(
     'keeps session state across invocations and exposes observe/snapshot JSON',
     async () => {
@@ -211,7 +331,9 @@ describe('browser-platform CLI + daemon runtime', () => {
       const ensure = await runCli(cwd, ['daemon', 'ensure', '--json']);
       expect(ensure.json?.ok).toBe(true);
       expect(ensure.json?.daemon).toMatchObject({
-        sessionCount: 0
+        sessionCount: 0,
+        running: true,
+        state: 'running'
       });
       expect(typeof (ensure.json?.daemon as { alreadyRunning?: unknown } | undefined)?.alreadyRunning).toBe('boolean');
 

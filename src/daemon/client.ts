@@ -1,6 +1,7 @@
 import type { JsonValue } from '../core/json.js';
 import { BrowserPlatformError } from '../core/errors.js';
 import { getDefaultStateStore } from './state-store.js';
+import { DAEMON_STATUS_REQUEST_TIMEOUT_MS } from './lifecycle.js';
 import type {
   DaemonInfo,
   DaemonStatusResponse,
@@ -14,15 +15,47 @@ import type {
   SessionSnapshotResponse
 } from './types.js';
 
-async function request<T>(info: DaemonInfo, route: string, body?: JsonValue): Promise<T> {
-  const response = await fetch(`http://127.0.0.1:${info.port}${route}`, {
-    method: body === undefined ? 'GET' : 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: `Bearer ${info.token}`
-    },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+function resolveConnectionInfo(info: DaemonInfo): { port: number; token: string } {
+  if (info.state !== 'running' || info.port === null || info.token === null) {
+    throw new BrowserPlatformError('Daemon is not ready', {
+      code: 'DAEMON_NOT_READY',
+      details: { state: info.state }
+    });
+  }
+
+  return {
+    port: info.port,
+    token: info.token
+  };
+}
+
+async function request<T>(info: DaemonInfo, route: string, body?: JsonValue, options?: { timeoutMs?: number }): Promise<T> {
+  const connection = resolveConnectionInfo(info);
+  let response: Response;
+
+  try {
+    response = await fetch(`http://127.0.0.1:${connection.port}${route}`, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${connection.token}`
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(options?.timeoutMs ?? 30_000)
+    });
+  } catch (error) {
+    if (error instanceof BrowserPlatformError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === 'TimeoutError') {
+      throw new BrowserPlatformError('Daemon request timed out', { code: 'DAEMON_REQUEST_TIMEOUT' });
+    }
+
+    throw new BrowserPlatformError(error instanceof Error ? error.message : 'Failed to reach daemon', {
+      code: 'DAEMON_UNREACHABLE'
+    });
+  }
 
   const text = await response.text();
   const payload = text ? (JSON.parse(text) as T | { error?: { message?: string; details?: Record<string, unknown> } }) : undefined;
@@ -42,11 +75,14 @@ export async function readRunningDaemonInfo(): Promise<DaemonInfo> {
     throw new BrowserPlatformError('Daemon is not initialized', { code: 'DAEMON_NOT_INITIALIZED' });
   }
 
+  resolveConnectionInfo(info);
   return info;
 }
 
-export async function getDaemonStatus(): Promise<DaemonStatusResponse> {
-  return request<DaemonStatusResponse>(await readRunningDaemonInfo(), '/v1/daemon/status');
+export async function getDaemonStatus(options?: { timeoutMs?: number }): Promise<DaemonStatusResponse> {
+  return request<DaemonStatusResponse>(await readRunningDaemonInfo(), '/v1/daemon/status', undefined, {
+    timeoutMs: options?.timeoutMs ?? DAEMON_STATUS_REQUEST_TIMEOUT_MS
+  });
 }
 
 export async function openSession(
