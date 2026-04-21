@@ -219,7 +219,7 @@ ensure_repo_clone() {
     fi
 
     log "Updating repo in $TARGET_DIR"
-    git -C "$TARGET_DIR" fetch --depth=1 origin "$BRANCH"
+    git -C "$TARGET_DIR" fetch --depth=1 origin "refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
     git -C "$TARGET_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
   else
     log "Cloning repo into $TARGET_DIR"
