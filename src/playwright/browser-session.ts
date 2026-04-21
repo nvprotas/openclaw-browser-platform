@@ -894,6 +894,7 @@ export class BrowserSession {
       const currentUrl = window.location.href;
       const urlHasSearch = /[?&]q=|\/search/i.test(currentUrl);
       const urlHasCart = /\/cart|\/basket|\/my-books\/cart/i.test(currentUrl);
+      const urlHasCheckout = /\/purchase\/ppd\b/i.test(currentUrl);
       const urlHasProduct = /\/book\/|\/audiobook\/|\/product\//i.test(currentUrl);
 
       const hasBuyButtons = /buy|add to cart|purchase|купить|в корзину/.test(buttonTexts);
@@ -901,7 +902,9 @@ export class BrowserSession {
       const hasCartConfirmation = /added to cart|go to cart|перейти в корзину|товар добавлен|добавлено в корзину/i.test(lowerTexts + ' ' + buttonTexts);
 
       let pageSignatureGuess = 'unknown';
-      if (hasLikelyAuthForm || (hasAuthWords && !hasSearchSignals)) {
+      if (urlHasCheckout) {
+        pageSignatureGuess = 'checkout_payment_choice';
+      } else if (hasLikelyAuthForm || (hasAuthWords && !hasSearchSignals)) {
         pageSignatureGuess = 'auth_form';
       } else if (urlHasCart || hasCartConfirmation) {
         pageSignatureGuess = 'cart';

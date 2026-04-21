@@ -131,6 +131,10 @@ describe('run-step modal dismissal', () => {
       locator: vi.fn(() => ({
         first: vi.fn(() => locator)
       })),
+      url: vi.fn(() => 'https://www.litres.ru/book/test/'),
+      waitForURL: vi
+        .fn()
+        .mockRejectedValue(new Error('Timeout 1500ms exceeded')),
       evaluate: vi
         .fn()
         .mockResolvedValueOnce('div[data-testid="modal--wrapper"]')
@@ -182,6 +186,10 @@ describe('run-step modal dismissal', () => {
       locator: vi.fn(() => ({
         first: vi.fn(() => locator)
       })),
+      url: vi.fn(() => 'https://www.litres.ru/book/test/'),
+      waitForURL: vi
+        .fn()
+        .mockRejectedValue(new Error('Timeout 1500ms exceeded')),
       evaluate: vi.fn(),
       waitForLoadState: vi.fn(async () => undefined)
     };
@@ -220,6 +228,10 @@ describe('run-step modal dismissal', () => {
       locator: vi.fn(() => ({
         first: vi.fn(() => locator)
       })),
+      url: vi.fn(() => 'https://www.litres.ru/book/test/'),
+      waitForURL: vi
+        .fn()
+        .mockRejectedValue(new Error('Timeout 1500ms exceeded')),
       evaluate: vi
         .fn()
         .mockResolvedValueOnce('div[data-testid="modal--wrapper"]')
@@ -265,6 +277,10 @@ describe('run-step modal dismissal', () => {
       locator: vi.fn(() => ({
         first: vi.fn(() => locator)
       })),
+      url: vi.fn(() => 'https://www.litres.ru/book/test/'),
+      waitForURL: vi
+        .fn()
+        .mockRejectedValue(new Error('Timeout 1500ms exceeded')),
       evaluate: vi
         .fn()
         .mockResolvedValueOnce('div[data-testid="modal--wrapper"]')
@@ -319,6 +335,10 @@ describe('run-step modal dismissal', () => {
       locator: vi.fn(() => ({
         first: vi.fn(() => locator)
       })),
+      url: vi.fn(() => 'https://www.litres.ru/book/test/'),
+      waitForURL: vi
+        .fn()
+        .mockRejectedValue(new Error('Timeout 1500ms exceeded')),
       evaluate: vi.fn().mockResolvedValueOnce({
         status: 'dismissed',
         reason: 'dismissed by safe modal control',
