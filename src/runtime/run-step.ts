@@ -56,10 +56,17 @@ async function resolveLocator(
 async function waitForNavigationSettled(
   session: BrowserSession
 ): Promise<void> {
-  await Promise.race([
-    session.page().waitForLoadState('domcontentloaded', { timeout: 3000 }),
-    new Promise((resolve) => setTimeout(resolve, 350))
-  ]);
+  const page = session.page();
+  const urlBefore = page.url();
+
+  try {
+    await page.waitForURL((url) => url.href !== urlBefore, { timeout: 1500 });
+    await page
+      .waitForLoadState('domcontentloaded', { timeout: 3000 })
+      .catch(() => undefined);
+  } catch {
+    // Клик мог менять состояние без навигации: AJAX, toggle или локальный UI.
+  }
 }
 
 export interface ModalDismissResult {
