@@ -1,9 +1,20 @@
 {
   "button_texts": {
     "search_submit": ["Найти", "Поиск", "Search"],
-    "add_to_cart": ["В корзину", "Купить и скачать", "Купить", "Добавить в корзину"],
+    "add_to_cart": [
+      "В корзину",
+      "Купить и скачать",
+      "Купить",
+      "Добавить в корзину"
+    ],
     "open_cart": ["Корзина", "Перейти в корзину", "Открыть корзину"],
-    "checkout_payment_method": ["СБП", "Российская карта", "SberPay", "Войти по Сбер ID", "Продолжить"]
+    "checkout_payment_method": [
+      "СБП",
+      "Российская карта",
+      "SberPay",
+      "Войти по Сбер ID",
+      "Продолжить"
+    ]
   },
   "selectors": {
     "search_input": [
@@ -22,6 +33,28 @@
       "a[href*='/audiobook/']",
       "main a[href*='/book/']"
     ],
+    "modal_roots": [
+      "#litres-modal-container",
+      "[data-testid='modal--overlay']",
+      "[data-testid='modal--wrapper']",
+      "[role='dialog']",
+      "[aria-modal='true']"
+    ],
+    "modal_dismiss": [
+      "[data-testid='modal--overlay'] header > div:nth-child(2)",
+      "[data-testid='modal--wrapper'] header > div:nth-child(2)",
+      "[data-testid='modal--close-button']",
+      "[data-testid='icon_close']",
+      "button[aria-label*='Закрыть']",
+      "button[aria-label*='Close']",
+      "[role='button'][aria-label*='Закрыть']",
+      "[role='button'][aria-label*='Close']"
+    ],
+    "modal_blocklist": [
+      "[data-testid^='auth__']",
+      "input[type='password']",
+      "input[type='tel']"
+    ],
     "post_login_modal_close": [
       "div[data-testid='modal--overlay'] header > div:nth-child(2)"
     ],
@@ -35,25 +68,35 @@
       "a[href*='basket']",
       "[aria-label*='Корзин']"
     ],
-    "checkout_sbp": [
-      "label[for='payment-method-input-sbp']"
-    ],
-    "checkout_russian_card": [
-      "label[for='payment-method-input-russian_card']"
-    ],
+    "checkout_sbp": ["label[for='payment-method-input-sbp']"],
+    "checkout_russian_card": ["label[for='payment-method-input-russian_card']"],
     "checkout_continue": [
       "button[data-testid='paymentLayout__payment--button']"
     ],
-    "payecom_sberid": [
-      "a.sbid-button"
-    ]
+    "payecom_sberid": ["a.sbid-button"]
   },
   "page_signatures": {
     "home": ["Каталог", "Найти", "Корзина", "Мои книги"],
     "search_results": ["Результаты поиска", "/search/?q=", "Найдено"],
-    "product_page": ["В корзину", "Купить и скачать", "Автор", "Читать фрагмент"],
+    "product_page": [
+      "В корзину",
+      "Купить и скачать",
+      "Автор",
+      "Читать фрагмент"
+    ],
     "cart": ["Корзина", "Оформить заказ", "Состав заказа", "Ваша корзина"],
-    "checkout_payment_choice": ["Оформление покупки", "Способ оплаты", "СБП", "Российская карта", "Продолжить"],
-    "payecom_boundary": ["payecom.ru/pay", "Войти по Сбер ID", "Оплатить", "Номер карты"]
+    "checkout_payment_choice": [
+      "Оформление покупки",
+      "Способ оплаты",
+      "СБП",
+      "Российская карта",
+      "Продолжить"
+    ],
+    "payecom_boundary": [
+      "payecom.ru/pay",
+      "Войти по Сбер ID",
+      "Оплатить",
+      "Номер карты"
+    ]
   }
 }

@@ -2,7 +2,12 @@ import path from 'node:path';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionActionPayload } from '../daemon/types.js';
 import { TraceWriter } from '../traces/writer.js';
-import { isDebugEnabled, captureDebugStep, captureDebugStepJson, appendDebugLog } from '../debug/capture.js';
+import {
+  isDebugEnabled,
+  captureDebugStep,
+  captureDebugStepJson,
+  appendDebugLog
+} from '../debug/capture.js';
 import {
   BrowserContextPool,
   BrowserSession,
@@ -21,7 +26,9 @@ export class PlaywrightController {
   private readonly contextPool = new BrowserContextPool();
 
   constructor(private readonly rootDir: string) {
-    this.traceWriter = new TraceWriter(path.join(this.rootDir, 'artifacts', 'traces'));
+    this.traceWriter = new TraceWriter(
+      path.join(this.rootDir, 'artifacts', 'traces')
+    );
   }
 
   async openSession(
@@ -43,7 +50,11 @@ export class PlaywrightController {
     const opened = await session.open(url);
     session.markUsed();
     this.sessions.set(sessionId, session);
-    await this.debugCapture(sessionId, 'open', { sessionId, url: opened.url, title: opened.title });
+    await this.debugCapture(sessionId, 'open', {
+      sessionId,
+      url: opened.url,
+      title: opened.title
+    });
     return opened;
   }
 
@@ -52,7 +63,11 @@ export class PlaywrightController {
       const session = this.requireSession(sessionId);
       session.markUsed();
       const result = await session.observe();
-      await this.debugCapture(sessionId, 'observe', { sessionId, url: result.url, title: result.title });
+      await this.debugCapture(sessionId, 'observe', {
+        sessionId,
+        url: result.url,
+        title: result.title
+      });
       return result;
     });
   }
@@ -101,9 +116,9 @@ export class PlaywrightController {
     return this.runExclusive(sessionId, 'act', async () => {
       const session = this.requireSession(sessionId);
       session.markUsed();
-      const { before, after } = await runStep(session, payload);
+      const { before, after, observations } = await runStep(session, payload);
       await session.persistStorageState();
-      const result = buildActionResult(payload, before, after);
+      const result = buildActionResult(payload, before, after, observations);
       await this.debugCapture(sessionId, `act-${payload.action}`, {
         sessionId,
         action: result.action,
@@ -117,7 +132,9 @@ export class PlaywrightController {
     });
   }
 
-  async snapshotSession(sessionId: string): Promise<BrowserSessionSnapshotResult> {
+  async snapshotSession(
+    sessionId: string
+  ): Promise<BrowserSessionSnapshotResult> {
     return this.runExclusive(sessionId, 'snapshot', async () => {
       const session = this.requireSession(sessionId);
       session.markUsed();
@@ -151,38 +168,45 @@ export class PlaywrightController {
     await session.close();
   }
 
-  private async runExclusive<T>(sessionId: string, opName: string, fn: () => Promise<T>): Promise<T> {
+  private async runExclusive<T>(
+    sessionId: string,
+    opName: string,
+    fn: () => Promise<T>
+  ): Promise<T> {
     const queuedAtMs = Date.now();
     const queuedAt = new Date(queuedAtMs).toISOString();
-    const previousTail = this.sessionOperationTails.get(sessionId) ?? Promise.resolve();
-    const operationPromise = previousTail.catch(() => undefined).then(async () => {
-      const startedAtMs = Date.now();
-      const startedAt = new Date(startedAtMs).toISOString();
-      let status: 'ok' | 'error' = 'ok';
+    const previousTail =
+      this.sessionOperationTails.get(sessionId) ?? Promise.resolve();
+    const operationPromise = previousTail
+      .catch(() => undefined)
+      .then(async () => {
+        const startedAtMs = Date.now();
+        const startedAt = new Date(startedAtMs).toISOString();
+        let status: 'ok' | 'error' = 'ok';
 
-      try {
-        return await fn();
-      } catch (error) {
-        status = 'error';
-        throw error;
-      } finally {
-        const finishedAtMs = Date.now();
-        if (isDebugEnabled()) {
-          void appendDebugLog(this.rootDir, {
-            source: 'browser',
-            event: 'session-operation',
-            sessionId,
-            opName,
-            status,
-            queuedAt,
-            startedAt,
-            finishedAt: new Date(finishedAtMs).toISOString(),
-            waitedMs: startedAtMs - queuedAtMs,
-            runMs: finishedAtMs - startedAtMs
-          });
+        try {
+          return await fn();
+        } catch (error) {
+          status = 'error';
+          throw error;
+        } finally {
+          const finishedAtMs = Date.now();
+          if (isDebugEnabled()) {
+            void appendDebugLog(this.rootDir, {
+              source: 'browser',
+              event: 'session-operation',
+              sessionId,
+              opName,
+              status,
+              queuedAt,
+              startedAt,
+              finishedAt: new Date(finishedAtMs).toISOString(),
+              waitedMs: startedAtMs - queuedAtMs,
+              runMs: finishedAtMs - startedAtMs
+            });
+          }
         }
-      }
-    });
+      });
 
     const tail = operationPromise.then(
       () => undefined,
@@ -205,7 +229,9 @@ export class PlaywrightController {
 
   async closeAll(): Promise<void> {
     const sessionIds = [...this.sessions.keys()];
-    await Promise.all(sessionIds.map((sessionId) => this.closeSession(sessionId)));
+    await Promise.all(
+      sessionIds.map((sessionId) => this.closeSession(sessionId))
+    );
     await this.contextPool.closeAll();
   }
 
@@ -213,7 +239,11 @@ export class PlaywrightController {
     return this.sessions.get(sessionId)?.page() ?? null;
   }
 
-  private async debugCapture(sessionId: string, stepName: string, meta: unknown): Promise<void> {
+  private async debugCapture(
+    sessionId: string,
+    stepName: string,
+    meta: unknown
+  ): Promise<void> {
     if (!isDebugEnabled()) return;
     const startMs = Date.now();
     const page = this.sessions.get(sessionId)?.page();
@@ -224,14 +254,18 @@ export class PlaywrightController {
       event: stepName,
       sessionId,
       durationMs: Date.now() - startMs,
-      ...(meta !== null && typeof meta === 'object' ? meta as Record<string, unknown> : { meta })
+      ...(meta !== null && typeof meta === 'object'
+        ? (meta as Record<string, unknown>)
+        : { meta })
     });
   }
 
   private requireSession(sessionId: string): BrowserSession {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      throw new BrowserPlatformError('Session not found', { code: 'SESSION_NOT_FOUND' });
+      throw new BrowserPlatformError('Session not found', {
+        code: 'SESSION_NOT_FOUND'
+      });
     }
 
     return session;
