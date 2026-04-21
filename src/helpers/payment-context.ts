@@ -11,6 +11,7 @@ interface PaymentContextInput {
 
 const PAYMENT_URL_PATTERN = /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink)[^\s"'<>)]*/gi;
 const PAYMENT_PARAM_PATTERN = /(orderid|bankinvoiceid|merchantordernumber|merchantorderid|mdorder|formurl|href|order|trace-id|method|system)=([^\s&"'<>]+)/gi;
+const PAYMENT_HOST_PATTERN = /^(?:https?:\/\/|\/|%2f%2f|https?%3a%2f%2f)/i;
 
 interface ExtractAccumulator {
   paymentUrls: string[];
@@ -60,6 +61,24 @@ function toAbsoluteUrl(candidate: string, baseUrl: string): string | null {
   }
 }
 
+function isRelevantPaymentUrl(value: string): boolean {
+  if (!PAYMENT_HOST_PATTERN.test(value)) {
+    return false;
+  }
+
+  const decoded = deepDecode(value);
+  return /payecom\.ru|platiecom\.ru|id\.sber\.ru/i.test(decoded);
+}
+
+function isRelevantGatewayUrl(value: string): boolean {
+  if (!PAYMENT_HOST_PATTERN.test(value)) {
+    return false;
+  }
+
+  const decoded = deepDecode(value);
+  return /payecom\.ru|platiecom\.ru/i.test(decoded);
+}
+
 function collectKnownParams(url: URL, acc: ExtractAccumulator): void {
   for (const [key, value] of url.searchParams.entries()) {
     const lowered = key.toLowerCase();
@@ -75,9 +94,15 @@ function collectKnownParams(url: URL, acc: ExtractAccumulator): void {
     } else if (lowered === 'mdorder') {
       acc.mdOrders.push(value);
     } else if (lowered === 'formurl') {
-      acc.formUrls.push(deepDecode(value));
+      const decoded = deepDecode(value);
+      if (isRelevantGatewayUrl(decoded)) {
+        acc.formUrls.push(decoded);
+      }
     } else if (lowered === 'href') {
-      acc.hrefs.push(deepDecode(value));
+      const decoded = deepDecode(value);
+      if (isRelevantPaymentUrl(decoded)) {
+        acc.hrefs.push(decoded);
+      }
     } else if (lowered === 'order') {
       acc.litresOrders.push(value);
     } else if (lowered === 'trace-id') {
@@ -110,11 +135,15 @@ function collectParamPair(key: string, rawValue: string, acc: ExtractAccumulator
   } else if (lowered === 'mdorder') {
     acc.mdOrders.push(value);
   } else if (lowered === 'formurl') {
-    acc.formUrls.push(value);
-    collectCandidate(value, 'https://payecom.ru/', acc);
+    if (isRelevantGatewayUrl(value)) {
+      acc.formUrls.push(value);
+      collectCandidate(value, 'https://payecom.ru/', acc);
+    }
   } else if (lowered === 'href') {
-    acc.hrefs.push(value);
-    collectCandidate(value, 'https://payecom.ru/', acc);
+    if (isRelevantPaymentUrl(value)) {
+      acc.hrefs.push(value);
+      collectCandidate(value, 'https://payecom.ru/', acc);
+    }
   } else if (lowered === 'order') {
     acc.litresOrders.push(value);
   } else if (lowered === 'trace-id') {
@@ -306,7 +335,18 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
   candidates.forEach((candidate) => collectCandidate(candidate, input.url, acc));
 
   const combinedTextRaw = `${input.visibleTexts.join(' ')} ${input.visibleButtons
-    .map((button) => `${button.text} ${button.ariaLabel ?? ''}`.trim())
+    .map((button) =>
+      [
+        button.text,
+        button.ariaLabel ?? '',
+        button.href ?? '',
+        button.formAction ?? '',
+        ...(button.paymentHints ?? []),
+        ...Object.values(button.dataAttributes ?? {})
+      ]
+        .join(' ')
+        .trim()
+    )
     .join(' ')} ${input.forms
     .flatMap((form) => [form.id ?? '', form.name ?? '', form.action ?? '', ...form.submitLabels])
     .join(' ')}`;

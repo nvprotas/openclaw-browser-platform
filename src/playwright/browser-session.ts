@@ -687,12 +687,66 @@ export class BrowserSession {
         const rect = element.getBoundingClientRect();
         return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
       };
+      const paymentHintPattern =
+        /payecom\.ru|platiecom\.ru|id\.sber\.ru|sberid|sberpay|сбер|сбп|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd/i;
+      const paymentUrlPattern =
+        /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|id\.sber\.ru\/[^\s"'<>)]*)[^\s"'<>)]*|(?:orderid|bankinvoiceid|mdorder|merchantorderid|merchantordernumber|formurl)[^\s"'<>]*/gi;
+      const paymentAttributeNames = [
+        'href',
+        'src',
+        'action',
+        'formaction',
+        'onclick',
+        'data-href',
+        'data-url',
+        'data-link',
+        'data-target-url',
+        'data-action',
+        'data-testid',
+        'data-payment-method',
+        'data-payment-system',
+        'aria-label'
+      ];
+      const collectElementPaymentHints = (element: HTMLElement): string[] => {
+        const hints: string[] = [];
+        for (const name of paymentAttributeNames) {
+          const value = element.getAttribute(name);
+          if (value && paymentHintPattern.test(value)) {
+            hints.push(value);
+          }
+        }
+
+        const formAction =
+          element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+            ? element.formAction || element.form?.getAttribute('action') || null
+            : null;
+        if (formAction && paymentHintPattern.test(formAction)) {
+          hints.push(formAction);
+        }
+
+        return hints;
+      };
       const toButtonSummary = (element: HTMLElement) => {
         const inputType = element instanceof HTMLInputElement ? element.type : null;
         const text = normalizeText(
           element instanceof HTMLInputElement ? element.value : element.innerText || element.textContent
         );
         const ariaLabel = normalizeText(element.getAttribute('aria-label')) || null;
+        const dataAttributes = Array.from(element.attributes).reduce<Record<string, string>>((acc, attr) => {
+          if (attr.name.startsWith('data-') && attr.value && paymentHintPattern.test(attr.value)) {
+            acc[attr.name] = attr.value;
+          }
+          return acc;
+        }, {});
+        const href =
+          element instanceof HTMLAnchorElement
+            ? element.href
+            : element.getAttribute('href') ?? element.getAttribute('data-href') ?? element.getAttribute('data-url');
+        const formAction =
+          element instanceof HTMLButtonElement || element instanceof HTMLInputElement
+            ? element.getAttribute('formaction') ?? element.form?.getAttribute('action') ?? null
+            : element.getAttribute('formaction');
+        const paymentHints = collectElementPaymentHints(element);
         const selector = (() => {
           const testId = element.getAttribute('data-testid');
           if (testId) return `[data-testid="${testId}"]`;
@@ -710,7 +764,11 @@ export class BrowserSession {
           role: element.getAttribute('role') ?? element.tagName.toLowerCase(),
           type: inputType,
           ariaLabel,
-          selector
+          selector,
+          href: href || null,
+          formAction: formAction || null,
+          dataAttributes,
+          paymentHints
         };
       };
 
@@ -780,8 +838,23 @@ export class BrowserSession {
           element.getAttribute('data-link') ??
           element.getAttribute('data-target-url')
         ),
+        ...Array.from(document.querySelectorAll<HTMLElement>('button, input[type="button"], input[type="submit"], [role="button"]'))
+          .flatMap((element) => {
+            const hints = collectElementPaymentHints(element);
+            if (!paymentHintPattern.test(normalizeText(element.innerText || element.textContent)) && hints.length === 0) {
+              return [];
+            }
+
+            return [
+              ...hints,
+              ...Array.from(element.closest('form')?.attributes ?? [])
+                .map((attr) => attr.value)
+                .filter((value) => paymentHintPattern.test(value))
+            ];
+          }),
         ...Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/json"], script[type="application/ld+json"], script'))
-          .map((script) => normalizeText(script.textContent))
+          .map((script) => normalizeText(script.textContent).slice(0, 20_000))
+          .filter((value) => paymentHintPattern.test(value))
           .filter((value) => value.length > 0)
       ];
 
@@ -792,19 +865,13 @@ export class BrowserSession {
           }
 
           const normalized = normalizeText(raw);
-          const matches = normalized.match(
-            /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|id\.sber\.ru\/[^\s"'<>)]*)[^\s"'<>)]*|(?:orderid|bankinvoiceid|mdorder|merchantorderid|merchantordernumber|formurl|purchase\/ppd)[^\s"'<>]*/gi
-          );
+          const matches = normalized.match(paymentUrlPattern);
 
           if (matches?.length) {
             return matches.slice(0, 6);
           }
 
-          try {
-            return [new URL(normalized, window.location.href).toString()];
-          } catch {
-            return [normalized];
-          }
+          return paymentHintPattern.test(normalized) && normalized.length <= 2_000 ? [normalized] : [];
         })
         .filter((value): value is string => Boolean(value))
         .filter((value) =>
