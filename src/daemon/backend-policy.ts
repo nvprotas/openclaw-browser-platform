@@ -22,7 +22,12 @@ function isAllowlistedDomain(hostname: string): boolean {
 }
 
 export function resolveBackendForSession(input: ResolveBackendForSessionInput): ResolvedBackendPolicy {
-  const hostname = new URL(input.requestedUrl).hostname.toLowerCase();
+  let hostname: string;
+  try {
+    hostname = new URL(input.requestedUrl).hostname.toLowerCase();
+  } catch {
+    return { selectedBackend: 'camoufox', matchedRule: 'default_camoufox' };
+  }
   const matchedDomain = input.matchedPack?.summary.matchedDomain?.toLowerCase() ?? null;
 
   if (isAllowlistedDomain(hostname) || (matchedDomain !== null && isAllowlistedDomain(matchedDomain))) {

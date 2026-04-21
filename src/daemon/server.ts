@@ -269,21 +269,15 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
 
         if (body.backend !== undefined && body.backend !== null) {
           console.warn('[daemon] POST /v1/session/open: body.backend is ignored; backend is selected by policy');
-          timing.skip('backend_input_ignored', String(body.backend));
         }
 
         const preMatchedPack = await timing.run('match_site_pack_pre', () => matchSitePackByUrl(requestedUrl), requestedUrl);
-        const backendPolicy = await timing.run(
-          'resolve_backend_policy',
-          async () =>
-            resolveBackendForSession({
-              requestedUrl,
-              matchedPack: preMatchedPack,
-              profileId: body.profileId,
-              scenarioId: body.scenarioId
-            }),
-          requestedUrl
-        );
+        const backendPolicy = resolveBackendForSession({
+          requestedUrl,
+          matchedPack: preMatchedPack,
+          profileId: body.profileId,
+          scenarioId: body.scenarioId
+        });
         const backend: SessionBackend = backendPolicy.selectedBackend;
         logPayloadSummary = {
           ...logPayloadSummary,
