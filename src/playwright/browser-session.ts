@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
+import { chromium, firefox, type Browser, type BrowserContext, type LaunchOptions, type Page } from 'playwright';
 import { BrowserPlatformError } from '../core/errors.js';
 import type { SessionBackend, SessionPaymentContext } from '../daemon/types.js';
 import { extractPaymentContext } from '../helpers/payment-context.js';
@@ -398,6 +398,17 @@ export async function launchCamoufoxBrowser(timeoutMs = 60_000): Promise<{ brows
   }
 }
 
+export async function launchChromiumBrowser(launchOptions?: LaunchOptions): Promise<{ browser: Browser; stop: () => Promise<void> }> {
+  const browser = await chromium.launch({
+    headless: true,
+    ...launchOptions
+  });
+  return {
+    browser,
+    stop: async () => undefined
+  };
+}
+
 export class BrowserContextPool {
   private readonly entries = new Map<string, SharedBrowserContextEntry>();
 
@@ -406,6 +417,7 @@ export class BrowserContextPool {
     storageStatePath: string;
     viewport?: { width: number; height: number };
     camoufoxStartupTimeoutMs?: number;
+    launchOptions?: LaunchOptions;
   }): Promise<BrowserContextLease> {
     const backend = options.backend ?? 'camoufox';
     const key = `${backend}:${options.storageStatePath}`;
@@ -420,7 +432,10 @@ export class BrowserContextPool {
       };
     }
 
-    const launched = await launchCamoufoxBrowser(options.camoufoxStartupTimeoutMs);
+    const launched =
+      backend === 'chromium'
+        ? await launchChromiumBrowser(options.launchOptions)
+        : await launchCamoufoxBrowser(options.camoufoxStartupTimeoutMs);
 
     try {
       const context = await launched.browser.newContext({
@@ -481,7 +496,7 @@ export class BrowserSession {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private pageInstance: Page | null = null;
-  private stopCamoufoxBrowser: (() => Promise<void>) | null = null;
+  private stopBrowser: (() => Promise<void>) | null = null;
   private contextLease: BrowserContextLease | null = null;
   private lastUsedAt = Date.now();
   private closePromise: Promise<void> | null = null;
@@ -492,7 +507,7 @@ export class BrowserSession {
     this.browser = session.browser;
     this.context = session.context;
     this.pageInstance = session.page;
-    this.stopCamoufoxBrowser = session.stop;
+    this.stopBrowser = session.stop;
     this.contextLease = null;
     this.markUsed();
   }
@@ -524,7 +539,8 @@ export class BrowserSession {
               backend,
               storageStatePath: this.options.storageStatePath!,
               viewport: { width: 1440, height: 900 },
-              camoufoxStartupTimeoutMs: this.options.camoufoxStartupTimeoutMs
+              camoufoxStartupTimeoutMs: this.options.camoufoxStartupTimeoutMs,
+              launchOptions: this.options.launchOptions
             }),
           this.options.storageStatePath
         );
@@ -540,10 +556,10 @@ export class BrowserSession {
           detail: this.options.storageStatePath
         });
       } else {
-        const launched = await timing.run('launch_camoufox_browser', () =>
-          launchCamoufoxBrowser(this.options.camoufoxStartupTimeoutMs)
+        const launched = await timing.run(`launch_${backend}_browser`, () =>
+          backend === 'chromium' ? launchChromiumBrowser(this.options.launchOptions) : launchCamoufoxBrowser(this.options.camoufoxStartupTimeoutMs)
         );
-        this.stopCamoufoxBrowser = launched.stop;
+        this.stopBrowser = launched.stop;
         browser = launched.browser;
         const readyBrowser = browser;
 
@@ -572,9 +588,9 @@ export class BrowserSession {
         await context?.close().catch(() => undefined);
         await Promise.allSettled([
           browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
-          this.stopCamoufoxBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
+          this.stopBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
         ]);
-        this.stopCamoufoxBrowser = null;
+        this.stopBrowser = null;
       }
 
       throw new BrowserPlatformError(`Failed to open browser session (${backend})`, {
@@ -883,7 +899,7 @@ export class BrowserSession {
         await this.context?.close().catch(() => undefined);
         await Promise.allSettled([
           this.browser?.close().catch(() => undefined) ?? Promise.resolve(undefined),
-          this.stopCamoufoxBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
+          this.stopBrowser?.().catch(() => undefined) ?? Promise.resolve(undefined)
         ]);
       } else {
         await this.contextLease.release();
@@ -892,7 +908,7 @@ export class BrowserSession {
       this.context = null;
       this.browser = null;
       this.contextLease = null;
-      this.stopCamoufoxBrowser = null;
+      this.stopBrowser = null;
     })();
 
     try {
