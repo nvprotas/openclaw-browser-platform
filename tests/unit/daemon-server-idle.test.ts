@@ -29,7 +29,7 @@ describe('daemon session idle handling', () => {
       defaultIdleTimeoutMs: 1_000,
       now: () => now
     });
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
     const controller = {
       closeSession: vi.fn(async () => undefined)
     };
@@ -52,7 +52,7 @@ describe('daemon session idle handling', () => {
       defaultIdleTimeoutMs: 1_000,
       now: () => now
     });
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
     const closeBarrier = createDeferred<void>();
     const controller = {
       closeSession: vi.fn(async () => {
@@ -84,7 +84,7 @@ describe('daemon session idle handling', () => {
       defaultIdleTimeoutMs: 1_000,
       now: () => now
     });
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
     const closeBarrier = createDeferred<void>();
     const controller = {
       closeSession: vi.fn(async () => {

@@ -27,6 +27,11 @@ import type {
 const VERSION = '0.1.0';
 const SESSION_IDLE_TIMEOUT_ENV = 'BROWSER_PLATFORM_SESSION_IDLE_TIMEOUT_MS';
 const DEFAULT_SESSION_JANITOR_INTERVAL_MS = 60_000;
+const ALLOWED_SESSION_BACKENDS: readonly SessionBackend[] = ['camoufox', 'chromium'];
+
+function isSessionBackend(value: unknown): value is SessionBackend {
+  return typeof value === 'string' && ALLOWED_SESSION_BACKENDS.includes(value as SessionBackend);
+}
 
 function isoNow(): string {
   return new Date().toISOString();
@@ -268,7 +273,16 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
         const requestedUrl = body.url;
 
         if (body.backend !== undefined && body.backend !== null) {
-          console.warn('[daemon] POST /v1/session/open: body.backend is ignored; backend is selected by policy');
+          if (!isSessionBackend(body.backend)) {
+            sendJson(response, 400, {
+              ok: false,
+              error: {
+                message: `Invalid backend. Allowed values: ${ALLOWED_SESSION_BACKENDS.join(', ')}`
+              }
+            });
+            return;
+          }
+          console.warn('[daemon] POST /v1/session/open: body.backend is a debug hint and is ignored; backend is selected by policy');
         }
 
         const preMatchedPack = await timing.run('match_site_pack_pre', () => matchSitePackByUrl(requestedUrl), requestedUrl);
