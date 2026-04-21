@@ -3,7 +3,11 @@ import type { SessionActionPayload, SessionPaymentContext } from '../daemon/type
 import { withRetry } from '../helpers/retries.js';
 import { buildPostActionObservations } from '../helpers/validation.js';
 import { buildActionDiff } from '../helpers/tracing.js';
+import { extractPaymentContext } from '../helpers/payment-context.js';
 import type { BrowserSession, PageStateSummary } from '../playwright/browser-session.js';
+import type { Frame, Request, Route } from 'playwright';
+
+const PAYMENT_GATEWAY_URL_PATTERN = /^https:\/\/(?:www\.)?payecom\.ru\/pay(?:_ru)?\?/i;
 
 function normalize(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
@@ -58,6 +62,92 @@ function isPaymentFlowUrl(url: string): boolean {
   return /\/purchase\/ppd\b|payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink/i.test(url);
 }
 
+export function withPaymentHint(state: PageStateSummary, hint: string | null): PageStateSummary {
+  if (!hint || state.urlHints.includes(hint)) {
+    return state;
+  }
+
+  const nextState = {
+    ...state,
+    urlHints: [...state.urlHints, hint]
+  };
+
+  return {
+    ...nextState,
+    paymentContext: extractPaymentContext(nextState)
+  };
+}
+
+export function shouldCapturePaymentGatewayUrl(payload: SessionActionPayload, before: PageStateSummary): boolean {
+  if (payload.action !== 'click') {
+    return false;
+  }
+
+  if (!/\/purchase\/ppd\b/i.test(before.url) && before.paymentContext.phase !== 'litres_checkout') {
+    return false;
+  }
+
+  if (before.paymentContext.terminalExtractionResult || before.paymentContext.paymentOrderId) {
+    return false;
+  }
+
+  const selector = 'selector' in payload ? payload.selector ?? '' : '';
+  const targetName = 'name' in payload ? normalize(payload.name) : '';
+  const targetText = 'text' in payload ? normalize(payload.text) : '';
+  const targetBlob = `${selector} ${targetName} ${targetText}`.toLowerCase();
+
+  return /paymentlayout__payment--button|продолжить|sber|сбер|сбп|российская карта/.test(targetBlob);
+}
+
+async function capturePaymentGatewayUrlDuringClick(
+  session: BrowserSession,
+  clickAction: () => Promise<void>
+): Promise<string | null> {
+  const page = session.page();
+  let capturedUrl: string | null = null;
+
+  const rememberUrl = (url: string): void => {
+    if (!capturedUrl && PAYMENT_GATEWAY_URL_PATTERN.test(url)) {
+      capturedUrl = url;
+    }
+  };
+
+  const routeHandler = async (route: Route): Promise<void> => {
+    const requestUrl = route.request().url();
+    rememberUrl(requestUrl);
+    if (PAYMENT_GATEWAY_URL_PATTERN.test(requestUrl)) {
+      await route.abort('aborted');
+      return;
+    }
+    await route.continue();
+  };
+  const requestHandler = (request: Request): void => rememberUrl(request.url());
+  const frameHandler = (frame: Frame): void => rememberUrl(frame.url());
+
+  await page.route(PAYMENT_GATEWAY_URL_PATTERN, routeHandler);
+  page.on('request', requestHandler);
+  page.on('framenavigated', frameHandler);
+  try {
+    await clickAction();
+    await Promise.race([
+      page.waitForRequest((request) => PAYMENT_GATEWAY_URL_PATTERN.test(request.url()), { timeout: 1_000 }).then((request) => {
+        rememberUrl(request.url());
+      }),
+      new Promise((resolve) => setTimeout(resolve, 1_000))
+    ]);
+  } catch (error) {
+    if (!capturedUrl) {
+      throw error;
+    }
+  } finally {
+    page.off('request', requestHandler);
+    page.off('framenavigated', frameHandler);
+    await page.unroute(PAYMENT_GATEWAY_URL_PATTERN, routeHandler).catch(() => undefined);
+  }
+
+  return capturedUrl;
+}
+
 function shouldStabilizeForPaymentFlow(
   payload: SessionActionPayload,
   before: PageStateSummary,
@@ -92,7 +182,8 @@ async function stabilizeAfterPaymentAction(
   session: BrowserSession,
   payload: SessionActionPayload,
   before: PageStateSummary,
-  initialAfter: PageStateSummary
+  initialAfter: PageStateSummary,
+  paymentGatewayHint: string | null = null
 ): Promise<PageStateSummary> {
   if (!shouldStabilizeForPaymentFlow(payload, before, initialAfter)) {
     return initialAfter;
@@ -103,7 +194,7 @@ async function stabilizeAfterPaymentAction(
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 300));
-    const current = await session.observe();
+    const current = withPaymentHint(await session.observe(), paymentGatewayHint);
 
     const paymentChanged = paymentFingerprint(current.paymentContext) !== initialFingerprint;
     const urlHintsChanged = current.urlHints.join('\n') !== best.urlHints.join('\n');
@@ -131,6 +222,7 @@ async function stabilizeAfterPaymentAction(
 
 export async function runStep(session: BrowserSession, payload: SessionActionPayload): Promise<{ before: PageStateSummary; after: PageStateSummary }> {
   const before = await session.observe();
+  let capturedPaymentGatewayUrl: string | null = null;
 
   if (payload.action === 'navigate') {
     await withRetry(async () => {
@@ -151,10 +243,16 @@ export async function runStep(session: BrowserSession, payload: SessionActionPay
     const locator = await resolveLocator(session, payload);
 
     if (payload.action === 'click') {
-      await withRetry(async () => {
+      const clickAction = async () => {
         await locator.click({ timeout: payload.timeoutMs ?? 5_000 });
         await waitForNavigationSettled(session);
-      });
+      };
+
+      if (shouldCapturePaymentGatewayUrl(payload, before)) {
+        capturedPaymentGatewayUrl = await capturePaymentGatewayUrlDuringClick(session, () => withRetry(clickAction));
+      } else {
+        await withRetry(clickAction);
+      }
     }
 
     if (payload.action === 'fill') {
@@ -174,8 +272,8 @@ export async function runStep(session: BrowserSession, payload: SessionActionPay
     }
   }
 
-  const observedAfter = await session.observe();
-  const after = await stabilizeAfterPaymentAction(session, payload, before, observedAfter);
+  const observedAfter = withPaymentHint(await session.observe(), capturedPaymentGatewayUrl);
+  const after = await stabilizeAfterPaymentAction(session, payload, before, observedAfter, capturedPaymentGatewayUrl);
   return { before, after };
 }
 

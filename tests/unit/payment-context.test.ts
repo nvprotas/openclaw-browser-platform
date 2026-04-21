@@ -79,6 +79,64 @@ describe('payment context extraction', () => {
     });
   });
 
+  it('extracts payecom order id from payment button hints before clicking submit', () => {
+    const state = buildState({
+      url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
+      visibleTexts: ['Оформление заказа', 'Способ оплаты', 'Российская карта', 'Продолжить'],
+      visibleButtons: [
+        {
+          text: 'Продолжить',
+          role: 'button',
+          type: null,
+          ariaLabel: null,
+          selector: '[data-testid="paymentLayout__payment--button"]',
+          paymentHints: ['https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff']
+        }
+      ]
+    });
+
+    expect(state.paymentContext).toMatchObject({
+      detected: true,
+      shouldReportImmediately: true,
+      provider: 'sberpay',
+      phase: 'litres_checkout',
+      paymentUrl: 'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+      paymentOrderId: '019d44bf-26ad-5eb3-13d1-e41086dc9cff',
+      litresOrder: '1577454527',
+      traceId: 'df3fb423-c3c7-44af-88bb-b5871cacb080',
+      terminalExtractionResult: true
+    });
+  });
+
+  it('does not treat LitRes checkout order as terminal without gateway orderId', () => {
+    const state = buildState({
+      url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
+      visibleTexts: ['Оформление заказа', 'Способ оплаты', 'Российская карта', 'Продолжить']
+    });
+
+    expect(state.paymentContext).toMatchObject({
+      detected: true,
+      phase: 'litres_checkout',
+      paymentOrderId: null,
+      terminalExtractionResult: false,
+      extractionJson: null
+    });
+  });
+
+  it('ignores noisy JavaScript href fragments while preserving real payment hints', () => {
+    const state = buildState({
+      url: 'https://www.litres.ru/purchase/ppd/?order=1577454527&trace-id=df3fb423-c3c7-44af-88bb-b5871cacb080&method=russian_card&system=sbercard&from=cart',
+      visibleTexts: ['Оплата российской картой'],
+      urlHints: [
+        'href=window.location.href,t.active=0,t.ajaxJSONP=function(e,n){return n}',
+        'https://payecom.ru/pay_ru?orderId=019d44bf-26ad-5eb3-13d1-e41086dc9cff'
+      ]
+    });
+
+    expect(state.paymentContext.href).toBeNull();
+    expect(state.paymentContext.paymentOrderId).toBe('019d44bf-26ad-5eb3-13d1-e41086dc9cff');
+  });
+
 
   it('extracts nested payment identifiers from encoded handoff hints without manual snapshot html', () => {
     const state = buildState({
