@@ -21,6 +21,15 @@ describe('LitRes checkout guidance', () => {
     expect(skill).not.toContain('prioritize the `SberPay` branch unless the user explicitly asks for `СБП`');
   });
 
+  it('keeps browser-platform JSON handling safe for OpenClaw exec', async () => {
+    const skill = await readRepoFile('openclaw/skill-template/SKILL.md');
+
+    expect(skill).toContain('Do not pipe `browser-platform --json` output');
+    expect(skill).toContain('never use `browser-platform ... --json | python3 - <<');
+    expect(skill).toContain('Do not rerun `session open` only to extract `sessionId`');
+    expect(skill).toContain('open the search URL directly');
+  });
+
   it('keeps LitRes pack notes aligned with the hard SBP guard', async () => {
     const checkout = await readRepoFile('site-packs/litres/checkout.md');
     const instructions = await readRepoFile('site-packs/litres/instructions.md');
