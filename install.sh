@@ -20,6 +20,7 @@ REPO_URL="${REPO_URL:-https://github.com/nvprotas/openclaw-browser-platform.git}
 BRANCH="${BRANCH:-master}"
 TARGET_DIR="${TARGET_DIR:-$HOME/git/openclaw-browser-platform}"
 FORCE_UPDATE="${FORCE_UPDATE:-0}"
+APT_UPDATED=0
 
 log() {
   printf '==> %s\n' "$*"
@@ -32,6 +33,26 @@ fail() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
+
+apt_install_packages() {
+  command -v apt-get >/dev/null 2>&1 || return 1
+
+  local sudo_prefix=()
+
+  if [ "$(id -u)" != "0" ]; then
+    need_cmd sudo
+    sudo_prefix=(sudo)
+  fi
+
+  if [ "$APT_UPDATED" != "1" ]; then
+    log "Updating apt package index"
+    "${sudo_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get update
+    APT_UPDATED=1
+  fi
+
+  log "Installing system packages: $*"
+  "${sudo_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
 }
 
 resolve_camoufox_python_bin() {
@@ -52,6 +73,54 @@ resolve_camoufox_python_bin() {
   fi
 
   fail "Missing required command: python or python3"
+}
+
+ensure_python_pip() {
+  local python_bin="$1"
+
+  if "$python_bin" -m pip --version >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    log "Python pip is missing; installing python3-pip"
+    apt_install_packages python3-pip
+    "$python_bin" -m pip --version >/dev/null 2>&1 \
+      || fail "Installed python3-pip, but $python_bin -m pip is still unavailable"
+    return
+  fi
+
+  fail "Missing Python pip for $python_bin. Install pip or set CAMOUFOX_PYTHON_BIN to an interpreter with pip."
+}
+
+ensure_python_venv() {
+  local python_bin="$1"
+  local probe_dir=""
+  local versioned_venv_package=""
+
+  probe_dir="$(mktemp -d)"
+  if "$python_bin" -m venv "$probe_dir" >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return
+  fi
+  rm -rf "$probe_dir"
+
+  if command -v apt-get >/dev/null 2>&1; then
+    versioned_venv_package="$("$python_bin" -c 'import sys; print("python%s.%s-venv" % (sys.version_info.major, sys.version_info.minor))')"
+    log "Python venv support is missing; installing python3-venv and $versioned_venv_package"
+    if ! apt_install_packages python3-venv; then
+      apt_install_packages "$versioned_venv_package"
+    fi
+
+    probe_dir="$(mktemp -d)"
+    if "$python_bin" -m venv "$probe_dir" >/dev/null 2>&1; then
+      rm -rf "$probe_dir"
+      return
+    fi
+    rm -rf "$probe_dir"
+  fi
+
+  fail "Missing Python venv support for $python_bin. Install python3-venv or set CAMOUFOX_PYTHON_BIN to an interpreter with venv."
 }
 
 camoufox_runtime_present() {
@@ -91,6 +160,7 @@ install_camoufox() {
 
   python_bin="$(resolve_camoufox_python_bin)"
   install_python_bin="$python_bin"
+  ensure_python_pip "$install_python_bin"
 
   if [ "$CAMOUFOX_PIP_USER" = "1" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
     pip_args=(--user)
@@ -102,6 +172,7 @@ install_camoufox() {
   if ! "$install_python_bin" -m pip install "${pip_args[@]}" -U "$CAMOUFOX_PACKAGE_SPEC" 2>"$pip_error_file"; then
     if grep -q 'externally-managed-environment' "$pip_error_file" && [ -z "${VIRTUAL_ENV:-}" ]; then
       log "Detected externally managed Python environment; creating Camoufox venv in $CAMOUFOX_VENV_DIR"
+      ensure_python_venv "$python_bin"
       "$python_bin" -m venv "$CAMOUFOX_VENV_DIR"
       install_python_bin="$CAMOUFOX_VENV_DIR/bin/python"
       log "Installing Camoufox Python package via $install_python_bin"
@@ -116,7 +187,7 @@ install_camoufox() {
 
   log "Installing Camoufox system dependencies (Firefox/GTK)"
   if command -v apt-get >/dev/null 2>&1; then
-    if ! apt-get install -y --no-install-recommends libgtk-3-0 libdbus-glib-1-2 libxt6 2>/dev/null; then
+    if ! apt_install_packages libgtk-3-0 libdbus-glib-1-2 libxt6; then
       "$install_python_bin" -m playwright install-deps firefox \
         || log "Warning: could not install Firefox system dependencies; install libgtk-3-0 manually if camoufox fails"
     fi
