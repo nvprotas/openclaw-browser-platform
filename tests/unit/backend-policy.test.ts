@@ -63,7 +63,6 @@ describe('resolveBackendForSession', () => {
     });
   });
 
-
   it('selects chromium for litres domain in allowlist', () => {
     const resolved = resolveBackendForSession({
       requestedUrl: 'https://www.litres.ru/books',
@@ -85,6 +84,18 @@ describe('resolveBackendForSession', () => {
     expect(resolved).toEqual({
       selectedBackend: 'chromium',
       matchedRule: 'allowlist_domain_chromium'
+    });
+  });
+
+  it('falls back to camoufox for a malformed URL', () => {
+    const resolved = resolveBackendForSession({
+      requestedUrl: 'not-a-valid-url',
+      matchedPack: null
+    });
+
+    expect(resolved).toEqual({
+      selectedBackend: 'camoufox',
+      matchedRule: 'default_camoufox'
     });
   });
 });
