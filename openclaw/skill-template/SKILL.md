@@ -123,8 +123,20 @@ Stop and ask for review if you hit:
 - banking redirect you do not fully understand
 - anything that looks like irreversible purchase confirmation
 
-For checkout/payment boundaries, it is acceptable to stop after extracting structured payment identifiers and before final confirmation.
-If the user asked to reach SberPay specifically, the task is satisfied once you reach the SberPay branch (`payecom` boundary and/or visible `Войти по Сбер ID`) and extract the structured JSON; do not press final `Оплатить` unless the user explicitly asks for that irreversible step.
+Для commerce-задач на LitRes не считайте обратимые шаги покупки точками ревью. Если пользователь попросил купить, заказать, добавить в корзину, оформить покупку или дойти до SberPay, продолжайте без дополнительных подтверждений через:
+
+- поиск нужной книги
+- открытие карточки товара
+- добавление книги в корзину
+- открытие корзины
+- нажатие checkout / `Перейти к покупке`
+- выбор или переключение способа оплаты на `Российская карта` / SberPay
+- нажатие checkout-continue кнопок, нужных для перехода к SberPay payment boundary
+
+Эти обратимые шаги являются частью поручения пользователя, а не необратимым подтверждением покупки.
+
+На checkout/payment boundary останавливайтесь только после извлечения структурированных платежных идентификаторов и до финального подтверждения.
+Если пользователь попросил дойти до SberPay, задача выполнена только после достижения SberPay gateway/payment boundary (`payecom` или `platiecom`) и возврата структурированного JSON. Видимая ветка `Войти по Сбер ID` без извлеченных идентификаторов является checkpoint: продолжайте использовать `session context`, `observe`, runtime `paymentContext` и gateway URL, пока JSON можно будет заполнить. Не нажимайте финальный `Оплатить`, не отправляйте OTP и не подтверждайте банковский платеж, если пользователь явно не попросил этот необратимый шаг.
 
 Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
 
@@ -146,6 +158,7 @@ Trigger this rule only when the browser session reaches one of these gateway URL
 - `https://platiecom.ru/deeplink?...`
 
 Do not trigger this rule for other payment-related pages, checkout states, or intermediate checkout URLs.
+Если видна ветка SberPay, но еще нет gateway URL или платежных идентификаторов, продолжайте вести checkout к gateway; не останавливайтесь для подтверждения и не возвращайте текстовый статус.
 
 When either gateway URL is detected:
 - stop normal browser-task execution immediately
@@ -186,6 +199,7 @@ Mapping rules:
 - Fill `paymentIntents[0].orderId` from the gateway order identifier when available.
 - For `payecom.ru/pay?...`, prefer the query `orderId` as the SberPay order identifier.
 - For `platiecom.ru/deeplink?...`, extract the best available SberPay order identifier from the deeplink/query payload; otherwise use `null`.
+- Если `paymentContext` уже содержит payment order identifier для того же gateway, используйте его для заполнения `paymentIntents[0].orderId` и `paymentOrderId`.
 - Populate the remaining top-level fields from runtime evidence when available; otherwise use `null`.
 
 This gateway interception rule overrides normal browser automation response style.
