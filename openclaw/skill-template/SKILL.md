@@ -132,7 +132,12 @@ Payment terminology (strict):
 - `СБП` / `SBP` means `Система быстрых платежей` (Fast Payment System).
 - `SberPay` / `СберПей` means `SberPay`.
 - `СБП` and `SberPay` are completely different payment methods; never treat them as synonyms.
-- In the vast majority of checkout tasks here, prioritize the `SberPay` branch unless the user explicitly asks for `СБП`.
+- На LitRes checkout запрещено продолжать через `СБП` / `SBP`, если пользователь явно не просил `СБП`.
+- Если на LitRes checkout видны `СБП` и `Российская карта`, а пользователь явно не просил `СБП`, переключение с `СБП` обязательно до нажатия любой кнопки продолжения checkout.
+- Случайный default-выбор `СБП` считается блокирующим состоянием, а не допустимой веткой по умолчанию.
+- Перед нажатием кнопки продолжения LitRes checkout проверьте по `paymentContext.paymentMethod`, `paymentContext.paymentSystem`, URL hints вроде `method=` / `system=`, видимому selected state или другим доступным runtime-сигналам, что выбранный метод не `sbp`.
+- LitRes pre-submit guard: если `paymentContext.paymentMethod=sbp`, `paymentContext.paymentSystem=sbersbp`, URL hints содержат `method=sbp` / `system=sbersbp`, или видимый выбранный способ оплаты — `СБП`, остановитесь и переключитесь на путь `Российская карта` / SberPay, если пользователь явно не просил `СБП`.
+- Для обычных задач покупки на LitRes, где пользователь не просил `СБП`, продолжайте только через путь `Российская карта` / SberPay.
 
 Gateway JSON interception rule
 
