@@ -16,7 +16,7 @@ import {
 } from './litres-auth.js';
 
 export const DEFAULT_BRANDSHOP_STORAGE_STATE =
-  '/root/.openclaw/workspace/tmp/sberid-login/brandshop/storage-state.json';
+  '/root/.openclaw/workspace/sber-cookies.json';
 export const DEFAULT_BRANDSHOP_BOOTSTRAP_OUT_DIR =
   '/root/.openclaw/workspace/tmp/sberid-login/brandshop';
 export const DEFAULT_BRANDSHOP_BOOTSTRAP_ENTRY_URL = 'https://brandshop.ru/';
