@@ -331,7 +331,7 @@ async function waitForCamoufoxEndpointFromProcess(
       reject(new BrowserPlatformError(message, {
         code: 'SESSION_OPEN_FAILED',
         details: {
-          recentLogs: recentLogs.slice(-10)
+          recentLogs: recentLogs.slice(-30)
         }
       }));
     };
@@ -664,7 +664,7 @@ export class BrowserSession {
       const visibleTexts: string[] = [];
       const walker = document.createTreeWalker(mainEl, NodeFilter.SHOW_TEXT);
       let textNode = walker.nextNode();
-      while (textNode && visibleTexts.length < 30) {
+      while (textNode && visibleTexts.length < 90) {
         const raw = normalizeText(textNode.textContent);
         if (raw.length >= 3) {
           const parent = textNode.parentElement;
@@ -804,7 +804,7 @@ export class BrowserSession {
           seen.add(key);
           return true;
         })
-        .slice(0, 20);
+        .slice(0, 60);
 
       const forms = Array.from(document.forms).map((form) => {
         const submitLabels = Array.from(
@@ -814,7 +814,7 @@ export class BrowserSession {
             normalizeText(element instanceof HTMLInputElement ? element.value : element.innerText || element.textContent)
           )
           .filter((text) => text.length > 0)
-          .slice(0, 4);
+          .slice(0, 12);
 
         return {
           id: form.id || null,
@@ -868,7 +868,7 @@ export class BrowserSession {
           const matches = normalized.match(paymentUrlPattern);
 
           if (matches?.length) {
-            return matches.slice(0, 6);
+            return matches.slice(0, 18);
           }
 
           return paymentHintPattern.test(normalized) && normalized.length <= 2_000 ? [normalized] : [];
@@ -880,7 +880,7 @@ export class BrowserSession {
           )
         )
         .filter((value, index, all) => all.indexOf(value) === index)
-        .slice(0, 24);
+        .slice(0, 72);
 
       const lowerTexts = visibleTexts.join(' ').toLowerCase();
       const buttonTexts = visibleButtons

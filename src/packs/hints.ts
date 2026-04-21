@@ -19,7 +19,7 @@ export function parseHints(input: unknown): SitePackHints {
   const knownSignals = [
     ...Object.keys(pageSignatures),
     ...Object.values(pageSignatures).flatMap((signals) => signals)
-  ].slice(0, 16);
+  ];
 
   return {
     pageSignatures,

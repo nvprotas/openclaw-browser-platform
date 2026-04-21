@@ -9,8 +9,7 @@ export function parseInstructions(markdown: string): SitePackInstructions {
     .map((line) => line.trim())
     .filter((line) => line.startsWith('- '))
     .map((line) => line.slice(2).trim())
-    .filter((line) => line.length > 0)
-    .slice(0, 16);
+    .filter((line) => line.length > 0);
 
   return {
     summary,

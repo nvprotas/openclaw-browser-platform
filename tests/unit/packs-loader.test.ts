@@ -1,8 +1,24 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parseHints } from '../../src/packs/hints.js';
+import { parseInstructions } from '../../src/packs/instructions.js';
 import { getDefaultSitePacksRoot, loadSitePack, matchSitePackByUrl } from '../../src/packs/loader.js';
 
 describe('site pack loader', () => {
+  it('не обрезает summary инструкций по количеству bullet-пунктов', () => {
+    const markdown = Array.from({ length: 20 }, (_, index) => `- Правило ${index + 1}`).join('\n');
+
+    expect(parseInstructions(markdown).summary).toHaveLength(20);
+  });
+
+  it('не обрезает knownSignals по количеству сигналов', () => {
+    const pageSignatures = Object.fromEntries(
+      Array.from({ length: 20 }, (_, index) => [`page_${index + 1}`, [`signal_${index + 1}`]])
+    );
+
+    expect(parseHints({ page_signatures: pageSignatures }).knownSignals).toHaveLength(40);
+  });
+
   it('loads the LitRes pack from the default site-packs root', async () => {
     const root = path.join(await getDefaultSitePacksRoot(), 'litres');
     const pack = await loadSitePack(root);
