@@ -510,6 +510,11 @@ describe('resolveBackend (CLI)', () => {
     expect(mod.resolveBackend(['--backend', 'camoufox'])).toBe('camoufox');
   });
 
+  it('returns chromium when specified', async () => {
+    const mod = await import('../../src/cli/commands/session.js');
+    expect(mod.resolveBackend(['--backend', 'chromium'])).toBe('chromium');
+  });
+
   it('throws INVALID_BACKEND for unknown value', async () => {
     const mod = await import('../../src/cli/commands/session.js');
     expect(() => mod.resolveBackend(['--backend', 'firefox'])).toThrow('Unsupported backend');

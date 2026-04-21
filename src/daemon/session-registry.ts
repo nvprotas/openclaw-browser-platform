@@ -25,7 +25,7 @@ export class SessionRegistry {
   open(input: {
     url: string;
     title?: string | null;
-    backend?: SessionBackend;
+    backend: SessionBackend;
     scenarioId?: string | null;
     profileContext?: SessionRecord['profileContext'];
     idleTimeoutMs?: number;
@@ -33,7 +33,7 @@ export class SessionRegistry {
     const now = this.nowIso();
     const session: SessionRecord = {
       sessionId: randomUUID(),
-      backend: input.backend ?? 'camoufox',
+      backend: input.backend,
       url: input.url,
       title: input.title ?? null,
       createdAt: now,

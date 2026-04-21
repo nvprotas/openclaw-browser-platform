@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSessionJanitorRunner, resolveSessionIdleTimeoutMs, runSessionJanitorPass } from '../../src/daemon/server.js';
+import { createSessionJanitorRunner, isSessionBackend, resolveSessionIdleTimeoutMs, runSessionJanitorPass } from '../../src/daemon/server.js';
 import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from '../../src/daemon/session-registry.js';
 
 function createDeferred<T = void>() {
@@ -29,7 +29,7 @@ describe('daemon session idle handling', () => {
       defaultIdleTimeoutMs: 1_000,
       now: () => now
     });
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
     const controller = {
       closeSession: vi.fn(async () => undefined)
     };
@@ -52,7 +52,7 @@ describe('daemon session idle handling', () => {
       defaultIdleTimeoutMs: 1_000,
       now: () => now
     });
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
     const closeBarrier = createDeferred<void>();
     const controller = {
       closeSession: vi.fn(async () => {
@@ -84,7 +84,7 @@ describe('daemon session idle handling', () => {
       defaultIdleTimeoutMs: 1_000,
       now: () => now
     });
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
     const closeBarrier = createDeferred<void>();
     const controller = {
       closeSession: vi.fn(async () => {
@@ -104,5 +104,24 @@ describe('daemon session idle handling', () => {
     await Promise.all([firstPass, secondPass]);
 
     expect(registry.get(session.sessionId)).toBeUndefined();
+  });
+});
+
+describe('isSessionBackend', () => {
+  it('accepts valid backends', () => {
+    expect(isSessionBackend('camoufox')).toBe(true);
+    expect(isSessionBackend('chromium')).toBe(true);
+  });
+
+  it('rejects unknown backends', () => {
+    expect(isSessionBackend('firefox')).toBe(false);
+    expect(isSessionBackend('')).toBe(false);
+    expect(isSessionBackend('CAMOUFOX')).toBe(false);
+  });
+
+  it('rejects non-string values', () => {
+    expect(isSessionBackend(undefined)).toBe(false);
+    expect(isSessionBackend(null)).toBe(false);
+    expect(isSessionBackend(42)).toBe(false);
   });
 });

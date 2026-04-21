@@ -3,6 +3,9 @@ import { requireFlag } from '../argv.js';
 import { actInSession, closeSession, getSessionContext, observeSession, openSession, snapshotSession } from '../../daemon/client.js';
 import { handleDaemonEnsure } from './daemon.js';
 import type { SessionActionPayload, SessionBackend } from '../../daemon/types.js';
+import { SESSION_BACKENDS } from '../../daemon/types.js';
+
+const ALLOWED_BACKENDS_TEXT = SESSION_BACKENDS.join(', ');
 
 export async function handleSessionOpen(args: string[]): Promise<unknown> {
   await handleDaemonEnsure();
@@ -28,17 +31,17 @@ export function resolveBackend(args: string[]): SessionBackend {
   }
 
   if (backendIndex >= args.length - 1) {
-    throw new BrowserPlatformError('--backend requires a value. Allowed values: camoufox', {
+    throw new BrowserPlatformError(`--backend requires a value. Allowed values: ${ALLOWED_BACKENDS_TEXT}`, {
       code: 'INVALID_BACKEND'
     });
   }
 
   const backendRaw = args[backendIndex + 1]?.toLowerCase();
-  if (backendRaw === 'camoufox') {
-    return backendRaw;
+  if (backendRaw && SESSION_BACKENDS.includes(backendRaw as SessionBackend)) {
+    return backendRaw as SessionBackend;
   }
 
-  throw new BrowserPlatformError('Unsupported backend. Allowed values: camoufox', {
+  throw new BrowserPlatformError(`Unsupported backend. Allowed values: ${ALLOWED_BACKENDS_TEXT}`, {
     code: 'INVALID_BACKEND'
   });
 }

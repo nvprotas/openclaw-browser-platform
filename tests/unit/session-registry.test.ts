@@ -7,6 +7,7 @@ describe('SessionRegistry', () => {
 
     const opened = registry.open({
       url: 'https://example.com',
+      backend: 'camoufox',
       title: 'Example Domain',
       scenarioId: 'checkout-kuper',
       profileContext: {
@@ -52,7 +53,7 @@ describe('SessionRegistry', () => {
       now: () => now
     });
 
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
 
     now += 900;
     expect(registry.findExpiredSessionIds()).toEqual([]);
@@ -75,7 +76,7 @@ describe('SessionRegistry', () => {
       now: () => now
     });
 
-    const session = registry.open({ url: 'https://example.com' });
+    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
 
     now += 500;
     expect(registry.findExpiredSessionIds()).toEqual([session.sessionId]);
