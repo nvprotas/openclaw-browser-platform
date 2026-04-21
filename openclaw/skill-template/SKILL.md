@@ -31,6 +31,8 @@ daemon ensure
 Always request `--json` output.
 When using OpenClaw `exec`, set `workdir` / `cwd` to the workspace root for reproducible relative paths and stable execution.
 When calling `exec` for `browser-platform` commands, keep `yieldMs` short: use `yieldMs: 7000` (or less) by default, and never exceed 7000. If an operation may take longer, run with short `yieldMs` and continue via `process(action=poll, timeout=...)` instead of a large single `yieldMs`.
+Do not pipe `browser-platform --json` output into `python`, `node`, `jq`, heredoc scripts, or other post-processors inside `exec`. OpenClaw already returns the command output; read the JSON from the tool result directly. In particular, never use `browser-platform ... --json | python3 - <<'PY' ...`: the heredoc consumes stdin and the JSON pipe can be lost, causing `JSONDecodeError`.
+If `exec` returns `Command still running`, poll the same process and use the JSON returned by that process. Do not rerun `session open` only to extract `sessionId`; this creates duplicate browser sessions and loses time.
 
 ## Recommended command order
 
@@ -51,6 +53,18 @@ browser-platform session open \
   --scenario open-home \
   --json
 ```
+
+For LitRes book-search tasks, open the search URL directly instead of opening the home page and then filling the search field:
+
+```bash
+browser-platform session open \
+  --url 'https://www.litres.ru/search/?q=Одиссея%20Гомер' \
+  --profile litres \
+  --scenario open-home \
+  --json
+```
+
+After this, use the returned `session.sessionId` from the JSON object as-is.
 
 Legacy/debug/import override for an external state file:
 
