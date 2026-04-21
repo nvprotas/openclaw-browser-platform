@@ -75,10 +75,34 @@ describe('resolveBackendForSession', () => {
     });
   });
 
-  it('selects chromium for allowlisted matched pack domain', () => {
+  it('keeps loopback requested hosts on camoufox', () => {
+    const resolved = resolveBackendForSession({
+      requestedUrl: 'http://127.0.0.1:3000/catalog',
+      matchedPack: null
+    });
+
+    expect(resolved).toEqual({
+      selectedBackend: 'camoufox',
+      matchedRule: 'default_camoufox'
+    });
+  });
+
+  it('keeps loopback matched pack domains on camoufox', () => {
     const resolved = resolveBackendForSession({
       requestedUrl: 'https://books.example.net/catalog',
       matchedPack: createMatchedPack('localhost')
+    });
+
+    expect(resolved).toEqual({
+      selectedBackend: 'camoufox',
+      matchedRule: 'default_camoufox'
+    });
+  });
+
+  it('selects chromium for allowlisted matched pack domain', () => {
+    const resolved = resolveBackendForSession({
+      requestedUrl: 'https://books.example.net/catalog',
+      matchedPack: createMatchedPack('example.com')
     });
 
     expect(resolved).toEqual({

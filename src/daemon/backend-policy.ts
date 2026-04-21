@@ -13,7 +13,7 @@ export interface ResolvedBackendPolicy {
   matchedRule: 'default_camoufox' | 'allowlist_domain_chromium';
 }
 
-const CHROMIUM_ALLOWLIST_DOMAINS = new Set<string>(['example.com', 'localhost', '127.0.0.1', 'litres.ru']);
+const CHROMIUM_ALLOWLIST_DOMAINS = new Set<string>(['example.com', 'litres.ru']);
 
 function isAllowlistedDomain(hostname: string): boolean {
   return [...CHROMIUM_ALLOWLIST_DOMAINS].some(
