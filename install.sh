@@ -8,11 +8,19 @@ RUN_TESTS="${RUN_TESTS:-1}"
 RESTART_GATEWAY="${RESTART_GATEWAY:-1}"
 RUN_SMOKE_TEST="${RUN_SMOKE_TEST:-1}"
 LIVE_SMOKE_URL="${LIVE_SMOKE_URL:-}"
+INSTALL_CAMOUFOX="${INSTALL_CAMOUFOX:-1}"
+CAMOUFOX_PYTHON_BIN="${CAMOUFOX_PYTHON_BIN:-}"
+CAMOUFOX_PACKAGE_SPEC="${CAMOUFOX_PACKAGE_SPEC:-camoufox[geoip]}"
+CAMOUFOX_PIP_USER="${CAMOUFOX_PIP_USER:-1}"
+CAMOUFOX_VENV_DIR="${CAMOUFOX_VENV_DIR:-$OPENCLAW_HOME/venvs/camoufox}"
+CAMOUFOX_FETCH="${CAMOUFOX_FETCH:-auto}"  # auto | always | never
+CAMOUFOX_CACHE_DIR="${CAMOUFOX_CACHE_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/camoufox}"
 
 REPO_URL="${REPO_URL:-https://github.com/nvprotas/openclaw-browser-platform.git}"
 BRANCH="${BRANCH:-master}"
 TARGET_DIR="${TARGET_DIR:-$HOME/git/openclaw-browser-platform}"
 FORCE_UPDATE="${FORCE_UPDATE:-0}"
+APT_UPDATED=0
 
 log() {
   printf '==> %s\n' "$*"
@@ -25,6 +33,178 @@ fail() {
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
+}
+
+apt_install_packages() {
+  command -v apt-get >/dev/null 2>&1 || return 1
+
+  local sudo_prefix=()
+
+  if [ "$(id -u)" != "0" ]; then
+    need_cmd sudo
+    sudo_prefix=(sudo)
+  fi
+
+  if [ "$APT_UPDATED" != "1" ]; then
+    log "Updating apt package index"
+    "${sudo_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get update
+    APT_UPDATED=1
+  fi
+
+  log "Installing system packages: $*"
+  "${sudo_prefix[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+}
+
+resolve_camoufox_python_bin() {
+  if [ -n "$CAMOUFOX_PYTHON_BIN" ]; then
+    need_cmd "$CAMOUFOX_PYTHON_BIN"
+    printf '%s\n' "$CAMOUFOX_PYTHON_BIN"
+    return
+  fi
+
+  if command -v python >/dev/null 2>&1; then
+    printf 'python\n'
+    return
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    printf 'python3\n'
+    return
+  fi
+
+  fail "Missing required command: python or python3"
+}
+
+ensure_python_pip() {
+  local python_bin="$1"
+
+  if "$python_bin" -m pip --version >/dev/null 2>&1; then
+    return
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    log "Python pip is missing; installing python3-pip"
+    apt_install_packages python3-pip
+    "$python_bin" -m pip --version >/dev/null 2>&1 \
+      || fail "Installed python3-pip, but $python_bin -m pip is still unavailable"
+    return
+  fi
+
+  fail "Missing Python pip for $python_bin. Install pip or set CAMOUFOX_PYTHON_BIN to an interpreter with pip."
+}
+
+ensure_python_venv() {
+  local python_bin="$1"
+  local probe_dir=""
+  local versioned_venv_package=""
+
+  probe_dir="$(mktemp -d)"
+  if "$python_bin" -m venv "$probe_dir" >/dev/null 2>&1; then
+    rm -rf "$probe_dir"
+    return
+  fi
+  rm -rf "$probe_dir"
+
+  if command -v apt-get >/dev/null 2>&1; then
+    versioned_venv_package="$("$python_bin" -c 'import sys; print("python%s.%s-venv" % (sys.version_info.major, sys.version_info.minor))')"
+    log "Python venv support is missing; installing python3-venv and $versioned_venv_package"
+    if ! apt_install_packages python3-venv; then
+      apt_install_packages "$versioned_venv_package"
+    fi
+
+    probe_dir="$(mktemp -d)"
+    if "$python_bin" -m venv "$probe_dir" >/dev/null 2>&1; then
+      rm -rf "$probe_dir"
+      return
+    fi
+    rm -rf "$probe_dir"
+  fi
+
+  fail "Missing Python venv support for $python_bin. Install python3-venv or set CAMOUFOX_PYTHON_BIN to an interpreter with venv."
+}
+
+camoufox_runtime_present() {
+  [ -x "$CAMOUFOX_CACHE_DIR/camoufox-bin" ] || [ -d "$CAMOUFOX_CACHE_DIR/browser" ]
+}
+
+should_fetch_camoufox() {
+  case "$CAMOUFOX_FETCH" in
+    always)
+      return 0
+      ;;
+    never)
+      return 1
+      ;;
+    auto)
+      if ! camoufox_runtime_present; then
+        return 0
+      fi
+
+      return 1
+      ;;
+    *)
+      fail "Unsupported CAMOUFOX_FETCH: $CAMOUFOX_FETCH (expected: auto|always|never)"
+      ;;
+  esac
+}
+
+install_camoufox() {
+  local pip_args=()
+  local python_bin=""
+  local install_python_bin=""
+  local pip_error_file=""
+
+  if [ "$INSTALL_CAMOUFOX" != "1" ]; then
+    return
+  fi
+
+  python_bin="$(resolve_camoufox_python_bin)"
+  install_python_bin="$python_bin"
+  ensure_python_pip "$install_python_bin"
+
+  if [ "$CAMOUFOX_PIP_USER" = "1" ] && [ -z "${VIRTUAL_ENV:-}" ]; then
+    pip_args=(--user)
+  fi
+
+  pip_error_file="$(mktemp)"
+
+  log "Installing Camoufox Python package via $install_python_bin"
+  if ! "$install_python_bin" -m pip install "${pip_args[@]}" -U "$CAMOUFOX_PACKAGE_SPEC" 2>"$pip_error_file"; then
+    if grep -q 'externally-managed-environment' "$pip_error_file" && [ -z "${VIRTUAL_ENV:-}" ]; then
+      log "Detected externally managed Python environment; creating Camoufox venv in $CAMOUFOX_VENV_DIR"
+      ensure_python_venv "$python_bin"
+      "$python_bin" -m venv "$CAMOUFOX_VENV_DIR"
+      install_python_bin="$CAMOUFOX_VENV_DIR/bin/python"
+      log "Installing Camoufox Python package via $install_python_bin"
+      "$install_python_bin" -m pip install -U "$CAMOUFOX_PACKAGE_SPEC"
+    else
+      cat "$pip_error_file" >&2
+      rm -f "$pip_error_file"
+      return 1
+    fi
+  fi
+  rm -f "$pip_error_file"
+
+  log "Installing Camoufox system dependencies (Firefox/GTK)"
+  if command -v apt-get >/dev/null 2>&1; then
+    if ! apt_install_packages libgtk-3-0 libdbus-glib-1-2 libxt6; then
+      "$install_python_bin" -m playwright install-deps firefox \
+        || log "Warning: could not install Firefox system dependencies; install libgtk-3-0 manually if camoufox fails"
+    fi
+  else
+    "$install_python_bin" -m playwright install-deps firefox 2>/dev/null \
+      || log "Warning: could not install Firefox system dependencies; install libgtk-3-0 manually if camoufox fails"
+  fi
+
+  if should_fetch_camoufox; then
+    log "Fetching Camoufox browser via $install_python_bin"
+    "$install_python_bin" -m camoufox fetch
+  else
+    log "Skipping Camoufox fetch (mode=$CAMOUFOX_FETCH, cache=$CAMOUFOX_CACHE_DIR)"
+  fi
+
+  log "Verifying Camoufox installation via $install_python_bin"
+  "$install_python_bin" -m camoufox version
 }
 
 canonicalize_repo_url() {
@@ -110,8 +290,17 @@ ensure_repo_clone() {
     fi
 
     log "Updating repo in $TARGET_DIR"
-    git -C "$TARGET_DIR" fetch --depth=1 origin "$BRANCH"
-    git -C "$TARGET_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
+    git -C "$TARGET_DIR" fetch --depth=1 origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
+
+    if [ "$FORCE_UPDATE" = "1" ]; then
+      log "FORCE_UPDATE=1: discarding local repo changes in $TARGET_DIR"
+      git -C "$TARGET_DIR" reset --hard
+      git -C "$TARGET_DIR" clean -fd
+      git -C "$TARGET_DIR" checkout -f -B "$BRANCH" "origin/$BRANCH"
+      git -C "$TARGET_DIR" reset --hard "origin/$BRANCH"
+    else
+      git -C "$TARGET_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
+    fi
   else
     log "Cloning repo into $TARGET_DIR"
     git clone --depth=1 --branch "$BRANCH" "$REPO_URL" "$TARGET_DIR"
@@ -130,10 +319,12 @@ run_local_install() {
   log "Installing npm dependencies"
   npm ci
 
-  log "Installing Playwright Chromium"
-  npx playwright install chromium
+  install_camoufox
 
   log "Building project"
+  log "Stopping browser-platform daemon (if running)"
+  pkill -f "$repo_dir/dist/src/daemon/entry.js" 2>/dev/null || true
+
   npm run build
 
   if [ "$RUN_TESTS" = "1" ]; then
@@ -192,7 +383,7 @@ run_local_install() {
   if [ -n "$skill_dir" ]; then
     printf 'Skill: %s/SKILL.md\n' "$skill_dir"
   fi
-  printf 'One-liner mode: curl -fsSL https://openclaw.ai/install.sh | bash\n'
+  printf 'One-liner mode: curl -fsSL https://raw.githubusercontent.com/nvprotas/openclaw-browser-platform/master/install.sh | RUN_TESTS=0 bash\n'
   printf 'Tip: LIVE_SMOKE_URL=https://www.litres.ru/ ./install.sh\n'
 }
 
