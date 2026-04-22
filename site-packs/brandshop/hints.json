@@ -35,6 +35,10 @@
       "a[href*='/checkout']"
     ]
   },
+  "cookie_consent": {
+    "accept_texts": ["Принять", "Принимаю", "Согласен"],
+    "selectors": ["button:has-text('Принять')", "[class*='cookie'] button"]
+  },
   "page_signatures": {
     "home": [
       "Интернет-магазин модной одежды и обуви BRANDSHOP",

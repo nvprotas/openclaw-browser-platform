@@ -40,6 +40,7 @@ This repository currently contains:
 - LitRes auth reuse + repo-owned bootstrap flow
 - session `packContext` + `authContext`
 - action / observe / snapshot flow
+- LitRes `run-scenario` flow для checkout-to-SberPay/payment-boundary задач
 - trace artifacts for `session open` / `observe` / `act` / `snapshot`
 - tests for daemon/session lifecycle and pack loading
 
@@ -156,8 +157,15 @@ All implemented commands return JSON when called with `--json`.
 - `browser-platform session context --session <id> --json`
 - `browser-platform session observe --session <id> --json`
 - `browser-platform session act --session <id> --json '<payload>'`
+- `browser-platform session run-scenario --pack litres --flow checkout-to-orderid --query <text> --profile litres --max-duration-ms 60000 --json`
 - `browser-platform session snapshot --session <id> --json`
 - `browser-platform session close --session <id> --json`
+
+Daemon публикует тот же сценарный контракт через HTTP:
+
+- `POST /v1/session/run-scenario`
+
+Ответы `observe` и `act` могут включать optional `nextRecommendedAction`. Это совместимая подсказка для следующего шага; клиенты должны продолжать работать, если поле отсутствует.
 
 ## Examples
 
@@ -170,6 +178,20 @@ node dist/bin/browser-platform.js session open \
   --scenario search-1984 \
   --json
 ```
+
+Рекомендуемый LitRes checkout/SberPay scenario:
+
+```bash
+browser-platform session run-scenario \
+  --pack litres \
+  --flow checkout-to-orderid \
+  --query <text> \
+  --profile litres \
+  --max-duration-ms 60000 \
+  --json
+```
+
+Используйте `session run-scenario` для LitRes checkout, извлечения order id и SberPay/payment-boundary задач. Для произвольных browser-задач оставляйте явный loop `session open -> observe -> act -> observe`.
 
 Legacy/debug/import override when you must bring your own state file:
 
@@ -208,16 +230,26 @@ For MVP0 acceptance, the runtime now writes JSON trace artifacts under:
 ```
 
 Current trace coverage:
+
 - `session open` writes the opened page state plus resolved pack/auth/payment context
 - `session observe` writes the observed page summary
 - `session act` writes before/after state, diff, and success/failure observations
 - `session snapshot` writes a trace JSON that points at the saved screenshot + HTML snapshot paths
 
 Hard-stop contract for payment extraction:
+
 - `session observe`, `session act`, and `session snapshot` may now include `hardStop`
-- `hardStop.reason = "gateway_payment_json_ready"` means fail-closed: stop normal flow and return only `hardStop.finalPayload`
+- `session run-scenario` использует тот же payment hard-stop contract, когда сценарий доходит до gateway boundary
+- `hardStop.reason = "terminal_extraction_result"` means fail-closed: stop normal flow and return only `hardStop.finalPayload`
 - `hardStop.returnPolicy = "return_final_payload_verbatim"` и `hardStop.agentInstruction` задают машинный контракт: агент должен вернуть `hardStop.finalPayload` пользователю без изменений
 - hard stop is emitted only for gateway URLs `https://payecom.ru/pay?...` and `https://platiecom.ru/deeplink?...` when extraction JSON is ready
+
+Рекомендации для итеративного flow:
+
+- `session observe` и `session act` могут включать optional `nextRecommendedAction`
+- воспринимайте `nextRecommendedAction` как machine-readable рекомендацию, а не как обязательное поле
+- для LitRes checkout/SberPay задач предпочитайте `session run-scenario`
+- для open-ended задач принимайте решение явно по последнему результату `observe` / `act`
 
 The heavier screenshot/HTML artifacts still live under:
 

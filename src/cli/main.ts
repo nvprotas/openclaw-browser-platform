@@ -7,6 +7,7 @@ import {
   handleSessionContext,
   handleSessionObserve,
   handleSessionOpen,
+  handleSessionRunScenario,
   handleSessionSnapshot
 } from './commands/session.js';
 import { printErrorJson, printJson } from './output.js';
@@ -32,9 +33,12 @@ export async function runCli(args: string[]): Promise<number> {
     const jsonFlagCount = args.filter((value) => value === '--json').length;
     const json = jsonFlagCount >= 1;
     if (!json) {
-      throw new BrowserPlatformError('Only --json output is implemented in this MVP skeleton', {
-        code: 'JSON_REQUIRED'
-      });
+      throw new BrowserPlatformError(
+        'Only --json output is implemented in this MVP skeleton',
+        {
+          code: 'JSON_REQUIRED'
+        }
+      );
     }
 
     const command = await dispatch(args);
@@ -71,6 +75,10 @@ async function dispatch(args: string[]): Promise<unknown> {
     return handleSessionAct(args);
   }
 
+  if (args[0] === 'session' && args[1] === 'run-scenario') {
+    return handleSessionRunScenario(args);
+  }
+
   if (args[0] === 'session' && args[1] === 'snapshot') {
     return handleSessionSnapshot(args);
   }
@@ -79,9 +87,13 @@ async function dispatch(args: string[]): Promise<unknown> {
     return handleSessionClose(args);
   }
 
-  throw new BrowserPlatformError(`Unknown command: ${args.join(' ')}`, { code: 'UNKNOWN_COMMAND' });
+  throw new BrowserPlatformError(`Unknown command: ${args.join(' ')}`, {
+    code: 'UNKNOWN_COMMAND'
+  });
 }
 
 function printHelp(): void {
-  console.log(`browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> [--profile <id>] [--scenario <id>] [--backend camoufox|chromium] [--storage-state <path>] --json\n  browser-platform session context --session <id> --json\n  browser-platform session observe --session <id> --json\n  browser-platform session act --session <id> --json '<payload>'\n  browser-platform session snapshot --session <id> --json\n  browser-platform session close --session <id> --json\n\nNotes:\n  --profile + --scenario is the canonical session model.\n  --backend in CLI is a debug override; daemon API selects backend by policy and may ignore this hint.\n  --storage-state is a legacy/debug/import override and should not be the default path.`);
+  console.log(
+    `browser-platform\n\nUsage:\n  browser-platform daemon ensure --json\n  browser-platform daemon status --json\n  browser-platform session open --url <url> [--profile <id>] [--scenario <id>] [--backend camoufox|chromium] [--storage-state <path>] --json\n  browser-platform session context --session <id> --json\n  browser-platform session observe --session <id> --json\n  browser-platform session act --session <id> --json '<payload>'\n  browser-platform session run-scenario --pack litres --flow checkout-to-orderid --query <text> [--profile litres] [--max-duration-ms 60000] --json\n  browser-platform session snapshot --session <id> --json\n  browser-platform session close --session <id> --json\n\nNotes:\n  --profile + --scenario is the canonical session model.\n  --backend in CLI is a debug override; daemon API selects backend by policy and may ignore this hint.\n  --storage-state is a legacy/debug/import override and should not be the default path.`
+  );
 }

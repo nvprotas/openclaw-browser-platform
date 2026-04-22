@@ -8,6 +8,8 @@
       "Добавить в корзину"
     ],
     "open_cart": ["Корзина", "Перейти в корзину", "Открыть корзину"],
+    "checkout_proceed": ["Перейти к покупке", "Оформить заказ"],
+    "checkout_continue": ["Продолжить"],
     "checkout_payment_method": [
       "СБП",
       "Российская карта",
@@ -68,8 +70,16 @@
       "a[href*='basket']",
       "[aria-label*='Корзин']"
     ],
+    "checkout_proceed": [
+      "button:has-text('Перейти к покупке')",
+      "a:has-text('Перейти к покупке')",
+      "button:has-text('Оформить заказ')"
+    ],
     "checkout_sbp": ["label[for='payment-method-input-sbp']"],
-    "checkout_russian_card": ["label[for='payment-method-input-russian_card']"],
+    "checkout_russian_card": [
+      "label[for='payment-method-input_russian_card']",
+      "label[for='payment-method-input-russian_card']"
+    ],
     "checkout_continue": [
       "button[data-testid='paymentLayout__payment--button']"
     ],

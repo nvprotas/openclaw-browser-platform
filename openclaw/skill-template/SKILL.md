@@ -1,7 +1,10 @@
 ---
 name: browser_platform
 description: Use the `browser-platform` CLI for stateful browser automation through OpenClaw `exec`. Best for supported sites such as LitRes when the task needs real browser interaction, page observation, stepwise actions, screenshots, or site-pack-guided flows.
-metadata: { "openclaw": { "emoji": "🌐", "requires": { "bins": ["browser-platform"] } } }
+metadata:
+  {
+    'openclaw': { 'emoji': '🌐', 'requires': { 'bins': ['browser-platform'] } }
+  }
 ---
 
 # Browser Platform
@@ -15,7 +18,20 @@ Current pilot support is strongest for **LitRes (`litres.ru`)**.
 Treat `browser-platform` as a **stateful browser runtime**.
 Call it through OpenClaw `exec`, not as a made-up native tool.
 Do not fire one-off unrelated commands blindly.
-Prefer the loop:
+
+Для LitRes checkout, покупки до SberPay/payment boundary и извлечения order id предпочитай сценарный контракт:
+
+```bash
+browser-platform session run-scenario \
+  --pack litres \
+  --flow checkout-to-orderid \
+  --query <text> \
+  --profile litres \
+  --max-duration-ms 60000 \
+  --json
+```
+
+Для произвольных задач, неподдержанных сайтов и отладки предпочитай ручной loop:
 
 ```text
 daemon ensure
@@ -42,7 +58,31 @@ If `exec` returns `Command still running`, poll the same process and use the JSO
 browser-platform daemon ensure --json
 ```
 
-### 2. Open a session
+### 2. Используйте LitRes run-scenario для checkout/SberPay задач
+
+Если пользователь просит купить книгу на LitRes, дойти до SberPay, получить order id, оформить checkout до payment boundary или вернуть платежный JSON, используй один сценарный вызов:
+
+```bash
+browser-platform session run-scenario \
+  --pack litres \
+  --flow checkout-to-orderid \
+  --query <text> \
+  --profile litres \
+  --max-duration-ms 60000 \
+  --json
+```
+
+Не заменяй этот flow ручным поиском, корзиной и checkout-кликами, если сценарный контракт доступен. Сценарий сам открывает session на профиле `litres`, выполняет поддержанный LitRes flow и должен остановиться до финального `Оплатить`.
+
+Если результат содержит `hardStop.finalPayload`, верни `hardStop.finalPayload` пользователю без изменений и не продолжай браузерные действия.
+
+Daemon endpoint для того же контракта:
+
+```text
+POST /v1/session/run-scenario
+```
+
+### 3. Откройте session для произвольных задач
 
 Canonical profile/scenario flow:
 
@@ -75,13 +115,14 @@ browser-platform session open \
   --json
 ```
 
-### 3. Read session context
+### 4. Read session context
 
 ```bash
 browser-platform session context --session <SESSION_ID> --json
 ```
 
 Check:
+
 - `packContext`
 - `authContext`
 - `paymentContext`
@@ -89,7 +130,7 @@ Check:
 - whether auth is `authenticated`, `anonymous`, or `login_gate_detected`
 - whether payment identifiers or a payment boundary were already detected
 
-### 4. Observe before acting
+### 5. Observe before acting
 
 ```bash
 browser-platform session observe --session <SESSION_ID> --json
@@ -97,9 +138,13 @@ browser-platform session observe --session <SESSION_ID> --json
 
 Use observation to decide the next step.
 
+`session observe` и `session act` могут включать optional `nextRecommendedAction`. Воспринимай его как подсказку, а не как обязательное поле. Известные значения: `observe_now`, `skip_observe`, `wait_for_hardstop`, `run_scenario_recommended`.
+
+Если `nextRecommendedAction` равен `run_scenario_recommended` в LitRes checkout/SberPay контексте, переходи на `session run-scenario`, если только задача пользователя или safety rules явно не требуют ручной проверки.
+
 If `paymentContext.shouldReportImmediately` is true and the current gateway URL matches `https://payecom.ru/pay?...` or `https://platiecom.ru/deeplink?...`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer. Otherwise, treat it as a checkpoint signal and continue following the user task.
 
-### 5. Act in small steps
+### 6. Act in small steps
 
 Examples:
 
@@ -115,13 +160,13 @@ browser-platform session act --session <SESSION_ID> --json '{"action":"fill","ro
 browser-platform session act --session <SESSION_ID> --json '{"action":"wait_for","selector":"div[data-testid=\"modal--overlay\"]","state":"visible"}'
 ```
 
-### 6. Snapshot when debugging or before risky transitions
+### 7. Snapshot when debugging or before risky transitions
 
 ```bash
 browser-platform session snapshot --session <SESSION_ID> --json
 ```
 
-### 7. Close the session when done
+### 8. Close the session when done
 
 ```bash
 browser-platform session close --session <SESSION_ID> --json
@@ -137,7 +182,7 @@ Stop and ask for review if you hit:
 - banking redirect you do not fully understand
 - anything that looks like irreversible purchase confirmation
 
-Для commerce-задач на LitRes не считайте обратимые шаги покупки точками ревью. Если пользователь попросил купить, заказать, добавить в корзину, оформить покупку или дойти до SberPay, продолжайте без дополнительных подтверждений через:
+Для commerce-задач на LitRes сначала используй `session run-scenario --pack litres --flow checkout-to-orderid`. Если приходится идти вручную, не считай обратимые шаги покупки точками ревью. Если пользователь попросил купить, заказать, добавить в корзину, оформить покупку или дойти до SberPay, продолжайте без дополнительных подтверждений через:
 
 - поиск нужной книги
 - открытие карточки товара
@@ -155,6 +200,7 @@ Stop and ask for review if you hit:
 Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
 
 Payment terminology (strict):
+
 - `СБП` / `SBP` means `Система быстрых платежей` (Fast Payment System).
 - `SberPay` / `СберПей` means `SberPay`.
 - `СБП` and `SberPay` are completely different payment methods; never treat them as synonyms.
@@ -168,6 +214,7 @@ Payment terminology (strict):
 Gateway JSON interception rule
 
 Trigger this rule only when the browser session reaches one of these gateway URL patterns:
+
 - `https://payecom.ru/pay?...`
 - `https://platiecom.ru/deeplink?...`
 
@@ -175,6 +222,7 @@ Do not trigger this rule for other payment-related pages, checkout states, or in
 Если видна ветка SberPay, но еще нет gateway URL или платежных идентификаторов, продолжайте вести checkout к gateway; не останавливайтесь для подтверждения и не возвращайте текстовый статус.
 
 When either gateway URL is detected:
+
 - stop normal browser-task execution immediately
 - stop narration, summarization, and further exploration
 - return exactly one JSON object and nothing else
@@ -206,6 +254,7 @@ Return this JSON shape:
 ```
 
 Mapping rules:
+
 - Set `gateway` to `payecom` for `payecom.ru/pay?...` and `platiecom` for `platiecom.ru/deeplink?...`.
 - Set `gatewayUrl` to the exact detected gateway URL.
 - Always include `paymentIntents` as an array.
@@ -217,6 +266,7 @@ Mapping rules:
 - Populate the remaining top-level fields from runtime evidence when available; otherwise use `null`.
 
 This gateway interception rule overrides normal browser automation response style.
+То же правило применяется, когда `session run-scenario` возвращает `hardStop.finalPayload`: верни этот объект без изменений.
 
 ## LitRes notes
 

@@ -8,6 +8,17 @@ import { withRetry } from '../helpers/retries.js';
 import { buildPostActionObservations } from '../helpers/validation.js';
 import { buildActionDiff } from '../helpers/tracing.js';
 import { extractPaymentContext } from '../helpers/payment-context.js';
+import {
+  acceptCookieConsent,
+  buildCookieConsentObservation,
+  shouldAttemptCookieConsent
+} from '../helpers/consent.js';
+import {
+  buildSizeSelectionObservation,
+  selectFirstAvailableSize
+} from '../helpers/size-select.js';
+import { buildFailedCartNavigationObservation } from '../helpers/cart.js';
+import type { LoadedSitePack } from '../packs/loader.js';
 import type {
   BrowserSession,
   PageStateSummary
@@ -383,6 +394,32 @@ function isPaymentFlowUrl(url: string): boolean {
   );
 }
 
+function shouldAttemptSizeSelection(
+  before: PageStateSummary,
+  payload: SessionActionPayload
+): boolean {
+  if (
+    payload.action !== 'click' ||
+    before.pageSignatureGuess !== 'product_page'
+  ) {
+    return false;
+  }
+
+  if (
+    !before.visibleTexts.some((text) => /доступные размеры|размер/i.test(text))
+  ) {
+    return false;
+  }
+
+  const selector = 'selector' in payload ? (payload.selector ?? '') : '';
+  const targetName = 'name' in payload ? normalize(payload.name) : '';
+  const targetText = 'text' in payload ? normalize(payload.text) : '';
+  const targetBlob = `${selector} ${targetName} ${targetText}`.toLowerCase();
+  return /add[-_ ]?cart|add_to_cart|в корзину|добавить в корзину|_add-cart/.test(
+    targetBlob
+  );
+}
+
 export function withPaymentHint(
   state: PageStateSummary,
   hint: string | null
@@ -537,9 +574,16 @@ async function stabilizeAfterPaymentAction(
 
   let best = initialAfter;
   const initialFingerprint = paymentFingerprint(initialAfter.paymentContext);
+  const shouldExtend =
+    before.paymentContext.phase === 'litres_checkout' &&
+    !initialAfter.paymentContext.terminalExtractionResult &&
+    initialAfter.paymentContext.phase !== 'payecom_boundary';
+  const maxAttempts = shouldExtend ? 8 : 3;
 
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    await new Promise((resolve) =>
+      setTimeout(resolve, attempt < 3 ? 200 : 300)
+    );
     const current = withPaymentHint(
       await session.observe(),
       paymentGatewayHint
@@ -572,6 +616,7 @@ async function stabilizeAfterPaymentAction(
 
     if (
       current.paymentContext.shouldReportImmediately ||
+      current.paymentContext.terminalExtractionResult ||
       current.paymentContext.phase === 'payecom_boundary' ||
       current.visibleTexts.some((text) =>
         /войти по сбер id|номер карты|cvc|cvv|месяц\/год|оплатить/i.test(text)
@@ -590,15 +635,17 @@ async function stabilizeAfterPaymentAction(
 
 export async function runStep(
   session: BrowserSession,
-  payload: SessionActionPayload
+  payload: SessionActionPayload,
+  options: { before?: PageStateSummary; sitePack?: LoadedSitePack | null } = {}
 ): Promise<{
   before: PageStateSummary;
   after: PageStateSummary;
   observations: ActionObservationSummary[];
 }> {
-  const before = await session.observe();
+  const before = options.before ?? (await session.observe());
   let capturedPaymentGatewayUrl: string | null = null;
   const modalObservations: Array<ActionObservationSummary | null> = [];
+  const preActionObservations: Array<ActionObservationSummary | null> = [];
 
   if (payload.action === 'navigate') {
     await withRetry(async () => {
@@ -642,6 +689,25 @@ export async function runStep(
       );
     }
   } else {
+    if (
+      (payload.action === 'click' ||
+        payload.action === 'fill' ||
+        payload.action === 'type') &&
+      shouldAttemptCookieConsent(before, options.sitePack)
+    ) {
+      preActionObservations.push(
+        buildCookieConsentObservation(
+          await acceptCookieConsent(session, options.sitePack)
+        )
+      );
+    }
+
+    if (shouldAttemptSizeSelection(before, payload)) {
+      preActionObservations.push(
+        buildSizeSelectionObservation(await selectFirstAvailableSize(session))
+      );
+    }
+
     const locator = await resolveLocator(session, payload);
 
     if (payload.action === 'click') {
@@ -735,7 +801,14 @@ export async function runStep(
     observedAfter,
     capturedPaymentGatewayUrl
   );
-  return { before, after, observations: uniqueObservations(modalObservations) };
+  return {
+    before,
+    after,
+    observations: uniqueObservations([
+      ...preActionObservations,
+      ...modalObservations
+    ])
+  };
 }
 
 export function buildActionResult(
@@ -762,7 +835,11 @@ export function buildActionResult(
     changes: buildActionDiff(before, after),
     observations: [
       ...extraObservations,
+      buildFailedCartNavigationObservation(payload, after),
       ...buildPostActionObservations(before, after)
-    ]
+    ].filter(
+      (observation): observation is ActionObservationSummary =>
+        observation !== null
+    )
   };
 }

@@ -3,6 +3,7 @@ import type { SessionActionPayload } from '../../src/daemon/types.js';
 import { createEmptyPaymentContext } from '../../src/helpers/payment-context.js';
 import type { PageStateSummary } from '../../src/playwright/browser-session.js';
 import {
+  buildActionResult,
   runStep,
   shouldCapturePaymentGatewayUrl,
   withPaymentHint
@@ -101,6 +102,31 @@ describe('run-step payment helpers', () => {
         })
       )
     ).toBe(false);
+  });
+
+  it('adds FAILED_CART_NAVIGATION to cart-target actions that land on a 404-like page', () => {
+    const before = buildState({
+      url: 'https://brandshop.ru/goods/1/',
+      pageSignatureGuess: 'product_page'
+    });
+    const after = buildState({
+      url: 'https://brandshop.ru/cart/',
+      title: '404',
+      visibleTexts: ['Страница не найдена'],
+      pageSignatureGuess: 'unknown'
+    });
+
+    const result = buildActionResult(
+      { action: 'click', selector: "a[href*='cart']" },
+      before,
+      after
+    );
+
+    expect(result.observations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'FAILED_CART_NAVIGATION' })
+      ])
+    );
   });
 });
 

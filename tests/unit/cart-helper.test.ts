@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findAddToCartTargets, findOpenCartTargets, isAddToCartConfirmed, isCartVisible } from '../../src/helpers/cart.js';
+import {
+  findAddToCartTargets,
+  findOpenCartTargets,
+  buildFailedCartNavigationObservation,
+  isAddToCartConfirmed,
+  isCartVisible
+} from '../../src/helpers/cart.js';
 import { matchSitePackByUrl } from '../../src/packs/loader.js';
 
 describe('cart helpers', () => {
@@ -9,15 +15,29 @@ describe('cart helpers', () => {
 
     expect(findAddToCartTargets(matched)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ action: 'click', selector: "button:has-text('В корзину')" }),
-        expect.objectContaining({ action: 'click', role: 'button', name: 'В корзину' })
+        expect.objectContaining({
+          action: 'click',
+          selector: "button:has-text('В корзину')"
+        }),
+        expect.objectContaining({
+          action: 'click',
+          role: 'button',
+          name: 'В корзину'
+        })
       ])
     );
 
     expect(findOpenCartTargets(matched)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ action: 'click', selector: "a[href*='cart']" }),
-        expect.objectContaining({ action: 'click', role: 'link', name: 'Корзина' })
+        expect.objectContaining({
+          action: 'click',
+          selector: "a[href*='cart']"
+        }),
+        expect.objectContaining({
+          action: 'click',
+          role: 'link',
+          name: 'Корзина'
+        })
       ])
     );
   });
@@ -28,12 +48,21 @@ describe('cart helpers', () => {
         before: {
           pageSignatureGuess: 'product_page',
           visibleTexts: ['Sample Book', 'Корзина'],
-          visibleButtons: [{ text: 'В корзину', role: 'button', type: 'button', ariaLabel: null }]
+          visibleButtons: [
+            {
+              text: 'В корзину',
+              role: 'button',
+              type: 'button',
+              ariaLabel: null
+            }
+          ]
         },
         after: {
           pageSignatureGuess: 'product_page',
           visibleTexts: ['Sample Book', '1 Корзина', 'Added to cart'],
-          visibleButtons: [{ text: 'Added', role: 'button', type: 'button', ariaLabel: null }]
+          visibleButtons: [
+            { text: 'Added', role: 'button', type: 'button', ariaLabel: null }
+          ]
         },
         changes: {
           urlChanged: false,
@@ -74,10 +103,76 @@ describe('cart helpers', () => {
           addedTexts: ['Ваша корзина'],
           removedTexts: []
         },
-        observations: [{ level: 'info', code: 'CART_VISIBLE', message: 'Cart-like signals are visible on the page.' }]
+        observations: [
+          {
+            level: 'info',
+            code: 'CART_VISIBLE',
+            message: 'Cart-like signals are visible on the page.'
+          }
+        ]
       })
     ).toBe(true);
 
     expect(isCartVisible(after)).toBe(true);
+  });
+
+  it('confirms add-to-cart from aria-label cart counter changes', () => {
+    expect(
+      isAddToCartConfirmed({
+        before: {
+          pageSignatureGuess: 'product_page',
+          visibleTexts: ['Доступные размеры'],
+          visibleButtons: [
+            { text: '0', role: 'button', type: 'button', ariaLabel: 'cart' }
+          ]
+        },
+        after: {
+          pageSignatureGuess: 'product_page',
+          visibleTexts: ['Доступные размеры'],
+          visibleButtons: [
+            { text: '1', role: 'button', type: 'button', ariaLabel: 'cart' }
+          ]
+        },
+        changes: {
+          urlChanged: false,
+          titleChanged: false,
+          pageSignatureChanged: false,
+          addedButtons: [],
+          removedButtons: [],
+          addedTexts: [],
+          removedTexts: []
+        },
+        observations: []
+      })
+    ).toBe(true);
+  });
+
+  it('reports failed cart navigation on 404-like cart targets', () => {
+    expect(
+      buildFailedCartNavigationObservation(
+        { action: 'click', selector: "a[href*='cart']" },
+        {
+          url: 'https://brandshop.ru/cart/',
+          title: '404',
+          pageSignatureGuess: 'unknown',
+          visibleTexts: ['Страница не найдена']
+        }
+      )
+    ).toMatchObject({
+      level: 'warning',
+      code: 'FAILED_CART_NAVIGATION'
+    });
+
+    expect(
+      buildFailedCartNavigationObservation(
+        { action: 'click', text: 'Открыть фильтры' },
+        {
+          url: 'https://brandshop.ru/filter/',
+          title: '404',
+          pageSignatureGuess: 'unknown',
+          visibleTexts: ['Страница не найдена']
+        }
+      )
+    ).toBeNull();
   });
 });

@@ -1,8 +1,19 @@
 import { BrowserPlatformError } from '../../core/errors.js';
 import { requireFlag } from '../argv.js';
-import { actInSession, closeSession, getSessionContext, observeSession, openSession, snapshotSession } from '../../daemon/client.js';
+import {
+  actInSession,
+  closeSession,
+  getSessionContext,
+  observeSession,
+  openSession,
+  runSessionScenario,
+  snapshotSession
+} from '../../daemon/client.js';
 import { handleDaemonEnsure } from './daemon.js';
-import type { SessionActionPayload, SessionBackend } from '../../daemon/types.js';
+import type {
+  SessionActionPayload,
+  SessionBackend
+} from '../../daemon/types.js';
 import { SESSION_BACKENDS } from '../../daemon/types.js';
 
 const ALLOWED_BACKENDS_TEXT = SESSION_BACKENDS.join(', ');
@@ -12,7 +23,9 @@ export async function handleSessionOpen(args: string[]): Promise<unknown> {
   const url = requireFlag(args, '--url');
   const storageStateIndex = args.indexOf('--storage-state');
   const storageStatePath =
-    storageStateIndex !== -1 && storageStateIndex < args.length - 1 ? args[storageStateIndex + 1] : undefined;
+    storageStateIndex !== -1 && storageStateIndex < args.length - 1
+      ? args[storageStateIndex + 1]
+      : undefined;
   const profileId = optionalFlag(args, '--profile');
   const scenarioId = optionalFlag(args, '--scenario');
   const backend = resolveBackend(args);
@@ -31,9 +44,12 @@ export function resolveBackend(args: string[]): SessionBackend {
   }
 
   if (backendIndex >= args.length - 1) {
-    throw new BrowserPlatformError(`--backend requires a value. Allowed values: ${ALLOWED_BACKENDS_TEXT}`, {
-      code: 'INVALID_BACKEND'
-    });
+    throw new BrowserPlatformError(
+      `--backend requires a value. Allowed values: ${ALLOWED_BACKENDS_TEXT}`,
+      {
+        code: 'INVALID_BACKEND'
+      }
+    );
   }
 
   const backendRaw = args[backendIndex + 1]?.toLowerCase();
@@ -41,9 +57,12 @@ export function resolveBackend(args: string[]): SessionBackend {
     return backendRaw as SessionBackend;
   }
 
-  throw new BrowserPlatformError(`Unsupported backend. Allowed values: ${ALLOWED_BACKENDS_TEXT}`, {
-    code: 'INVALID_BACKEND'
-  });
+  throw new BrowserPlatformError(
+    `Unsupported backend. Allowed values: ${ALLOWED_BACKENDS_TEXT}`,
+    {
+      code: 'INVALID_BACKEND'
+    }
+  );
 }
 
 export async function handleSessionContext(args: string[]): Promise<unknown> {
@@ -71,7 +90,10 @@ export async function handleSessionAct(args: string[]): Promise<unknown> {
   }
 
   if (!payload || typeof payload !== 'object' || !('action' in payload)) {
-    throw new BrowserPlatformError('Action payload must contain an action field', { code: 'INVALID_ACTION_PAYLOAD' });
+    throw new BrowserPlatformError(
+      'Action payload must contain an action field',
+      { code: 'INVALID_ACTION_PAYLOAD' }
+    );
   }
 
   return actInSession(sessionId, payload);
@@ -80,6 +102,39 @@ export async function handleSessionAct(args: string[]): Promise<unknown> {
 export async function handleSessionSnapshot(args: string[]): Promise<unknown> {
   const sessionId = requireFlag(args, '--session');
   return snapshotSession(sessionId);
+}
+
+export async function handleSessionRunScenario(
+  args: string[]
+): Promise<unknown> {
+  await handleDaemonEnsure();
+  const pack = requireFlag(args, '--pack');
+  const flow = requireFlag(args, '--flow');
+  const query = requireFlag(args, '--query');
+  const profileId = optionalFlag(args, '--profile') ?? null;
+  const maxDurationRaw = optionalFlag(args, '--max-duration-ms');
+  let maxDurationMs: number | null = null;
+  if (maxDurationRaw !== undefined) {
+    const parsedMaxDurationMs = Number(maxDurationRaw);
+    if (!Number.isFinite(parsedMaxDurationMs) || parsedMaxDurationMs <= 0) {
+      throw new BrowserPlatformError(
+        '--max-duration-ms must be a positive number',
+        {
+          code: 'INVALID_MAX_DURATION'
+        }
+      );
+    }
+    maxDurationMs = parsedMaxDurationMs;
+  }
+
+  return runSessionScenario({
+    pack,
+    flow,
+    query,
+    profileId,
+    maxDurationMs,
+    backend: resolveBackend(args)
+  });
 }
 
 export async function handleSessionClose(args: string[]): Promise<unknown> {

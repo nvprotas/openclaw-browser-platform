@@ -33,6 +33,7 @@ export interface SessionAuthContext {
   redirectedToSberId: boolean;
   bootstrapStatus:
     | 'not_attempted'
+    | 'fresh_authenticated_storage_state'
     | 'reused_existing_state'
     | 'not_applicable'
     | 'skipped_missing_cookies'
@@ -55,6 +56,9 @@ export interface SessionProfileContext {
   source: 'explicit' | 'named' | 'auto_litres' | null;
   storageStatePath: string | null;
   storageStateExists: boolean;
+  storageStateMtimeMs: number | null;
+  storageStateAgeMs: number | null;
+  storageStateFresh: boolean;
 }
 
 export interface SessionScenarioContext {
@@ -119,7 +123,13 @@ export interface SessionRecord {
   lastUsedAt: string;
   idleTimeoutMs: number;
   status: 'open' | 'closed';
-  closeReason: 'manual' | 'idle_timeout' | 'open_failed' | 'controller_missing' | 'shutdown' | null;
+  closeReason:
+    | 'manual'
+    | 'idle_timeout'
+    | 'open_failed'
+    | 'controller_missing'
+    | 'shutdown'
+    | null;
   closedAt: string | null;
   title: string | null;
   scenarioContext: SessionScenarioContext;
@@ -132,6 +142,12 @@ export interface SessionRecord {
 export interface SessionTraceArtifact {
   tracePath: string;
 }
+
+export type NextRecommendedAction =
+  | 'observe_now'
+  | 'skip_observe'
+  | 'wait_for_hardstop'
+  | 'run_scenario_recommended';
 
 export interface HardStopSignal {
   enabled: true;
@@ -173,6 +189,7 @@ export interface SessionObservation {
   pageSignatureGuess: string;
   paymentContext: SessionPaymentContext;
   hardStop?: HardStopSignal;
+  nextRecommendedAction?: NextRecommendedAction;
   trace?: SessionTraceArtifact;
 }
 
@@ -207,7 +224,15 @@ interface ActionTarget {
   selector?: string;
   text?: string;
   exact?: boolean;
-  role?: 'button' | 'link' | 'textbox' | 'searchbox' | 'combobox' | 'checkbox' | 'radio' | 'heading';
+  role?:
+    | 'button'
+    | 'link'
+    | 'textbox'
+    | 'searchbox'
+    | 'combobox'
+    | 'checkbox'
+    | 'radio'
+    | 'heading';
   name?: string;
   timeoutMs?: number;
 }
@@ -273,8 +298,45 @@ export interface SessionActionResult {
   changes: ActionDiffSummary;
   observations: ActionObservationSummary[];
   hardStop?: HardStopSignal;
+  nextRecommendedAction?: NextRecommendedAction;
   trace?: SessionTraceArtifact;
 }
+
+export interface ScenarioStage {
+  step: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  status: 'ok' | 'error' | 'skipped';
+  detail: string | null;
+}
+
+export interface SessionRunScenarioRequest {
+  pack: string;
+  flow: string;
+  query: string;
+  profileId?: string | null;
+  maxDurationMs?: number | null;
+  backend?: SessionBackend | null;
+}
+
+export type SessionRunScenarioResponse =
+  | {
+      ok: true;
+      sessionId: string;
+      hardStop: HardStopSignal;
+      finalPayload: SberPayExtractionJson;
+      stages: ScenarioStage[];
+      trace?: SessionTraceArtifact;
+    }
+  | {
+      ok: false;
+      reason: string;
+      sessionId?: string;
+      lastObservation?: SessionObservation;
+      stages: ScenarioStage[];
+      trace?: SessionTraceArtifact;
+    };
 
 export interface DaemonInfo {
   pid: number;
@@ -325,3 +387,5 @@ export interface SessionActResponse {
   ok: true;
   action: SessionActionResult;
 }
+
+export type SessionRunScenarioApiResponse = SessionRunScenarioResponse;

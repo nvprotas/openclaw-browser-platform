@@ -18,10 +18,15 @@ import {
 } from './browser-session.js';
 import { buildActionResult, runStep } from '../runtime/run-step.js';
 import type { SessionBackend } from '../daemon/types.js';
+import type { LoadedSitePack } from '../packs/loader.js';
 
 export class PlaywrightController {
   private readonly sessions = new Map<string, BrowserSession>();
   private readonly sessionOperationTails = new Map<string, Promise<void>>();
+  private readonly lastObservations = new Map<
+    string,
+    { state: PageStateSummary; observedAtMs: number }
+  >();
   private readonly traceWriter: TraceWriter;
   private readonly contextPool = new BrowserContextPool();
 
@@ -63,6 +68,10 @@ export class PlaywrightController {
       const session = this.requireSession(sessionId);
       session.markUsed();
       const result = await session.observe();
+      this.lastObservations.set(sessionId, {
+        state: result,
+        observedAtMs: Date.now()
+      });
       await this.debugCapture(sessionId, 'observe', {
         sessionId,
         url: result.url,
@@ -93,7 +102,7 @@ export class PlaywrightController {
       try {
         session.adoptExisting(adopted);
         session.markUsed();
-        await session.persistStorageState();
+        await session.persistStorageState({ force: true });
         const page = session.page();
         this.sessions.set(sessionId, session);
 
@@ -112,12 +121,31 @@ export class PlaywrightController {
     return this.traceWriter.writeStep(sessionId, stepType, payload);
   }
 
-  async actInSession(sessionId: string, payload: SessionActionPayload) {
+  async flushTraces(): Promise<void> {
+    await this.traceWriter.flush();
+  }
+
+  async actInSession(
+    sessionId: string,
+    payload: SessionActionPayload,
+    options: { sitePack?: LoadedSitePack | null } = {}
+  ) {
     return this.runExclusive(sessionId, 'act', async () => {
       const session = this.requireSession(sessionId);
       session.markUsed();
-      const { before, after, observations } = await runStep(session, payload);
-      await session.persistStorageState();
+      const cached = this.lastObservations.get(sessionId);
+      const beforeFromCache =
+        cached && Date.now() - cached.observedAtMs <= 1_000
+          ? cached.state
+          : undefined;
+      const { before, after, observations } = await runStep(session, payload, {
+        before: beforeFromCache,
+        sitePack: options.sitePack
+      });
+      this.lastObservations.set(sessionId, {
+        state: after,
+        observedAtMs: Date.now()
+      });
       const result = buildActionResult(payload, before, after, observations);
       await this.debugCapture(sessionId, `act-${payload.action}`, {
         sessionId,
@@ -139,6 +167,10 @@ export class PlaywrightController {
       const session = this.requireSession(sessionId);
       session.markUsed();
       const result = await session.snapshot();
+      this.lastObservations.set(sessionId, {
+        state: result.state,
+        observedAtMs: Date.now()
+      });
       if (isDebugEnabled()) {
         await captureDebugStepJson(this.rootDir, sessionId, 'snapshot', {
           sessionId,
@@ -158,6 +190,17 @@ export class PlaywrightController {
     });
   }
 
+  async persistSessionStorageState(
+    sessionId: string,
+    options: { force?: boolean } = {}
+  ): Promise<void> {
+    await this.runExclusive(sessionId, 'persist-storage-state', async () => {
+      const session = this.requireSession(sessionId);
+      session.markUsed();
+      await session.persistStorageState(options);
+    });
+  }
+
   private async closeSessionUnlocked(sessionId: string): Promise<void> {
     const session = this.sessions.get(sessionId);
     if (!session) {
@@ -165,6 +208,7 @@ export class PlaywrightController {
     }
 
     this.sessions.delete(sessionId);
+    this.lastObservations.delete(sessionId);
     await session.close();
   }
 

@@ -39,7 +39,10 @@ export class SessionRegistry {
       createdAt: now,
       updatedAt: now,
       lastUsedAt: now,
-      idleTimeoutMs: input.idleTimeoutMs ?? this.options.defaultIdleTimeoutMs ?? DEFAULT_SESSION_IDLE_TIMEOUT_MS,
+      idleTimeoutMs:
+        input.idleTimeoutMs ??
+        this.options.defaultIdleTimeoutMs ??
+        DEFAULT_SESSION_IDLE_TIMEOUT_MS,
       status: 'open',
       closeReason: null,
       closedAt: null,
@@ -52,7 +55,10 @@ export class SessionRegistry {
         persistent: false,
         source: null,
         storageStatePath: null,
-        storageStateExists: false
+        storageStateExists: false,
+        storageStateMtimeMs: null,
+        storageStateAgeMs: null,
+        storageStateFresh: false
       },
       packContext: {
         matchedPack: false,
@@ -133,7 +139,16 @@ export class SessionRegistry {
   touchUsage(
     sessionId: string,
     patch: Partial<
-      Pick<SessionRecord, 'url' | 'title' | 'scenarioContext' | 'profileContext' | 'packContext' | 'authContext' | 'paymentContext'>
+      Pick<
+        SessionRecord,
+        | 'url'
+        | 'title'
+        | 'scenarioContext'
+        | 'profileContext'
+        | 'packContext'
+        | 'authContext'
+        | 'paymentContext'
+      >
     > = {}
   ): SessionRecord | undefined {
     const existing = this.sessions.get(sessionId);
@@ -182,7 +197,10 @@ export class SessionRegistry {
         }
 
         const lastUsedMs = Date.parse(session.lastUsedAt);
-        return Number.isFinite(lastUsedMs) && nowMs - lastUsedMs >= session.idleTimeoutMs;
+        return (
+          Number.isFinite(lastUsedMs) &&
+          nowMs - lastUsedMs >= session.idleTimeoutMs
+        );
       })
       .map((session) => session.sessionId);
   }
@@ -198,6 +216,8 @@ export class SessionRegistry {
   }
 
   countOpen(): number {
-    return Array.from(this.sessions.values()).filter((session) => session.status === 'open').length;
+    return Array.from(this.sessions.values()).filter(
+      (session) => session.status === 'open'
+    ).length;
   }
 }

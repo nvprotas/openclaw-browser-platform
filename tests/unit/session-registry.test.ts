@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from '../../src/daemon/session-registry.js';
+import {
+  DEFAULT_SESSION_IDLE_TIMEOUT_MS,
+  SessionRegistry
+} from '../../src/daemon/session-registry.js';
 
 describe('SessionRegistry', () => {
   it('opens, reads, updates, and closes sessions', () => {
@@ -15,7 +18,10 @@ describe('SessionRegistry', () => {
         persistent: true,
         source: 'named',
         storageStatePath: '/tmp/storage-state.json',
-        storageStateExists: true
+        storageStateExists: true,
+        storageStateMtimeMs: 1000,
+        storageStateAgeMs: 0,
+        storageStateFresh: true
       }
     });
     expect(opened.url).toBe('https://example.com');
@@ -37,7 +43,9 @@ describe('SessionRegistry', () => {
     const lookedUp = registry.get(opened.sessionId);
     expect(lookedUp).toEqual(opened);
 
-    const touched = registry.touch(opened.sessionId, { title: 'Updated Title' });
+    const touched = registry.touch(opened.sessionId, {
+      title: 'Updated Title'
+    });
     expect(touched?.title).toBe('Updated Title');
 
     const closed = registry.close(opened.sessionId, 'manual');
@@ -53,14 +61,19 @@ describe('SessionRegistry', () => {
       now: () => now
     });
 
-    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
+    const session = registry.open({
+      url: 'https://example.com',
+      backend: 'camoufox'
+    });
 
     now += 900;
     expect(registry.findExpiredSessionIds()).toEqual([]);
 
     const beforeTouch = registry.get(session.sessionId)?.lastUsedAt;
     now += 50;
-    const touched = registry.touchUsage(session.sessionId, { title: 'Still Active' });
+    const touched = registry.touchUsage(session.sessionId, {
+      title: 'Still Active'
+    });
 
     expect(touched?.title).toBe('Still Active');
     expect(touched?.lastUsedAt).not.toBe(beforeTouch);
@@ -76,7 +89,10 @@ describe('SessionRegistry', () => {
       now: () => now
     });
 
-    const session = registry.open({ url: 'https://example.com', backend: 'camoufox' });
+    const session = registry.open({
+      url: 'https://example.com',
+      backend: 'camoufox'
+    });
 
     now += 500;
     expect(registry.findExpiredSessionIds()).toEqual([session.sessionId]);
