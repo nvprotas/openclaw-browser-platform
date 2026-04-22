@@ -8,6 +8,7 @@
 - The inner close icon (`[data-testid="icon_close"]`) may not be directly clickable; a more reliable dismissal target is the modal header close container: `div[data-testid="modal--overlay"] header > div:nth-child(2)`.
 - Product pages usually expose a primary CTA such as `Купить и скачать`, `В корзину`, or another purchase/download variant near the book title and price.
 - Prefer helper-driven add-to-cart targeting: try explicit pack selectors first, then button-text matches (`В корзину`, `Купить и скачать`, `Купить`, `Добавить в корзину`).
+- Search-result cards can fail normal clicks when a cover image or inner element intercepts pointer events. If runtime can recover by following the result link `href` directly, that is an acceptable fallback for opening the product page.
 - Treat add-to-cart as successful when cart-related UI changes: badge count changes, a confirmation signal appears, the CTA state changes, a cart preview/drawer becomes visible, or action observations report `CART_VISIBLE`.
 - Cart entry is usually available from the persistent site header, cart badge, or a post-add confirmation area.
 - Prefer helper-driven cart opening: try explicit cart selectors first, then visible link/button targets such as `Корзина` or `Перейти в корзину`, and validate the destination as a real cart page before moving on.

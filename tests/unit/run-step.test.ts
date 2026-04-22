@@ -105,6 +105,101 @@ describe('run-step payment helpers', () => {
 });
 
 describe('run-step modal dismissal', () => {
+  it('falls back to direct href navigation when a link click is blocked by pointer interception', async () => {
+    const before = buildState({
+      url: 'https://www.litres.ru/search/?q=%D1%82%D0%B5%D1%81%D1%82'
+    });
+    const after = buildState({
+      url: 'https://www.litres.ru/book/test/'
+    });
+    const locator = {
+      click: vi
+        .fn()
+        .mockRejectedValueOnce(
+          new Error(
+            'locator.click: <img> from <a href="/book/test/"> subtree intercepts pointer events'
+          )
+        ),
+      evaluate: vi.fn().mockResolvedValue('/book/test/'),
+      page: vi.fn()
+    };
+    const page = {
+      locator: vi.fn(() => ({
+        first: vi.fn(() => locator)
+      })),
+      url: vi.fn(() => 'https://www.litres.ru/search/?q=%D1%82%D0%B5%D1%81%D1%82'),
+      goto: vi.fn(async () => undefined)
+    };
+    locator.page.mockReturnValue(page);
+    const session = {
+      observe: vi
+        .fn()
+        .mockResolvedValueOnce(before)
+        .mockResolvedValueOnce(after),
+      page: vi.fn(() => page),
+      waitForInitialLoad: vi.fn(async () => undefined)
+    };
+
+    const result = await runStep(session as never, {
+      action: 'click',
+      selector: '#result-link'
+    });
+
+    expect(locator.click).toHaveBeenCalledTimes(1);
+    expect(page.goto).toHaveBeenCalledWith('https://www.litres.ru/book/test/', {
+      waitUntil: 'domcontentloaded',
+      timeout: 5000
+    });
+    expect(session.waitForInitialLoad).toHaveBeenCalledTimes(1);
+    expect(result.observations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'CLICK_FALLBACK_TO_HREF'
+        })
+      ])
+    );
+  });
+
+  it('does not use href fallback for cross-origin links', async () => {
+    const clickError = new Error(
+      'locator.click: <img> from <a href="https://example.com/book/test/"> subtree intercepts pointer events'
+    );
+    const locator = {
+      click: vi.fn().mockRejectedValue(clickError),
+      evaluate: vi.fn().mockResolvedValue('https://example.com/book/test/'),
+      boundingBox: vi.fn(async () => null),
+      page: vi.fn()
+    };
+    const page = {
+      locator: vi.fn(() => ({
+        first: vi.fn(() => locator)
+      })),
+      url: vi.fn(() => 'https://www.litres.ru/search/?q=%D1%82%D0%B5%D1%81%D1%82'),
+      goto: vi.fn(async () => undefined),
+      evaluate: vi.fn().mockResolvedValue({
+        status: 'none',
+        reason: 'No visible blocking modal found.',
+        selector: null,
+        text: null,
+        blocker: null
+      })
+    };
+    locator.page.mockReturnValue(page);
+
+    await expect(
+      runStep(
+        {
+          observe: vi.fn().mockResolvedValue(buildState({})),
+          page: vi.fn(() => page),
+          waitForInitialLoad: vi.fn()
+        } as never,
+        { action: 'click', selector: '#result-link' }
+      )
+    ).rejects.toThrow(clickError.message);
+
+    expect(page.goto).not.toHaveBeenCalled();
+  });
+
   it('dismisses a blocking modal and retries the original click', async () => {
     const before = buildState({ url: 'https://www.litres.ru/book/test/' });
     const after = buildState({

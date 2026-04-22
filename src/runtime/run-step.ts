@@ -22,6 +22,81 @@ function normalize(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
 }
 
+function isPointerInterceptionError(error: unknown): boolean {
+  const message =
+    error instanceof Error ? error.message : String(error ?? '');
+  return /intercepts pointer events|another element .* receives pointer events/i.test(
+    message
+  );
+}
+
+async function resolveSafeNavigationHref(
+  locator: Locator,
+  currentPageUrl: string
+): Promise<string | null> {
+  const rawHref = await locator
+    .evaluate((element) => {
+      const link =
+        element instanceof HTMLAnchorElement
+          ? element
+          : element.closest('a[href]');
+      if (!(link instanceof HTMLAnchorElement)) {
+        return null;
+      }
+
+      const href = link.getAttribute('href')?.trim() ?? '';
+      if (
+        !href ||
+        href.startsWith('#') ||
+        /^javascript:|^mailto:|^tel:/i.test(href)
+      ) {
+        return null;
+      }
+
+      return href;
+    })
+    .catch(() => null);
+
+  if (!rawHref) {
+    return null;
+  }
+
+  try {
+    const currentUrl = new URL(currentPageUrl);
+    const resolvedUrl = new URL(rawHref, currentUrl.href);
+    if (resolvedUrl.origin !== currentUrl.origin) {
+      return null;
+    }
+
+    if (resolvedUrl.href === currentUrl.href) {
+      return null;
+    }
+
+    return resolvedUrl.href;
+  } catch {
+    return null;
+  }
+}
+
+async function fallbackToLocatorHref(
+  session: BrowserSession,
+  locator: Locator,
+  timeoutMs: number
+): Promise<string | null> {
+  const page = session.page();
+  const href = await resolveSafeNavigationHref(locator, page.url());
+  if (!href) {
+    return null;
+  }
+
+  await page.goto(href, {
+    waitUntil: 'domcontentloaded',
+    timeout: timeoutMs
+  });
+  await session.waitForInitialLoad();
+  return href;
+}
+
 async function resolveLocator(
   session: BrowserSession,
   action: Exclude<SessionActionPayload, { action: 'navigate' | 'wait_for' }>
@@ -665,6 +740,22 @@ export async function runStep(
             }
             return;
           } catch (error) {
+            if (isPointerInterceptionError(error)) {
+              const href = await fallbackToLocatorHref(
+                session,
+                locator,
+                payload.timeoutMs ?? 5_000
+              );
+              if (href) {
+                modalObservations.push({
+                  level: 'info',
+                  code: 'CLICK_FALLBACK_TO_HREF',
+                  message: `Click target was obstructed, navigated directly to ${href}.`
+                });
+                return;
+              }
+            }
+
             if (attempt >= MAX_CLICK_RETRIES_AFTER_MODAL_DISMISS) {
               throw error;
             }
