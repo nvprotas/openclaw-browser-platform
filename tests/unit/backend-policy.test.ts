@@ -75,6 +75,18 @@ describe('resolveBackendForSession', () => {
     });
   });
 
+  it('selects chromium for brandshop domain in allowlist', () => {
+    const resolved = resolveBackendForSession({
+      requestedUrl: 'https://brandshop.ru/search/?st=sneakers',
+      matchedPack: null
+    });
+
+    expect(resolved).toEqual({
+      selectedBackend: 'chromium',
+      matchedRule: 'allowlist_domain_chromium'
+    });
+  });
+
   it('keeps loopback requested hosts on camoufox', () => {
     const resolved = resolveBackendForSession({
       requestedUrl: 'http://127.0.0.1:3000/catalog',

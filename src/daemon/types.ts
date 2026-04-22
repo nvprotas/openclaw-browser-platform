@@ -88,7 +88,7 @@ export interface SessionPaymentContext {
   shouldReportImmediately: boolean;
   terminalExtractionResult: boolean;
   provider: 'sberpay' | 'sbp' | null;
-  phase: 'litres_checkout' | 'payecom_boundary' | 'platiecom_deeplink' | null;
+  phase: 'litres_checkout' | 'brandshop_checkout' | 'payecom_boundary' | 'platiecom_deeplink' | 'yoomoney_boundary' | null;
   paymentMethod: string | null;
   paymentSystem: string | null;
   paymentUrl: string | null;
@@ -139,7 +139,7 @@ export interface HardStopSignal {
   reason: 'terminal_extraction_result';
   returnPolicy: 'return_final_payload_verbatim';
   agentInstruction: 'СТОП. Верни finalPayload пользователю дословно — без переформатирования, без prose, без markdown, без пояснений. Не продолжай browsing.';
-  gateway?: 'payecom' | 'platiecom';
+  gateway?: 'payecom' | 'platiecom' | 'yoomoney';
   gatewayUrl?: string;
   finalPayload: SberPayExtractionJson;
 }

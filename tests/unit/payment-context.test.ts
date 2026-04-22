@@ -208,6 +208,61 @@ describe('payment context extraction', () => {
     expect(summaryCodes).toContain('SBER_ID_HANDOFF_VISIBLE');
     expect(summaryCodes).toContain('PAYMENT_BOUNDARY_CARD_FORM_VISIBLE');
   });
+
+  it('extracts Brandshop YooMoney SberPay contract parameters', () => {
+    const paymentUrl =
+      'https://yoomoney.ru/checkout/payments/v2/contract?orderId=brandshop-order-123&shopId=brandshop';
+    const state = buildState({
+      url: paymentUrl,
+      title: 'YooMoney',
+      visibleTexts: ['SberPay', 'Оплатить']
+    });
+
+    expect(state.paymentContext).toMatchObject({
+      detected: true,
+      shouldReportImmediately: true,
+      terminalExtractionResult: true,
+      provider: 'sberpay',
+      phase: 'yoomoney_boundary',
+      paymentUrl,
+      paymentOrderId: 'brandshop-order-123',
+      extractionJson: {
+        paymentMethod: 'SberPay',
+        paymentUrl,
+        paymentOrderId: 'brandshop-order-123',
+        paymentIntents: [{ provider: 'sberpay', orderId: 'brandshop-order-123' }],
+        source: 'url'
+      }
+    });
+    expect(state.paymentContext.extractionJson).not.toHaveProperty('orderId');
+  });
+
+  it('does not treat Brandshop Sber ID auth handoff as final YooMoney payment params', () => {
+    const href =
+      'https://id.sber.ru/CSAFront/oidc/authorize.do?redirect_uri=https%3A%2F%2Fapi.brandshop.ru%2Fxhr%2Fcheckout%2Fsber_id%2Fcallback&state=brandshop-state';
+    const state = buildState({
+      url: href,
+      title: 'Sber ID',
+      visibleTexts: ['BRANDSHOP', 'Phone', 'Continue'],
+      urlHints: [href]
+    });
+
+    expect(state.paymentContext).toMatchObject({
+      detected: true,
+      shouldReportImmediately: false,
+      terminalExtractionResult: false,
+      provider: 'sberpay',
+      paymentUrl: null,
+      paymentOrderId: null,
+      href,
+      extractionJson: {
+        paymentMethod: 'SberPay',
+        paymentUrl: null,
+        paymentOrderId: null,
+        href
+      }
+    });
+  });
 });
 
 describe('payment observations', () => {

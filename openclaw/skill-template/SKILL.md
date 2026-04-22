@@ -8,7 +8,7 @@ metadata: { "openclaw": { "emoji": "🌐", "requires": { "bins": ["browser-platf
 
 Use this skill when the user needs browser automation on a real site and a normal API/tool is not enough.
 
-Current pilot support is strongest for **LitRes (`litres.ru`)**.
+Current pilot support is strongest for **LitRes (`litres.ru`)** and **Brandshop (`brandshop.ru`)**.
 
 ## Core rule
 
@@ -66,6 +66,16 @@ browser-platform session open \
 
 After this, use the returned `session.sessionId` from the JSON object as-is.
 
+For Brandshop SberPay tasks, open Brandshop with the persistent Brandshop profile:
+
+```bash
+browser-platform session open \
+  --url https://brandshop.ru/ \
+  --profile brandshop \
+  --scenario brandshop-sberpay \
+  --json
+```
+
 Legacy/debug/import override for an external state file:
 
 ```bash
@@ -85,7 +95,7 @@ Check:
 - `packContext`
 - `authContext`
 - `paymentContext`
-- whether the matched pack is LitRes
+- whether the matched pack is LitRes or Brandshop
 - whether auth is `authenticated`, `anonymous`, or `login_gate_detected`
 - whether payment identifiers or a payment boundary were already detected
 
@@ -97,7 +107,7 @@ browser-platform session observe --session <SESSION_ID> --json
 
 Use observation to decide the next step.
 
-If `paymentContext.shouldReportImmediately` is true and the current gateway URL matches `https://payecom.ru/pay?...` or `https://platiecom.ru/deeplink?...`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer. Otherwise, treat it as a checkpoint signal and continue following the user task.
+If the response already includes `hardStop`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer, using `hardStop` and `paymentContext` as runtime evidence. If `hardStop` is absent but `paymentContext.shouldReportImmediately` is true and the current gateway URL matches `https://payecom.ru/pay...`, `https://payecom.ru/pay_ru?...`, `https://platiecom.ru/deeplink?...`, `https://yoomoney.ru/checkout/payments/v2/contract...`, or `https://yoomoney.ru/checkout/payments/v2/contract-v2...`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer. Otherwise, treat it as a checkpoint signal and continue following the user task.
 
 ### 5. Act in small steps
 
@@ -152,7 +162,9 @@ Stop and ask for review if you hit:
 На checkout/payment boundary останавливайтесь только после извлечения структурированных платежных идентификаторов и до финального подтверждения.
 Если пользователь попросил дойти до SberPay, задача выполнена только после достижения SberPay gateway/payment boundary (`payecom` или `platiecom`) и возврата структурированного JSON. Видимая ветка `Войти по Сбер ID` без извлеченных идентификаторов является checkpoint: продолжайте использовать `session context`, `observe`, runtime `paymentContext` и gateway URL, пока JSON можно будет заполнить. Не нажимайте финальный `Оплатить`, не отправляйте OTP и не подтверждайте банковский платеж, если пользователь явно не попросил этот необратимый шаг.
 
-Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
+Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, YooMoney payment URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
+
+For Brandshop and other YooMoney-backed flows, reaching `https://yoomoney.ru/checkout/payments/v2/contract...` or `https://yoomoney.ru/checkout/payments/v2/contract-v2...` with ready extraction JSON counts as the same terminal SberPay boundary.
 
 Payment terminology (strict):
 - `СБП` / `SBP` means `Система быстрых платежей` (Fast Payment System).
@@ -170,22 +182,24 @@ Gateway JSON interception rule
 Trigger this rule only when the browser session reaches one of these gateway URL patterns:
 - `https://payecom.ru/pay?...`
 - `https://platiecom.ru/deeplink?...`
+- `https://yoomoney.ru/checkout/payments/v2/contract...`
+- `https://yoomoney.ru/checkout/payments/v2/contract-v2...`
 
 Do not trigger this rule for other payment-related pages, checkout states, or intermediate checkout URLs.
 Если видна ветка SberPay, но еще нет gateway URL или платежных идентификаторов, продолжайте вести checkout к gateway; не останавливайтесь для подтверждения и не возвращайте текстовый статус.
 
-When either gateway URL is detected:
+When a gateway URL is detected:
 - stop normal browser-task execution immediately
 - stop narration, summarization, and further exploration
 - return exactly one JSON object and nothing else
 - do not add prose, markdown, headings, commentary, numbered lists, or code fences
 - use `null` for missing fields
 
-Return this JSON shape:
+Return the gateway interception JSON with the existing field names. Use `hardStop`, `paymentContext`, and the current gateway URL as evidence, but do not return their runtime payloads verbatim if their field names differ from this contract. Do not remove fields and do not rename fields in the skill response. The final JSON object should have this shape:
 
 ```json
 {
-  "gateway": "payecom|platiecom",
+  "gateway": "payecom|platiecom|yoomoney",
   "gatewayUrl": "string",
   "paymentIntents": [
     {
@@ -206,13 +220,13 @@ Return this JSON shape:
 ```
 
 Mapping rules:
-- Set `gateway` to `payecom` for `payecom.ru/pay?...` and `platiecom` for `platiecom.ru/deeplink?...`.
+- Set `gateway` to `payecom`, `platiecom`, or `yoomoney` from the detected gateway.
 - Set `gatewayUrl` to the exact detected gateway URL.
 - Always include `paymentIntents` as an array.
-- For these gateway URLs, add one `paymentIntents` item with `provider: "sberpay"`.
-- Fill `paymentIntents[0].orderId` from the gateway order identifier when available.
-- For `payecom.ru/pay?...`, prefer the query `orderId` as the SberPay order identifier.
+- For terminal SberPay boundaries, expect one `paymentIntents` item with `provider: "sberpay"` when an order identifier is available.
+- For `payecom.ru/pay...`, `payecom.ru/pay_ru?...`, `yoomoney.ru/checkout/payments/v2/contract...`, and `yoomoney.ru/checkout/payments/v2/contract-v2...`, prefer the query `orderId` as the existing SberPay order identifier fields: `paymentOrderId` and `paymentIntents[0].orderId`.
 - For `platiecom.ru/deeplink?...`, extract the best available SberPay order identifier from the deeplink/query payload; otherwise use `null`.
+- For YooMoney boundaries, keep the existing field names and put the YooMoney URL into `gatewayUrl`; do not add `paymentUrl`, `paymentMethod`, `source`, `rawDeeplink`, or `href` unless they are already part of the established user-facing JSON contract for this skill.
 - Если `paymentContext` уже содержит payment order identifier для того же gateway, используйте его для заполнения `paymentIntents[0].orderId` и `paymentOrderId`.
 - Populate the remaining top-level fields from runtime evidence when available; otherwise use `null`.
 
@@ -228,6 +242,23 @@ Current known LitRes behavior:
 - after login, a merge-profiles modal can block clicks
 - a reliable close target from live testing is:
   - `div[data-testid="modal--overlay"] header > div:nth-child(2)`
+
+## Brandshop notes
+
+Current known Brandshop behavior:
+
+- open Brandshop sessions with `--profile brandshop`; the runtime bootstrap should use Sber ID cookies from `/root/.openclaw/workspace/sber-cookies.json`
+- treat `authContext.state: "authenticated"` plus `visible_profile` / `Профиль` as a valid authenticated Brandshop state
+- search with `https://brandshop.ru/search/?st=<query>`; if results are poor, use `https://brandshop.ru/search/?q=<query>` or `https://brandshop.ru/new/`
+- choose a random available product URL matching `/goods/<id>/<slug>/`
+- on product pages, choose any available size, then click `Добавить в корзину`
+- after add-to-cart, use the visible `Оформить заказ` control rather than direct `/cart/` navigation
+- if checkout opens a login gate, click `Войти по Сбер ID`; stop for OTP, CAPTCHA, or ambiguous Sber ID confirmation
+- delivery is fixed to `Самовывоз`; prefer `label[for="delivery_pickup.pickup"]`
+- payment is fixed to `SberPay`; prefer `label[for="pay_sber"]`
+- never choose `СБП` for Brandshop SberPay tasks; it is a different payment branch
+- confirm with `button.checkout__btn-confirm` only after `Самовывоз` and `SberPay` are selected
+- stop at the YooMoney `contract` / `contract-v2` boundary and return the gateway interception JSON with the existing field names; do not enter card data, press final payment buttons, or complete banking approval
 
 ## Working-directory rule
 

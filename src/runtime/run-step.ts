@@ -15,7 +15,7 @@ import type {
 import type { Frame, Locator, Request, Route } from 'playwright';
 
 const PAYMENT_GATEWAY_URL_PATTERN =
-  /^https:\/\/(?:www\.)?payecom\.ru\/pay(?:_ru)?\?/i;
+  /^https:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?\?|yoomoney\.ru\/checkout\/payments\/v2\/contract)/i;
 const MAX_CLICK_RETRIES_AFTER_MODAL_DISMISS = 2;
 
 function normalize(value: string | null | undefined): string {
@@ -378,7 +378,7 @@ function paymentFingerprint(context: SessionPaymentContext): string {
 }
 
 function isPaymentFlowUrl(url: string): boolean {
-  return /\/purchase\/ppd\b|payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink/i.test(
+  return /\/purchase\/ppd\b|brandshop\.ru\/checkout\/?|payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|yoomoney\.ru\/checkout\/payments\/v2\/contract/i.test(
     url
   );
 }
@@ -412,7 +412,9 @@ export function shouldCapturePaymentGatewayUrl(
 
   if (
     !/\/purchase\/ppd\b/i.test(before.url) &&
-    before.paymentContext.phase !== 'litres_checkout'
+    !/brandshop\.ru\/checkout\/?/i.test(before.url) &&
+    before.paymentContext.phase !== 'litres_checkout' &&
+    before.paymentContext.phase !== 'brandshop_checkout'
   ) {
     return false;
   }
@@ -429,8 +431,13 @@ export function shouldCapturePaymentGatewayUrl(
   const targetText = 'text' in payload ? normalize(payload.text) : '';
   const targetBlob = `${selector} ${targetName} ${targetText}`.toLowerCase();
 
-  return /paymentlayout__payment--button|продолжить|sber|сбер|сбп|российская карта/.test(
-    targetBlob
+  return (
+    /paymentlayout__payment--button|sber|sberpay/.test(targetBlob) ||
+    targetBlob.includes('подтвердить заказ') ||
+    targetBlob.includes('сбер') ||
+    targetBlob.includes('сбп') ||
+    targetBlob.includes('продолжить') ||
+    targetBlob.includes('российская карта')
   );
 }
 
@@ -505,7 +512,7 @@ function shouldStabilizeForPaymentFlow(
   const targetBlob = `${selector} ${targetName} ${targetText}`.toLowerCase();
 
   if (
-    /paymentlayout__payment--button|sbid-button|перейти к покупке|продолжить|сбер id|sber id/.test(
+    /paymentlayout__payment--button|sbid-button|перейти к покупке|продолжить|подтвердить заказ|сбер id|sber id|sberpay/.test(
       targetBlob
     )
   ) {
@@ -519,8 +526,12 @@ function shouldStabilizeForPaymentFlow(
     after.paymentContext.detected ||
     before.paymentContext.phase === 'litres_checkout' ||
     after.paymentContext.phase === 'litres_checkout' ||
+    before.paymentContext.phase === 'brandshop_checkout' ||
+    after.paymentContext.phase === 'brandshop_checkout' ||
     before.paymentContext.phase === 'payecom_boundary' ||
-    after.paymentContext.phase === 'payecom_boundary'
+    after.paymentContext.phase === 'payecom_boundary' ||
+    before.paymentContext.phase === 'yoomoney_boundary' ||
+    after.paymentContext.phase === 'yoomoney_boundary'
   );
 }
 
@@ -573,11 +584,12 @@ async function stabilizeAfterPaymentAction(
     if (
       current.paymentContext.shouldReportImmediately ||
       current.paymentContext.phase === 'payecom_boundary' ||
+      current.paymentContext.phase === 'yoomoney_boundary' ||
       current.visibleTexts.some((text) =>
         /войти по сбер id|номер карты|cvc|cvv|месяц\/год|оплатить/i.test(text)
       ) ||
       current.urlHints.some((hint) =>
-        /payecom\.ru\/pay(?:_ru)?|id\.sber\.ru/i.test(hint)
+        /payecom\.ru\/pay(?:_ru)?|yoomoney\.ru\/checkout\/payments\/v2\/contract|id\.sber\.ru/i.test(hint)
       )
     ) {
       best = current;

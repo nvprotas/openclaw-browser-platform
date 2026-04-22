@@ -2,12 +2,17 @@
   "button_texts": {
     "search_submit": ["Найти", "Искать", "Search", "Изменить запрос"],
     "add_to_cart": ["Добавить в корзину", "В корзину"],
-    "open_cart": ["Корзина", "Cart", "Оформить заказ"]
+    "open_cart": ["Корзина", "Cart", "Оформить заказ"],
+    "sberid_login": ["Войти по Сбер ID"],
+    "pickup_delivery": ["Самовывоз"],
+    "sberpay": ["SberPay", "СберPay", "СберПей"],
+    "confirm_order": ["Подтвердить заказ"]
   },
   "selectors": {
     "search_input": [
       "input[type='search']",
       "input[name='q']",
+      "input[name='st']",
       "input[name='search']",
       "form[action*='/search'] input"
     ],
@@ -33,6 +38,29 @@
       ".actions-header__icon-btn[aria-label='cart']",
       "a[href='/checkout/']",
       "a[href*='/checkout']"
+    ],
+    "sberid_login": [
+      "button:has-text('Войти по Сбер ID')",
+      "[role='button']:has-text('Войти по Сбер ID')"
+    ],
+    "pickup_delivery": [
+      "label[for='delivery_pickup.pickup']",
+      "#delivery_pickup\\.pickup",
+      "button:has-text('Самовывоз')",
+      "label:has-text('Самовывоз')",
+      "[role='radio']:has-text('Самовывоз')"
+    ],
+    "sberpay": [
+      "label[for='pay_sber']",
+      "#pay_sber",
+      "button:has-text('SberPay')",
+      "label:has-text('SberPay')",
+      "[role='radio']:has-text('SberPay')"
+    ],
+    "confirm_order": [
+      "button.checkout__btn-confirm",
+      "button:has-text('Подтвердить заказ')",
+      "[type='submit']:has-text('Подтвердить заказ')"
     ]
   },
   "page_signatures": {
@@ -61,6 +89,32 @@
       "Оформить заказ",
       "Оформление заказа",
       "Перейти к новинкам"
+    ],
+    "checkout": [
+      "/checkout/",
+      "Оформление заказа",
+      "Самовывоз",
+      "SberPay",
+      "Подтвердить заказ",
+      "Войти по Сбер ID"
+    ],
+    "yoomoney_boundary": [
+      "yoomoney.ru/checkout/payments/v2/contract",
+      "yoomoney.ru/checkout/payments/v2/contract-v2",
+      "orderId=",
+      "ЮMoney",
+      "Быстрая оплата для клиентов Сбера",
+      "Выйти из оплаты"
+    ],
+    "sberid_auth_handoff": [
+      "id.sber.ru/CSAFront/oidc/authorize.do",
+      "api.brandshop.ru/xhr/checkout/sber_id/callback",
+      "BRANDSHOP"
+    ],
+    "authenticated_profile": [
+      ".header-authorize__avatar",
+      ".header-authorize__avatar-wrapper",
+      "Профиль"
     ]
   }
 }

@@ -73,7 +73,9 @@ export function buildPostActionObservations(before: PageStateSummary, after: Pag
   if (!diff.urlChanged && !diff.titleChanged && !diff.pageSignatureChanged && diff.addedButtons.length === 0 && diff.addedTexts.length === 0) {
     const paymentFlowStillActive =
       after.paymentContext.phase === 'litres_checkout' ||
+      after.paymentContext.phase === 'brandshop_checkout' ||
       after.paymentContext.phase === 'payecom_boundary' ||
+      after.paymentContext.phase === 'yoomoney_boundary' ||
       after.visibleTexts.some((text) => /войти по сбер id/i.test(text));
 
     observations.push({

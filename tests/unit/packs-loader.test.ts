@@ -42,6 +42,28 @@ describe('site pack loader', () => {
     expect(matched?.knownSignals).toEqual(expect.arrayContaining(['home', 'search_results', 'product_page', 'cart']));
   });
 
+  it('loads Brandshop SberPay checkout guidance', async () => {
+    const matched = await matchSitePackByUrl('https://brandshop.ru/checkout/');
+
+    expect(matched).not.toBeNull();
+    expect(matched?.summary).toMatchObject({
+      siteId: 'brandshop',
+      supportLevel: 'assisted',
+      matchedDomain: 'brandshop.ru'
+    });
+    expect(matched?.summary.flows).toEqual(
+      expect.arrayContaining(['authenticate_sberid', 'select_pickup', 'select_sberpay', 'return_yoomoney_payment_params'])
+    );
+    expect(matched?.instructionsSummary).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Самовывоз'),
+        expect.stringContaining('SberPay'),
+        expect.stringContaining('yoomoney.ru/checkout/payments/v2/contract')
+      ])
+    );
+    expect(matched?.knownSignals).toEqual(expect.arrayContaining(['checkout', 'yoomoney_boundary']));
+  });
+
   it('загружает pack av.ru из стандартного каталога site-packs', async () => {
     const root = path.join(await getDefaultSitePacksRoot(), 'av');
     const pack = await loadSitePack(root);

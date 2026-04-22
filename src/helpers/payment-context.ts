@@ -9,7 +9,8 @@ interface PaymentContextInput {
   urlHints: string[];
 }
 
-const PAYMENT_URL_PATTERN = /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink)[^\s"'<>)]*/gi;
+const PAYMENT_URL_PATTERN =
+  /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|yoomoney\.ru\/checkout\/payments\/v2\/contract)[^\s"'<>)]*/gi;
 const PAYMENT_PARAM_PATTERN = /(orderid|bankinvoiceid|merchantordernumber|merchantorderid|mdorder|formurl|href|order|trace-id|method|system)=([^\s&"'<>]+)/gi;
 const PAYMENT_HOST_PATTERN = /^(?:https?:\/\/|\/|%2f%2f|https?%3a%2f%2f)/i;
 
@@ -67,7 +68,7 @@ function isRelevantPaymentUrl(value: string): boolean {
   }
 
   const decoded = deepDecode(value);
-  return /payecom\.ru|platiecom\.ru|id\.sber\.ru/i.test(decoded);
+  return /payecom\.ru|platiecom\.ru|yoomoney\.ru|id\.sber\.ru/i.test(decoded);
 }
 
 function isRelevantGatewayUrl(value: string): boolean {
@@ -76,7 +77,7 @@ function isRelevantGatewayUrl(value: string): boolean {
   }
 
   const decoded = deepDecode(value);
-  return /payecom\.ru|platiecom\.ru/i.test(decoded);
+  return /payecom\.ru|platiecom\.ru|yoomoney\.ru/i.test(decoded);
 }
 
 function collectKnownParams(url: URL, acc: ExtractAccumulator): void {
@@ -208,6 +209,10 @@ function collectCandidate(candidate: string, baseUrl: string, acc: ExtractAccumu
   collectKnownParams(url, acc);
 
   if (/payecom\.ru\/pay(?:_ru)?/i.test(href)) {
+    acc.paymentUrls.push(href);
+  }
+
+  if (/yoomoney\.ru\/checkout\/payments\/v2\/contract/i.test(href)) {
     acc.paymentUrls.push(href);
   }
 
@@ -369,9 +374,16 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
   const rawDeeplink = first(uniq(acc.rawDeeplinks));
   const href = first(uniq(acc.hrefs));
   const paymentIntents = buildPaymentIntents([...acc.orderIds, ...acc.mdOrders]);
+  const brandshopSberIdHandoffVisible = Boolean(
+    href &&
+      /id\.sber\.ru\/.+authorize/i.test(href) &&
+      /(?:api\.)?brandshop\.ru/i.test(deepDecode(href))
+  );
 
   const sberIdHandoffVisible = Boolean(href) || urlHints.some((hint) => /id\.sber\.ru\/.+authorize/i.test(hint));
-  const checkoutUrlVisible = /\/purchase\/ppd\b/i.test(input.url);
+  const litresCheckoutUrlVisible = /\/purchase\/ppd\b/i.test(input.url);
+  const brandshopCheckoutUrlVisible = /brandshop\.ru\/checkout\/?/i.test(input.url);
+  const checkoutUrlVisible = litresCheckoutUrlVisible || brandshopCheckoutUrlVisible;
   const hasStructuredPaymentEvidence = Boolean(
     paymentUrl ||
       paymentOrderId ||
@@ -384,20 +396,29 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
       formUrl ||
       rawDeeplink
   );
-  const allowSberIdOnlySignals = checkoutUrlVisible || hasStructuredPaymentEvidence;
+  const allowSberIdOnlySignals = checkoutUrlVisible || hasStructuredPaymentEvidence || brandshopSberIdHandoffVisible;
 
   let phase: SessionPaymentContext['phase'] = null;
   if (/platiecom\.ru\/deeplink/i.test(input.url) || rawDeeplink) {
     phase = 'platiecom_deeplink';
   } else if (/payecom\.ru\/pay(?:_ru)?/i.test(input.url)) {
     phase = 'payecom_boundary';
-  } else if (checkoutUrlVisible || paymentUrl || rawDeeplink || (allowSberIdOnlySignals && sberIdHandoffVisible)) {
+  } else if (
+    /yoomoney\.ru\/checkout\/payments\/v2\/contract/i.test(input.url) ||
+    /yoomoney\.ru\/checkout\/payments\/v2\/contract/i.test(paymentUrl ?? '')
+  ) {
+    phase = 'yoomoney_boundary';
+  } else if (brandshopCheckoutUrlVisible) {
+    phase = 'brandshop_checkout';
+  } else if (brandshopSberIdHandoffVisible) {
+    phase = 'brandshop_checkout';
+  } else if (litresCheckoutUrlVisible || paymentUrl || rawDeeplink || (allowSberIdOnlySignals && sberIdHandoffVisible)) {
     phase = 'litres_checkout';
   }
 
   let provider: SessionPaymentContext['provider'] = null;
   if (
-    /войти по сбер id|сбер id|сберпей/.test(combinedText) ||
+    /войти по сбер id|сбер id|сберпей|sberpay/i.test(combinedText) ||
     Boolean(paymentUrl) ||
     Boolean(rawDeeplink) ||
     (allowSberIdOnlySignals && (href ? /id\.sber\.ru\/.+authorize/i.test(href) : false))
@@ -433,7 +454,7 @@ export function extractPaymentContext(input: PaymentContextInput): SessionPaymen
         extractionJson.mdOrder ||
         extractionJson.formUrl ||
         extractionJson.rawDeeplink ||
-        extractionJson.href)
+        (extractionJson.href && !brandshopSberIdHandoffVisible))
   );
 
   return {

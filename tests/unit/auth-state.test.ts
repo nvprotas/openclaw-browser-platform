@@ -7,6 +7,7 @@ import {
   resolveStorageStateForSession,
   runIntegratedLitresBootstrap
 } from '../../src/daemon/litres-auth.js';
+import { runIntegratedBrandshopBootstrap } from '../../src/daemon/brandshop-auth.js';
 import { createEmptyPaymentContext } from '../../src/helpers/payment-context.js';
 import { matchSitePackByUrl } from '../../src/packs/loader.js';
 import { inferAuthState } from '../../src/playwright/auth-state.js';
@@ -191,5 +192,43 @@ describe('integrated LitRes bootstrap', () => {
         bodyText: 'Мои книги Профиль Выйти'
       })
     ).toBe('authenticated_litres');
+  });
+});
+
+describe('integrated Brandshop bootstrap', () => {
+  it('returns not_applicable for non-Brandshop packs', async () => {
+    const result = await runIntegratedBrandshopBootstrap({
+      matchedPack: await matchSitePackByUrl('https://www.litres.ru/'),
+      storageStatePath: null
+    });
+
+    expect(result.status).toBe('not_applicable');
+    expect(result.attempted).toBe(false);
+  });
+
+  it('reports missing cookies before touching the live page', async () => {
+    const matchedPack = await matchSitePackByUrl('https://brandshop.ru/');
+    const result = await runIntegratedBrandshopBootstrap({
+      matchedPack,
+      storageStatePath: path.join(os.tmpdir(), 'browser-platform-brandshop-missing-state.json'),
+      cookiesPath: path.join(os.tmpdir(), 'definitely-missing-brandshop-sber-cookies.json'),
+      existingPage: {
+        url: () => 'https://brandshop.ru/'
+      } as never
+    });
+
+    expect(result.attempted).toBe(true);
+    expect(result.scriptPath).toBe('repo:src/daemon/brandshop-auth.ts');
+    expect(result.statePath).toContain('browser-platform-brandshop-missing-state.json');
+    expect(result.status).toBe('skipped_missing_cookies');
+    expect(result.bootstrapFailed).toBe(true);
+    expect(result.timeline).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          step: 'check_cookies_file',
+          status: 'ok'
+        })
+      ])
+    );
   });
 });

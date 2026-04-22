@@ -6,7 +6,7 @@ export interface HardStopSignal {
   reason: 'terminal_extraction_result';
   returnPolicy: 'return_final_payload_verbatim';
   agentInstruction: 'СТОП. Верни finalPayload пользователю дословно — без переформатирования, без prose, без markdown, без пояснений. Не продолжай browsing.';
-  gateway?: 'payecom' | 'platiecom';
+  gateway?: 'payecom' | 'platiecom' | 'yoomoney';
   gatewayUrl?: string;
   finalPayload: SberPayExtractionJson;
 }
@@ -23,13 +23,17 @@ function normalizeUrl(value: string | null | undefined): string | null {
   }
 }
 
-function resolveGateway(url: string): { gateway: 'payecom' | 'platiecom'; gatewayUrl: string } | null {
+function resolveGateway(url: string): { gateway: 'payecom' | 'platiecom' | 'yoomoney'; gatewayUrl: string } | null {
   if (/^https:\/\/payecom\.ru\/pay\?/i.test(url)) {
     return { gateway: 'payecom', gatewayUrl: url };
   }
 
   if (/^https:\/\/platiecom\.ru\/deeplink\?/i.test(url)) {
     return { gateway: 'platiecom', gatewayUrl: url };
+  }
+
+  if (/^https:\/\/yoomoney\.ru\/checkout\/payments\/v2\/contract/i.test(url)) {
+    return { gateway: 'yoomoney', gatewayUrl: url };
   }
 
   return null;
@@ -48,7 +52,7 @@ export function buildHardStopSignal(currentUrl: string, paymentContext: SessionP
     ...paymentContext.urlHints.map((value) => normalizeUrl(value))
   ].filter((value): value is string => Boolean(value));
 
-  let gateway: { gateway: 'payecom' | 'platiecom'; gatewayUrl: string } | undefined;
+  let gateway: { gateway: 'payecom' | 'platiecom' | 'yoomoney'; gatewayUrl: string } | undefined;
   for (const candidate of candidates) {
     const resolved = resolveGateway(candidate);
     if (resolved) {

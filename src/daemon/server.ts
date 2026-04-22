@@ -9,6 +9,7 @@ import { runIntegratedLitresBootstrap, type LitresBootstrapAttemptResult } from 
 import { resolveProfileForSession } from './profile-state.js';
 import { resolveBackendForSession } from './backend-policy.js';
 import { runIntegratedKuperBootstrap } from './kuper-auth.js';
+import { runIntegratedBrandshopBootstrap } from './brandshop-auth.js';
 import { DEFAULT_SESSION_IDLE_TIMEOUT_MS, SessionRegistry } from './session-registry.js';
 import { buildHardStopSignal } from '../helpers/hard-stop.js';
 import { isDebugEnabled, appendDebugLog } from '../debug/capture.js';
@@ -339,6 +340,8 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           let observed = await timing.run('observe_session_initial', () => controller.observeSession(record.sessionId));
           let auth = detectLoginGate(opened.url, observed);
           const needsLitresBootstrap = matchedPack?.summary.siteId === 'litres' && auth.state !== 'authenticated';
+          const needsBrandshopBootstrap =
+            matchedPack?.summary.siteId === 'brandshop' && auth.state !== 'authenticated';
           const bootstrapResult: LitresBootstrapAttemptResult =
             needsLitresBootstrap
               ? await timing.run(
@@ -353,6 +356,17 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
                     }),
                   profile.storageStatePath ?? null
                 )
+              : needsBrandshopBootstrap
+                ? await timing.run(
+                    'bootstrap_brandshop',
+                    () =>
+                      runIntegratedBrandshopBootstrap({
+                        matchedPack: matchedPack!,
+                        storageStatePath: profile.storageStatePath,
+                        existingPage: controller.getSessionPage(record.sessionId)
+                      }),
+                    profile.storageStatePath ?? null
+                  )
               : matchedPack?.summary.siteId === 'kuper' && auth.state !== 'authenticated' && !profile.storageStateExists
                 ? await timing.run(
                     'bootstrap_kuper',
@@ -584,20 +598,58 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           }
           throw err;
         }
-        const auth = detectLoginGate(action.after.url, action.after);
+        let afterState = action.after;
+        let auth = detectLoginGate(afterState.url, afterState);
+        const needsBrandshopBootstrap =
+          session.packContext?.siteId === 'brandshop' &&
+          auth.state !== 'authenticated' &&
+          (auth.loginGateDetected || /brandshop\.ru\/checkout\/?/i.test(afterState.url));
+        const bootstrapResult = needsBrandshopBootstrap
+          ? await runIntegratedBrandshopBootstrap({
+              matchedPack: await matchSitePackByUrl(afterState.url),
+              storageStatePath: session.profileContext.storageStatePath,
+              existingPage: controller.getSessionPage(session.sessionId)
+            })
+          : null;
+
+        if (bootstrapResult?.attempted && bootstrapResult.usedExistingPage && (bootstrapResult.ok || bootstrapResult.handoffRequired)) {
+          afterState = await controller.observeSession(session.sessionId);
+          auth = detectLoginGate(afterState.url, afterState);
+        }
+
+        const refreshedStatePath = bootstrapResult?.statePath ?? session.profileContext.storageStatePath;
+        const refreshedStateExists =
+          session.profileContext.storageStateExists || Boolean(bootstrapResult?.ok && refreshedStatePath);
         registry.touchUsage(session.sessionId, {
-          url: action.after.url,
-          title: action.after.title,
+          url: afterState.url,
+          title: afterState.title,
+          profileContext: {
+            ...session.profileContext,
+            storageStatePath: refreshedStatePath,
+            storageStateExists: refreshedStateExists
+          },
           authContext: {
             ...session.authContext,
             state: auth.state,
             loginGateDetected: auth.loginGateDetected,
+            storageStatePath: refreshedStatePath,
+            storageStateExists: refreshedStateExists,
             authenticatedSignals: auth.authenticatedSignals,
-            anonymousSignals: auth.anonymousSignals
+            anonymousSignals: auth.anonymousSignals,
+            handoffRequired: bootstrapResult?.handoffRequired ?? session.authContext.handoffRequired,
+            bootstrapFailed: bootstrapResult?.bootstrapFailed ?? session.authContext.bootstrapFailed,
+            redirectedToSberId: bootstrapResult?.redirectedToSberId ?? session.authContext.redirectedToSberId,
+            bootstrapStatus: bootstrapResult?.status ?? session.authContext.bootstrapStatus,
+            bootstrapScriptPath: bootstrapResult?.scriptPath ?? session.authContext.bootstrapScriptPath,
+            bootstrapOutDir: bootstrapResult?.outDir ?? session.authContext.bootstrapOutDir,
+            bootstrapFinalUrl: bootstrapResult?.finalUrl ?? session.authContext.bootstrapFinalUrl,
+            bootstrapError: bootstrapResult?.errorMessage ?? session.authContext.bootstrapError,
+            bootstrapDurationMs: bootstrapResult?.durationMs ?? session.authContext.bootstrapDurationMs,
+            bootstrapTimeline: bootstrapResult?.timeline ?? session.authContext.bootstrapTimeline
           },
-          paymentContext: action.after.paymentContext
+          paymentContext: afterState.paymentContext
         });
-        const hardStop = buildHardStopSignal(action.after.url, action.after.paymentContext);
+        const hardStop = buildHardStopSignal(afterState.url, afterState.paymentContext);
         const payload: SessionActionResult = {
           sessionId: session.sessionId,
           actedAt: new Date().toISOString(),
@@ -613,7 +665,7 @@ export async function startDaemonServer(options: StartDaemonServerOptions = {}):
           after: {
             sessionId: session.sessionId,
             observedAt: new Date().toISOString(),
-            ...action.after,
+            ...afterState,
             hardStop: hardStop ?? undefined
           },
           changes: action.changes,

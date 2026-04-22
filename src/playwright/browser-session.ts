@@ -688,9 +688,9 @@ export class BrowserSession {
         return style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0 && rect.height > 0;
       };
       const paymentHintPattern =
-        /payecom\.ru|platiecom\.ru|id\.sber\.ru|sberid|sberpay|сбер|сбп|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd/i;
+        /payecom\.ru|platiecom\.ru|yoomoney\.ru|id\.sber\.ru|sberid|sberpay|сбер|сбп|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd|brandshop\.ru\/checkout/i;
       const paymentUrlPattern =
-        /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|id\.sber\.ru\/[^\s"'<>)]*)[^\s"'<>)]*|(?:orderid|bankinvoiceid|mdorder|merchantorderid|merchantordernumber|formurl)[^\s"'<>]*/gi;
+        /https?:\/\/(?:www\.)?(?:payecom\.ru\/pay(?:_ru)?|platiecom\.ru\/deeplink|yoomoney\.ru\/checkout\/payments\/v2\/contract|id\.sber\.ru\/[^\s"'<>)]*)[^\s"'<>)]*|(?:orderid|bankinvoiceid|mdorder|merchantorderid|merchantordernumber|formurl)[^\s"'<>]*/gi;
       const paymentAttributeNames = [
         'href',
         'src',
@@ -796,6 +796,14 @@ export class BrowserSession {
         .map(toButtonSummary)
         .filter((button) => button.text.length > 0 || button.ariaLabel);
 
+      const brandshopAvatar = document.querySelector<HTMLElement>(
+        '.header-authorize__avatar, .header-authorize__avatar-wrapper'
+      );
+      if (brandshopAvatar && isVisible(brandshopAvatar) && !seenTexts.has('Профиль')) {
+        seenTexts.add('Профиль');
+        visibleTexts.unshift('Профиль');
+      }
+
       const seen = new Set<string>();
       const visibleButtons = [...priorityButtons, ...allButtons]
         .filter((button) => {
@@ -875,7 +883,7 @@ export class BrowserSession {
         })
         .filter((value): value is string => Boolean(value))
         .filter((value) =>
-          /payecom\.ru|platiecom\.ru|id\.sber\.ru|sberid|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd/i.test(
+          /payecom\.ru|platiecom\.ru|yoomoney\.ru|id\.sber\.ru|sberid|orderid=|bankinvoiceid=|mdorder=|merchantorderid=|merchantordernumber=|formurl=|purchase\/ppd|brandshop\.ru\/checkout/i.test(
             value
           )
         )
@@ -894,7 +902,7 @@ export class BrowserSession {
       const currentUrl = window.location.href;
       const urlHasSearch = /[?&]q=|\/search/i.test(currentUrl);
       const urlHasCart = /\/cart|\/basket|\/my-books\/cart/i.test(currentUrl);
-      const urlHasCheckout = /\/purchase\/ppd\b/i.test(currentUrl);
+      const urlHasCheckout = /\/purchase\/ppd\b|brandshop\.ru\/checkout\/?/i.test(currentUrl);
       const urlHasProduct = /\/book\/|\/audiobook\/|\/product\//i.test(currentUrl);
 
       const hasBuyButtons = /buy|add to cart|purchase|купить|в корзину/.test(buttonTexts);

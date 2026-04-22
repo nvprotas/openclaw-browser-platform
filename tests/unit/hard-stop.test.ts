@@ -68,6 +68,29 @@ describe('hard-stop signal', () => {
     expect(hardStop?.finalPayload.mdOrder).toBe('md-456');
   });
 
+  it('emits hard stop for yoomoney contract gateway with extraction payload', () => {
+    const state = buildState({
+      url: 'https://yoomoney.ru/checkout/payments/v2/contract?orderId=brandshop-order-123'
+    });
+
+    const hardStop = buildHardStopSignal(state.url, state.paymentContext);
+
+    expect(hardStop).toMatchObject({
+      enabled: true,
+      terminalMode: true,
+      reason: 'terminal_extraction_result',
+      returnPolicy: 'return_final_payload_verbatim',
+      gateway: 'yoomoney',
+      gatewayUrl: 'https://yoomoney.ru/checkout/payments/v2/contract?orderId=brandshop-order-123',
+      finalPayload: {
+        paymentMethod: 'SberPay',
+        paymentUrl: 'https://yoomoney.ru/checkout/payments/v2/contract?orderId=brandshop-order-123',
+        paymentOrderId: 'brandshop-order-123'
+      }
+    });
+    expect(hardStop?.finalPayload).not.toHaveProperty('orderId');
+  });
+
   it('emits hard stop even without gateway URL when terminalExtractionResult is true and extractionJson is present', () => {
     // litres checkout page with formUrl hint pointing to payecom, but pay_ru (not matched by gateway regex)
     // Previously this returned null — now it must return a hardstop

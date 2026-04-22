@@ -24,7 +24,11 @@ export function summarizeObservation(state: PageStateSummary): ActionObservation
     observations.push({ level: 'info', code: 'PAYMENT_BOUNDARY_VISIBLE', message: 'Payecom payment boundary is visible.' });
   }
 
-  if (state.paymentContext.phase === 'litres_checkout') {
+  if (state.paymentContext.phase === 'yoomoney_boundary') {
+    observations.push({ level: 'info', code: 'PAYMENT_BOUNDARY_VISIBLE', message: 'YooMoney payment boundary is visible.' });
+  }
+
+  if (state.paymentContext.phase === 'litres_checkout' || state.paymentContext.phase === 'brandshop_checkout') {
     observations.push({ level: 'info', code: 'CHECKOUT_VISIBLE', message: 'Checkout/payment-choice signals are visible.' });
   }
 

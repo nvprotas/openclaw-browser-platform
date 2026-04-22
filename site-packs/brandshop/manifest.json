@@ -4,13 +4,23 @@
   "start_url": "https://brandshop.ru/",
   "site_type": "fashion_store",
   "support_level": "assisted",
-  "flows": ["search", "open_product", "add_to_cart", "open_cart"],
+  "flows": [
+    "search",
+    "open_product",
+    "add_to_cart",
+    "open_cart",
+    "open_checkout",
+    "authenticate_sberid",
+    "select_pickup",
+    "select_sberpay",
+    "return_yoomoney_payment_params"
+  ],
   "risk_flags": {
     "size_selection_required": true,
     "search_ui_may_require_manual_open": true,
     "cart_direct_url_may_return_404": true,
     "product_page_may_be_misdetected_as_cart": true,
-    "checkout_requires_human": true,
-    "final_checkout_not_in_scope": true
+    "sberid_handoff_requires_human": true,
+    "final_payment_not_in_scope": true
   }
 }
