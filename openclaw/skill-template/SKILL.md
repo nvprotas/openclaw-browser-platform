@@ -24,9 +24,11 @@ daemon ensure
 -> session observe
 -> decide
 -> session act
--> verify
+-> read action.after
 -> repeat
 ```
+
+`session act` already returns fresh `before` and `after` page observations. After a successful action, use `action.after` as the current page state; do not immediately call `session observe` again just to verify the same transition.
 
 Always request `--json` output.
 When using OpenClaw `exec`, set `workdir` / `cwd` to the workspace root for reproducible relative paths and stable execution.
@@ -89,13 +91,18 @@ Check:
 - whether auth is `authenticated`, `anonymous`, or `login_gate_detected`
 - whether payment identifiers or a payment boundary were already detected
 
-### 4. Observe before acting
+### 4. Observe when you need fresh state
 
 ```bash
 browser-platform session observe --session <SESSION_ID> --json
 ```
 
-Use observation to decide the next step.
+Use observation to decide the next step when you do not already have fresh state from `session open`, `session context`, `session act.action.after`, or `session snapshot.state`.
+
+Avoid redundant observe calls:
+- before the first action, call `session observe` only if `session open` / `session context` does not provide enough current state to choose the next action;
+- after `session act`, rely on `action.after` and its `paymentContext`, `hardStop`, visible text, buttons, forms, and URL hints;
+- call another `session observe` only after a manual user/browser change, an out-of-band wait, a failed/stale action, or when the returned state is clearly incomplete or inconsistent.
 
 If `paymentContext.shouldReportImmediately` is true and the current gateway URL matches `https://payecom.ru/pay?...` or `https://platiecom.ru/deeplink?...`, immediately stop normal browser execution and return the gateway interception JSON described below as the final answer. Otherwise, treat it as a checkpoint signal and continue following the user task.
 
@@ -150,7 +157,7 @@ Stop and ask for review if you hit:
 Эти обратимые шаги являются частью поручения пользователя, а не необратимым подтверждением покупки.
 
 На checkout/payment boundary останавливайтесь только после извлечения структурированных платежных идентификаторов и до финального подтверждения.
-Если пользователь попросил дойти до SberPay, задача выполнена только после достижения SberPay gateway/payment boundary (`payecom` или `platiecom`) и возврата структурированного JSON. Видимая ветка `Войти по Сбер ID` без извлеченных идентификаторов является checkpoint: продолжайте использовать `session context`, `observe`, runtime `paymentContext` и gateway URL, пока JSON можно будет заполнить. Не нажимайте финальный `Оплатить`, не отправляйте OTP и не подтверждайте банковский платеж, если пользователь явно не попросил этот необратимый шаг.
+Если пользователь попросил дойти до SberPay, задача выполнена только после достижения SberPay gateway/payment boundary (`payecom` или `platiecom`) и возврата структурированного JSON. Видимая ветка `Войти по Сбер ID` без извлеченных идентификаторов является checkpoint: продолжайте использовать свежие runtime-сигналы из `session context`, `session observe` при необходимости, `action.after.paymentContext` и gateway URL, пока JSON можно будет заполнить. Не нажимайте финальный `Оплатить`, не отправляйте OTP и не подтверждайте банковский платеж, если пользователь явно не попросил этот необратимый шаг.
 
 Runtime auto-detect should already raise `paymentContext` from `payecom` iframe/src, payecom/platiecom handoff URLs, and encoded payment params like `formUrl` / `href`; do not depend on manual HTML snapshots unless runtime evidence is genuinely missing.
 
