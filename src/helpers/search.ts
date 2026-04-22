@@ -120,18 +120,13 @@ function scoreCandidate(candidate: string, query: string): number {
         token
       )
   );
-  const matchedTokens = queryTokens.filter((token) =>
+  const matchedTokens = meaningfulQueryTokens.filter((token) =>
     candidateTokens.has(token)
   );
   const containsQuery = normalizedCandidate.includes(normalizedQuery);
-  const resultWordBonus = /result|results|найден|результат|книга|book/.test(
-    normalizedCandidate
-  )
-    ? 8
-    : 0;
   const titleTokenBonus =
     meaningfulQueryTokens[0] && candidateTokens.has(meaningfulQueryTokens[0])
-      ? 15
+      ? 25
       : 0;
   const genericSingleTokenPenalty =
     candidateTokens.size === 1 &&
@@ -139,13 +134,26 @@ function scoreCandidate(candidate: string, query: string): number {
     !candidateTokens.has(meaningfulQueryTokens[0])
       ? 10
       : 0;
+  const wantsEnglish = /\b(?:английск[а-я]*|english|a1|a2|b1|b2|c1|c2)\b/i.test(
+    normalizedQuery
+  );
+  const wantsPdf = /\bpdf\b/i.test(normalizedQuery);
+  const educationalEditionPenalty =
+    !wantsEnglish &&
+    /английск|english|чтения|оригинале|комментари|адаптированн|\ba[12]\b|\bb[12]\b|\bc[12]\b/.test(
+      normalizedCandidate
+    )
+      ? 35
+      : 0;
+  const pdfPenalty = !wantsPdf && /\bpdf\b/i.test(normalizedCandidate) ? 25 : 0;
 
   return (
     matchedTokens.length * 20 +
     (containsQuery ? 25 : 0) +
-    resultWordBonus +
     titleTokenBonus -
     genericSingleTokenPenalty -
+    educationalEditionPenalty -
+    pdfPenalty -
     normalizedCandidate.length / 200
   );
 }
@@ -172,11 +180,19 @@ function buildSelectorTargets(
   const includeAudio = /аудио|audiobook|audio|слушать/i.test(
     normalizeText(query)
   );
-  const selectors = readPackStrings(
-    pack,
-    'selectors',
-    'search_result_link'
-  ).filter((selector) => includeAudio || !/audiobook/i.test(selector));
+  const bookLinkSelector = includeAudio
+    ? "a[href*='/book/']"
+    : "a[href*='/book/']:not([href*='/audiobook/'])";
+  const mainBookLinkSelector = includeAudio
+    ? "main a[href*='/book/']"
+    : "main a[href*='/book/']:not([href*='/audiobook/'])";
+  const selectors = readPackStrings(pack, 'selectors', 'search_result_link')
+    .filter((selector) => includeAudio || !/audiobook/i.test(selector))
+    .map((selector) =>
+      !includeAudio && /href\*=['"]\/book\//i.test(selector)
+        ? `${selector}:not([href*='/audiobook/'])`
+        : selector
+    );
   const texts = candidates.slice(0, 3).map((candidate) => candidate.text);
 
   return unique(
@@ -188,12 +204,12 @@ function buildSelectorTargets(
       })),
       {
         action: 'click',
-        selector: `a[href*='/book/']:has-text(${selectorText(text)})`,
+        selector: `${bookLinkSelector}:has-text(${selectorText(text)})`,
         timeoutMs: 7_000
       },
       {
         action: 'click',
-        selector: `main a[href*='/book/']:has-text(${selectorText(text)})`,
+        selector: `${mainBookLinkSelector}:has-text(${selectorText(text)})`,
         timeoutMs: 7_000
       }
     ])

@@ -69,7 +69,8 @@ describe('search helpers', () => {
 
     expect(target).toEqual({
       action: 'click',
-      selector: 'a[href*=\'/book/\']:has-text("1984")',
+      selector:
+        "a[href*='/book/']:not([href*='/audiobook/']):has-text(\"1984\")",
       timeoutMs: 7000
     });
   });
@@ -94,16 +95,56 @@ describe('search helpers', () => {
     expect(plan.candidates[0]).toMatchObject({ text: 'Илиада' });
     expect(plan.targets[0]).toMatchObject({
       action: 'click',
-      selector: expect.stringContaining("a[href*='/book/']:has-text")
+      selector: expect.stringContaining("a[href*='/book/']")
     });
     expect(
       plan.targets.some(
         (target) =>
-          'selector' in target && /audiobook/i.test(target.selector ?? '')
+          'selector' in target &&
+          (target.selector ?? '').includes("a[href*='/audiobook/']")
       )
     ).toBe(false);
     expect(
       plan.targets.map((target) => 'text' in target && target.text)
     ).toContain('Илиада');
+  });
+
+  it('prefers the exact book title over educational editions for LitRes text queries', async () => {
+    const matched = await matchSitePackByUrl('https://www.litres.ru/');
+    const plan = buildSearchResultSelectionPlan(
+      {
+        pageSignatureGuess: 'search_results',
+        visibleTexts: [
+          'Результаты поиска «1984 Джордж Оруэлл электронная книга текстовая версия»',
+          'Книги',
+          'Текст',
+          'Аудио',
+          '1984',
+          'Джордж Оруэлл',
+          'Читает Иван Литвинов',
+          'Перевод Виктор Голышев',
+          '399 ₽',
+          '1984. Читаем в оригинале с комментарием',
+          'на английском',
+          'PDF',
+          '1984. Книга для чтения на английском языке',
+          '209 ₽',
+          '1984. A2'
+        ]
+      },
+      '1984 Джордж Оруэлл электронная книга текстовая версия',
+      matched
+    );
+
+    expect(plan.candidates[0]).toMatchObject({ text: '1984' });
+    expect(
+      plan.candidates.slice(0, 3).map((candidate) => candidate.text)
+    ).not.toContain('1984. Книга для чтения на английском языке');
+    expect(plan.targets[0]).toMatchObject({
+      action: 'click',
+      selector: expect.stringContaining(
+        "a[href*='/book/']:not([href*='/audiobook/']):has-text(\"1984\")"
+      )
+    });
   });
 });
