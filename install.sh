@@ -291,7 +291,16 @@ ensure_repo_clone() {
 
     log "Updating repo in $TARGET_DIR"
     git -C "$TARGET_DIR" fetch --depth=1 origin "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
-    git -C "$TARGET_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
+
+    if [ "$FORCE_UPDATE" = "1" ]; then
+      log "FORCE_UPDATE=1: discarding local repo changes in $TARGET_DIR"
+      git -C "$TARGET_DIR" reset --hard
+      git -C "$TARGET_DIR" clean -fd
+      git -C "$TARGET_DIR" checkout -f -B "$BRANCH" "origin/$BRANCH"
+      git -C "$TARGET_DIR" reset --hard "origin/$BRANCH"
+    else
+      git -C "$TARGET_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
+    fi
   else
     log "Cloning repo into $TARGET_DIR"
     git clone --depth=1 --branch "$BRANCH" "$REPO_URL" "$TARGET_DIR"
