@@ -15,7 +15,7 @@ import {
   is404LikePage,
   isCartVisible
 } from '../../helpers/cart.js';
-import { chooseSearchResultTarget } from '../../helpers/search.js';
+import { buildSearchResultSelectionPlan } from '../../helpers/search.js';
 import type { LoadedSitePack } from '../../packs/loader.js';
 import type { PageStateSummary } from '../../playwright/browser-session.js';
 
@@ -251,6 +251,23 @@ export async function runLitresCheckoutScenario(
     }
   };
 
+  const recordStage = (
+    step: string,
+    status: ScenarioStage['status'],
+    detail: string | null,
+    durationMs = 0
+  ): void => {
+    const timestamp = isoNow();
+    stages.push({
+      step,
+      startedAt: timestamp,
+      finishedAt: timestamp,
+      durationMs,
+      status,
+      detail
+    });
+  };
+
   const observe = async (step: string): Promise<PageStateSummary> => {
     const observed = await stage(step, () =>
       input.controller.observeSession(input.sessionId)
@@ -291,18 +308,31 @@ export async function runLitresCheckoutScenario(
 
   try {
     let observed = await observe('observe_search_results');
-    const resultTarget = chooseSearchResultTarget(observed, input.query);
-    if (!resultTarget) {
+    const resultPlan = buildSearchResultSelectionPlan(
+      observed,
+      input.query,
+      input.pack
+    );
+    recordStage(
+      'select_search_result_candidates',
+      resultPlan.targets.length > 0 ? 'ok' : 'error',
+      JSON.stringify({
+        topCandidates: resultPlan.candidates.slice(0, 8),
+        targets: resultPlan.targets.slice(0, 8)
+      })
+    );
+    if (resultPlan.targets.length === 0) {
       throw new Error('Search result target was not found');
     }
 
-    const product = await stage(
-      'open_first_search_result',
-      () =>
-        input.controller.actInSession(input.sessionId, resultTarget, {
-          sitePack: input.pack
-        }),
-      JSON.stringify(resultTarget)
+    const product = await runFirstSuccessfulAction(
+      'open_search_result',
+      resultPlan.targets,
+      (action) =>
+        !is404LikePage(action.after) &&
+        action.after.pageSignatureGuess !== 'search_results' &&
+        (/\/book\//i.test(action.after.url) ||
+          action.after.pageSignatureGuess === 'product_page')
     );
     lastObservation = product.after;
 

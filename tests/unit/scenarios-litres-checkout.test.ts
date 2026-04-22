@@ -276,4 +276,125 @@ describe('LitRes checkout scenario', () => {
       expect.objectContaining({ sitePack: pack })
     );
   });
+
+  it('tries the next search-result target when the first click stays on search results', async () => {
+    const pack = await matchSitePackByUrl('https://www.litres.ru/');
+    const search = state({
+      url: 'https://www.litres.ru/search/?q=Iliad',
+      pageSignatureGuess: 'search_results',
+      visibleTexts: ['Результаты поиска', 'Илиада', 'Гомер', '154,90 ₽']
+    });
+    const product = state({
+      url: 'https://www.litres.ru/book/gomer/iliada/',
+      pageSignatureGuess: 'product_page',
+      visibleTexts: ['Илиада', 'Гомер', 'В корзину']
+    });
+    const added = state({
+      url: product.url,
+      pageSignatureGuess: 'product_page',
+      visibleTexts: ['Илиада', 'В корзине'],
+      visibleButtons: [
+        { text: '1', role: 'button', type: 'button', ariaLabel: 'cart' }
+      ]
+    });
+    const cart = state({
+      url: 'https://www.litres.ru/my-books/cart/',
+      pageSignatureGuess: 'cart',
+      visibleTexts: ['Корзина', 'Илиада', 'Перейти к покупке']
+    });
+    const checkoutSberCard = state({
+      url: 'https://www.litres.ru/purchase/ppd/?order=1&method=russian_card&system=sbercard',
+      pageSignatureGuess: 'checkout_payment_choice',
+      visibleTexts: ['Оформление покупки', 'Российская карта'],
+      paymentContext: {
+        ...createEmptyPaymentContext(),
+        detected: true,
+        phase: 'litres_checkout',
+        paymentMethod: 'russian_card',
+        paymentSystem: 'sbercard'
+      }
+    });
+    const payecom = state({
+      url: 'https://payecom.ru/pay_ru?orderId=order-3',
+      pageSignatureGuess: 'checkout_payment_choice',
+      visibleTexts: ['Войти по Сбер ID'],
+      paymentContext: {
+        ...createEmptyPaymentContext(),
+        detected: true,
+        shouldReportImmediately: true,
+        terminalExtractionResult: true,
+        provider: 'sberpay',
+        phase: 'payecom_boundary',
+        paymentUrl: 'https://payecom.ru/pay_ru?orderId=order-3',
+        paymentOrderId: 'order-3',
+        paymentIntents: [{ provider: 'sberpay', orderId: 'order-3' }],
+        extractionJson: {
+          paymentMethod: 'SberPay',
+          paymentUrl: 'https://payecom.ru/pay_ru?orderId=order-3',
+          paymentOrderId: 'order-3',
+          paymentIntents: [{ provider: 'sberpay', orderId: 'order-3' }],
+          bankInvoiceId: null,
+          merchantOrderNumber: null,
+          merchantOrderId: null,
+          rawDeeplink: null,
+          source: 'url',
+          mdOrder: null,
+          formUrl: null,
+          href: null
+        }
+      }
+    });
+
+    const actionResults = [
+      action(search, search),
+      action(product, search),
+      action(added, product),
+      action(cart, added),
+      action(checkoutSberCard, cart),
+      action(payecom, checkoutSberCard)
+    ];
+    const controller = {
+      observeSession: vi.fn(async () => search),
+      actInSession: vi.fn(async () => actionResults.shift()!)
+    };
+
+    const result = await runLitresCheckoutScenario({
+      controller,
+      sessionId: 'session-1',
+      pack,
+      query: 'Илиада Гомер текстовая электронная книга'
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      finalPayload: {
+        paymentOrderId: 'order-3'
+      }
+    });
+    expect(controller.actInSession).toHaveBeenNthCalledWith(
+      1,
+      'session-1',
+      expect.objectContaining({
+        action: 'click',
+        selector: expect.stringContaining("a[href*='/book/']")
+      }),
+      expect.objectContaining({ sitePack: pack })
+    );
+    expect(controller.actInSession).toHaveBeenNthCalledWith(
+      2,
+      'session-1',
+      expect.objectContaining({
+        action: 'click',
+        selector: expect.stringContaining("main a[href*='/book/']")
+      }),
+      expect.objectContaining({ sitePack: pack })
+    );
+    expect(result.stages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ step: 'select_search_result_candidates' }),
+        expect.objectContaining({ step: 'open_search_result_1' }),
+        expect.objectContaining({ step: 'open_search_result_2' })
+      ])
+    );
+  });
 });

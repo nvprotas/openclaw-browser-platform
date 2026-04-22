@@ -176,6 +176,11 @@ export interface SessionObservation {
     role: string;
     type: string | null;
     ariaLabel: string | null;
+    selector?: string | null;
+    href?: string | null;
+    formAction?: string | null;
+    dataAttributes?: Record<string, string>;
+    paymentHints?: string[];
   }>;
   forms: Array<{
     id: string | null;

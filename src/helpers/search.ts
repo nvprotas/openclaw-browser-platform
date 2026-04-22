@@ -1,4 +1,8 @@
-import type { ClickActionPayload, FillActionPayload, SessionObservation } from '../daemon/types.js';
+import type {
+  ClickActionPayload,
+  FillActionPayload,
+  SessionObservation
+} from '../daemon/types.js';
 import type { LoadedSitePack } from '../packs/loader.js';
 
 function normalizeText(value: string): string {
@@ -23,7 +27,11 @@ function unique<T>(values: T[]): T[] {
   });
 }
 
-function readPackStrings(pack: LoadedSitePack | null | undefined, section: string, key: string): string[] {
+function readPackStrings(
+  pack: LoadedSitePack | null | undefined,
+  section: string,
+  key: string
+): string[] {
   const raw = pack?.pack.hints.raw;
   const bucket = raw?.[section];
   if (!bucket || typeof bucket !== 'object' || Array.isArray(bucket)) {
@@ -31,12 +39,20 @@ function readPackStrings(pack: LoadedSitePack | null | undefined, section: strin
   }
 
   const values = (bucket as Record<string, unknown>)[key];
-  return Array.isArray(values) ? values.filter((value): value is string => typeof value === 'string') : [];
+  return Array.isArray(values)
+    ? values.filter((value): value is string => typeof value === 'string')
+    : [];
 }
 
-export function findSearchInput(pack: LoadedSitePack | null | undefined): FillActionPayload[] {
+export function findSearchInput(
+  pack: LoadedSitePack | null | undefined
+): FillActionPayload[] {
   const selectors = readPackStrings(pack, 'selectors', 'search_input');
-  const selectorTargets = selectors.map<FillActionPayload>((selector) => ({ action: 'fill', selector, value: '' }));
+  const selectorTargets = selectors.map<FillActionPayload>((selector) => ({
+    action: 'fill',
+    selector,
+    value: ''
+  }));
 
   return [
     ...selectorTargets,
@@ -48,18 +64,33 @@ export function findSearchInput(pack: LoadedSitePack | null | undefined): FillAc
   ];
 }
 
-export function fillSearchAndSubmit(pack: LoadedSitePack | null | undefined, query: string): {
+export function fillSearchAndSubmit(
+  pack: LoadedSitePack | null | undefined,
+  query: string
+): {
   fillTargets: FillActionPayload[];
   submitTargets: ClickActionPayload[];
 } {
-  const fillTargets = findSearchInput(pack).map<FillActionPayload>((target) => ({ ...target, value: query }));
+  const fillTargets = findSearchInput(pack).map<FillActionPayload>(
+    (target) => ({ ...target, value: query })
+  );
   const submitSelectors = readPackStrings(pack, 'selectors', 'search_submit');
   const submitTexts = readPackStrings(pack, 'button_texts', 'search_submit');
 
   const submitTargets = [
-    ...submitSelectors.map<ClickActionPayload>((selector) => ({ action: 'click', selector })),
-    ...submitTexts.map<ClickActionPayload>((name) => ({ action: 'click', role: 'button', name })),
-    ...submitTexts.map<ClickActionPayload>((text) => ({ action: 'click', text }))
+    ...submitSelectors.map<ClickActionPayload>((selector) => ({
+      action: 'click',
+      selector
+    })),
+    ...submitTexts.map<ClickActionPayload>((name) => ({
+      action: 'click',
+      role: 'button',
+      name
+    })),
+    ...submitTexts.map<ClickActionPayload>((text) => ({
+      action: 'click',
+      text
+    }))
   ];
 
   return {
@@ -79,37 +110,142 @@ function scoreCandidate(candidate: string, query: string): number {
     return 100;
   }
 
-  const candidateTokens = new Set(normalizedCandidate.split(' ').filter(Boolean));
+  const candidateTokens = new Set(
+    normalizedCandidate.split(' ').filter(Boolean)
+  );
   const queryTokens = normalizedQuery.split(' ').filter(Boolean);
-  const matchedTokens = queryTokens.filter((token) => candidateTokens.has(token));
+  const meaningfulQueryTokens = queryTokens.filter(
+    (token) =>
+      !/^(?:книг[а-я]*|текстов[а-я]*|электронн[а-я]*|верс(?:ия|ии|ию)|купить|найти|на|литрес)$/.test(
+        token
+      )
+  );
+  const matchedTokens = queryTokens.filter((token) =>
+    candidateTokens.has(token)
+  );
   const containsQuery = normalizedCandidate.includes(normalizedQuery);
-  const resultWordBonus = /result|results|найден|результат|книга|book/.test(normalizedCandidate) ? 8 : 0;
+  const resultWordBonus = /result|results|найден|результат|книга|book/.test(
+    normalizedCandidate
+  )
+    ? 8
+    : 0;
+  const titleTokenBonus =
+    meaningfulQueryTokens[0] && candidateTokens.has(meaningfulQueryTokens[0])
+      ? 15
+      : 0;
+  const genericSingleTokenPenalty =
+    candidateTokens.size === 1 &&
+    meaningfulQueryTokens.length > 1 &&
+    !candidateTokens.has(meaningfulQueryTokens[0])
+      ? 10
+      : 0;
 
-  return matchedTokens.length * 20 + (containsQuery ? 25 : 0) + resultWordBonus - normalizedCandidate.length / 200;
+  return (
+    matchedTokens.length * 20 +
+    (containsQuery ? 25 : 0) +
+    resultWordBonus +
+    titleTokenBonus -
+    genericSingleTokenPenalty -
+    normalizedCandidate.length / 200
+  );
+}
+
+export interface SearchResultCandidate {
+  text: string;
+  score: number;
+}
+
+export interface SearchResultSelectionPlan {
+  candidates: SearchResultCandidate[];
+  targets: ClickActionPayload[];
+}
+
+function selectorText(value: string): string {
+  return JSON.stringify(value.replace(/\s+/g, ' ').trim());
+}
+
+function buildSelectorTargets(
+  pack: LoadedSitePack | null | undefined,
+  candidates: SearchResultCandidate[],
+  query: string
+): ClickActionPayload[] {
+  const includeAudio = /аудио|audiobook|audio|слушать/i.test(
+    normalizeText(query)
+  );
+  const selectors = readPackStrings(
+    pack,
+    'selectors',
+    'search_result_link'
+  ).filter((selector) => includeAudio || !/audiobook/i.test(selector));
+  const texts = candidates.slice(0, 3).map((candidate) => candidate.text);
+
+  return unique(
+    texts.flatMap((text) => [
+      ...selectors.map<ClickActionPayload>((selector) => ({
+        action: 'click',
+        selector: `${selector}:has-text(${selectorText(text)})`,
+        timeoutMs: 7_000
+      })),
+      {
+        action: 'click',
+        selector: `a[href*='/book/']:has-text(${selectorText(text)})`,
+        timeoutMs: 7_000
+      },
+      {
+        action: 'click',
+        selector: `main a[href*='/book/']:has-text(${selectorText(text)})`,
+        timeoutMs: 7_000
+      }
+    ])
+  );
+}
+
+export function buildSearchResultSelectionPlan(
+  observation: Pick<SessionObservation, 'visibleTexts' | 'pageSignatureGuess'>,
+  query: string,
+  pack?: LoadedSitePack | null
+): SearchResultSelectionPlan {
+  if (observation.pageSignatureGuess !== 'search_results') {
+    return {
+      candidates: [],
+      targets: []
+    };
+  }
+
+  const candidates = unique(observation.visibleTexts)
+    .filter((text) => text.length >= 2)
+    .filter(
+      (text) =>
+        !/результаты поиска|search results|найдено|найти|поиск|фильтр|filters?/i.test(
+          text
+        )
+    )
+    .map((text) => ({ text, score: scoreCandidate(text, query) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((left, right) => right.score - left.score);
+
+  return {
+    candidates,
+    targets: unique([
+      ...buildSelectorTargets(pack, candidates, query),
+      ...candidates.slice(0, 5).map<ClickActionPayload>((candidate) => ({
+        action: 'click',
+        text: candidate.text,
+        exact: true,
+        timeoutMs: 7_000
+      })),
+      ...candidates.slice(0, 5).map<ClickActionPayload>((candidate) => ({
+        action: 'click',
+        text: candidate.text,
+        timeoutMs: 7_000
+      }))
+    ])
+  };
 }
 
 export function chooseSearchResultTarget(
   observation: Pick<SessionObservation, 'visibleTexts' | 'pageSignatureGuess'>,
   query: string
 ): ClickActionPayload | null {
-  if (observation.pageSignatureGuess !== 'search_results') {
-    return null;
-  }
-
-  const candidates = unique(observation.visibleTexts)
-    .filter((text) => text.length >= 2)
-    .filter((text) => !/результаты поиска|search results|найдено|найти|поиск|фильтр|filters?/i.test(text))
-    .map((text) => ({ text, score: scoreCandidate(text, query) }))
-    .filter((candidate) => candidate.score > 0)
-    .sort((left, right) => right.score - left.score);
-
-  const best = candidates[0];
-  if (!best) {
-    return null;
-  }
-
-  return {
-    action: 'click',
-    text: best.text
-  };
+  return buildSearchResultSelectionPlan(observation, query).targets[0] ?? null;
 }
