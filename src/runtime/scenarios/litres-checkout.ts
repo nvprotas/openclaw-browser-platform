@@ -41,6 +41,8 @@ export interface LitresCheckoutScenarioInput {
   pack: LoadedSitePack | null;
   query: string;
   maxDurationMs?: number;
+  searchResultRenderTimeoutMs?: number;
+  searchResultPollDelayMs?: number;
 }
 
 function isoNow(): string {
@@ -87,6 +89,40 @@ function unique<T>(values: T[]): T[] {
 
     seen.add(key);
     return true;
+  });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function searchResultsStillRendering(state: PageStateSummary): boolean {
+  return (
+    state.pageSignatureGuess === 'search_results' &&
+    state.visibleTexts.length === 0
+  );
+}
+
+function summarizeSearchObservation(
+  observed: PageStateSummary,
+  plan: ReturnType<typeof buildSearchResultSelectionPlan>
+): string {
+  return JSON.stringify({
+    url: observed.url,
+    title: observed.title,
+    readyState: observed.readyState,
+    pageSignatureGuess: observed.pageSignatureGuess,
+    visibleTextCount: observed.visibleTexts.length,
+    visibleButtonCount: observed.visibleButtons.length,
+    formCount: observed.forms.length,
+    visibleTextSample: observed.visibleTexts.slice(0, 12),
+    visibleButtonSample: observed.visibleButtons.slice(0, 8).map((button) => ({
+      text: button.text,
+      ariaLabel: button.ariaLabel,
+      selector: button.selector
+    })),
+    topCandidates: plan.candidates.slice(0, 8),
+    targets: plan.targets.slice(0, 8)
   });
 }
 
@@ -308,18 +344,44 @@ export async function runLitresCheckoutScenario(
 
   try {
     let observed = await observe('observe_search_results');
-    const resultPlan = buildSearchResultSelectionPlan(
+    let resultPlan = buildSearchResultSelectionPlan(
       observed,
       input.query,
       input.pack
     );
+    const searchResultRenderTimeoutMs =
+      input.searchResultRenderTimeoutMs ?? 12_000;
+    const searchResultPollDelayMs = input.searchResultPollDelayMs ?? 500;
+    const searchResultRenderStartedMs = Date.now();
+    let searchResultRenderAttempts = 0;
+
+    while (
+      resultPlan.targets.length === 0 &&
+      searchResultsStillRendering(observed) &&
+      Date.now() - searchResultRenderStartedMs < searchResultRenderTimeoutMs
+    ) {
+      ensureBudget();
+      const elapsedMs = Date.now() - searchResultRenderStartedMs;
+      const remainingWaitMs = Math.max(
+        searchResultRenderTimeoutMs - elapsedMs,
+        0
+      );
+      await delay(Math.min(searchResultPollDelayMs, remainingWaitMs));
+      searchResultRenderAttempts += 1;
+      observed = await observe(
+        `observe_search_results_retry_${searchResultRenderAttempts}`
+      );
+      resultPlan = buildSearchResultSelectionPlan(
+        observed,
+        input.query,
+        input.pack
+      );
+    }
+
     recordStage(
       'select_search_result_candidates',
       resultPlan.targets.length > 0 ? 'ok' : 'error',
-      JSON.stringify({
-        topCandidates: resultPlan.candidates.slice(0, 8),
-        targets: resultPlan.targets.slice(0, 8)
-      })
+      summarizeSearchObservation(observed, resultPlan)
     );
     if (resultPlan.targets.length === 0) {
       throw new Error('Search result target was not found');
